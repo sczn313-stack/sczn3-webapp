@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SCZN3 Shooter Experience Card</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+  <h1>SCZN3 Shooter Experience Card (Test)</h1>
+  <p>If you can see this page on Render, the deployment worked.</p>
+
+  <form id="sec-form">
+    <label>
+      Windage clicks:
+      <input type="number" id="windage" step="0.01" value="0.00" />
+    </label>
+    <br />
+    <label>
+      Elevation clicks:
+      <input type="number" id="elevation" step="0.01" value="0.00" />
+    </label>
+    <br />
+    <button type="submit">Send to backend</button>
+  </form>
+
+  <pre id="result"></pre>
+
+  <script>
+    const form = document.getElementById('sec-form');
+    const result = document.getElementById('result');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const windage = parseFloat(document.getElementById('windage').value);
+      const elevation = parseFloat(document.getElementById('elevation').value);
+
+      try {
+        const res = await fetch('/api/sec', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ windage, elevation })
+        });
+        const data = await res.json();
+        result.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        result.textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
