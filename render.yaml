@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: sczn3-webapp-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: "npm install"
+    startCommand: "npm start"
+
+  - type: static_site
+    name: sczn3-webapp-frontend
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
