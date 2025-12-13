@@ -1,3 +1,4 @@
+const API_BASE = "https://sczn3-sec-backend.onrender.com";
 import React, { useState } from "react";
 
 export default function App() {
@@ -6,7 +7,7 @@ export default function App() {
   async function sendTestSEC() {
     try {
       const res = await fetch(
-       "https://sczn3-sec-backend.onrender.com/api/sec"
+       fetch(`${API_BASE}/api/sec`
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
