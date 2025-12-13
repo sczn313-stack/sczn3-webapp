@@ -6,7 +6,7 @@ export default function App() {
   async function sendTestSEC() {
     try {
       const res = await fetch(
-        "https://sczn3-webapp.onrender.com/api/sec",
+       "https://sczn3-sec-backend.onrender.com/api/sec"
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
