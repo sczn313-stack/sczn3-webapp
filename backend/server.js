@@ -14,6 +14,20 @@ app.get("/", (req, res) => {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+app.post("/api/upload", upload.single("image"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  res.json({
+    status: "ok",
+    message: "Image received",
+    filename: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size
+  });
+});
+
 app.post("/api/analyze", upload.single("target"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
