@@ -6,8 +6,8 @@ export default function App() {
 
   async function sendTestSEC() {
     try {
-      const res = await fetch(
-       fetch(`${API_BASE}/api/sec`
+    const res = await fetch(`${API_BASE}/api/sec`, {
+       
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
