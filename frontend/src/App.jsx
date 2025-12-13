@@ -4,16 +4,20 @@ import React, { useState } from "react";
 export default function App() {
   const [response, setResponse] = useState("");
 
-  async function sendTestSEC() {
+
     try {
-    const res = await fetch(`${API_BASE}/api/sec`, {
-       
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            shooter: "Ron",
-            message: "SEC test package",
+  async function uploadImage(file) {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await res.json();
+  setResponse(JSON.stringify(data, null, 2));
+}
           }),
         }
       );
