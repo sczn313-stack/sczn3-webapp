@@ -33,9 +33,9 @@ export default function App() {
     <div style={{ padding: "40px" }}>
       <h1>SCZN3 Frontend</h1>
 
-      <button
-        onClick={sendTestSEC}
-        style={{
+      <button type="button" onClick={() => uploadImage(selectedFile)}>
+  Upload
+</button>
           padding: "12px 24px",
           fontSize: "16px",
           cursor: "pointer",
