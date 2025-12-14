@@ -40,6 +40,20 @@ app.post("/api/analyze", upload.single("target"), (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+// --- Upload endpoint (must be ABOVE app.listen) ---
+const multer = require("multer");
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.post("/api/upload", upload.single("image"), (req, res) => {
+  if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
+
+  return res.json({
+    ok: true,
+    message: "Image received",
+    filename: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size,
+  });
+});app.listen(PORT, () => {
   console.log(`SCZN3 backend listening on port ${PORT}`);
 });
