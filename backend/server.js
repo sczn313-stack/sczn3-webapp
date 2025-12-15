@@ -41,8 +41,6 @@ app.post("/api/analyze", upload.single("target"), (req, res) => {
 });
 
 // --- Upload endpoint (must be ABOVE app.listen) ---
-const multer = require("multer");
-const upload = multer({ storage: multer.memoryStorage() });
 
 app.post("/api/upload", upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
