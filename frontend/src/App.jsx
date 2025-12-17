@@ -1,69 +1,66 @@
 import { useMemo, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
 export default function App() {
   const [file, setFile] = useState(null);
-  const [status, setStatus] = useState("");
-  const [responseText, setResponseText] = useState("");
+  const [status, setStatus] = useState("Idle");
 
-  const canUpload = useMemo(() => !!file, [file]);
+  const apiBase = useMemo(() => {
+    const raw = import.meta.env.VITE_API_BASE_URL || "";
+    return raw.replace(/\/+$/, "");
+  }, []);
 
-  async function onUpload() {
-    if (!file) return;
-
-    setStatus("Uploading...");
-    setResponseText("");
+  async function handleUpload() {
+    if (!file) {
+      setStatus("Choose a file first");
+      return;
+    }
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      setStatus("Uploading...");
 
-      const url = `${API_BASE}/api/upload`;
+      const form = new FormData();
+      form.append("file", file);
+
+      const url = `${apiBase}/api/upload`;
+
       const res = await fetch(url, {
         method: "POST",
-        body: formData,
+        body: form,
       });
 
-      const text = await res.text();
-      setResponseText(text);
-
       if (!res.ok) {
-        setStatus(`Upload failed (${res.status})`);
+        const text = await res.text().catch(() => "");
+        setStatus(`Upload failed (${res.status}) ${text ? "- " + text : ""}`);
         return;
       }
 
-      setStatus("Upload OK");
+      const data = await res.json().catch(() => ({}));
+      setStatus(`Upload OK ${data?.message ? "- " + data.message : ""}`);
     } catch (err) {
-      setStatus("Upload error");
-      setResponseText(String(err));
+      setStatus(`Upload error: ${err?.message || String(err)}`);
     }
   }
 
   return (
-    <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 24 }}>
       <h1>SCZN3 Upload Test</h1>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
         <input
           type="file"
           accept="image/*"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
         />
-        <button onClick={onUpload} disabled={!canUpload}>
-          Upload
-        </button>
+        <button onClick={handleUpload}>Upload</button>
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        <strong>Status:</strong> {status || "Idle"}
-      </div>
+      <p style={{ marginTop: 12 }}>
+        <b>Status:</b> {status}
+      </p>
 
-      {responseText ? (
-        <pre style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-          {responseText}
-        </pre>
-      ) : null}
+      <p style={{ marginTop: 12, opacity: 0.7 }}>
+        <b>API Base:</b> {apiBase || "(missing VITE_API_BASE_URL)"}
+      </p>
     </div>
   );
 }
