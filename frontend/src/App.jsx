@@ -2,15 +2,26 @@ import React, { useMemo, useState } from "react";
 
 /*
   frontend/src/App.jsx
-  SCZN3 Upload Test — clean version (no checkmarks / no extra UI indicators)
+  SCZN3 Upload Test + Analyze/SEC (two-button version)
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-123.onrender.com";
-const UPLOAD_PATH = "/api/upload";
+
+// You can override these with Render env vars if you want:
+// VITE_UPLOAD_PATH=/api/upload
+// VITE_SEC_PATH=/api/sec
+const DEFAULT_UPLOAD_PATH = "/api/upload";
+const DEFAULT_SEC_PATH = "/api/sec";
 
 function sanitizeApiBase(maybeBase) {
   const raw = (maybeBase || "").trim();
   return (raw || DEFAULT_API_BASE).replace(/\/+$/, "");
+}
+
+function sanitizePath(maybePath, fallback) {
+  const raw = (maybePath || "").trim();
+  if (!raw) return fallback;
+  return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
 function validateApiBase(base) {
@@ -32,6 +43,14 @@ function validateApiBase(base) {
   }
 }
 
+function tryParseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const apiBase = useMemo(() => {
     const envBase =
@@ -41,33 +60,49 @@ export default function App() {
     return sanitizeApiBase(envBase);
   }, []);
 
+  const uploadPath = useMemo(() => {
+    const envPath =
+      typeof import.meta !== "undefined"
+        ? import.meta.env?.VITE_UPLOAD_PATH
+        : "";
+    return sanitizePath(envPath, DEFAULT_UPLOAD_PATH);
+  }, []);
+
+  const secPath = useMemo(() => {
+    const envPath =
+      typeof import.meta !== "undefined" ? import.meta.env?.VITE_SEC_PATH : "";
+    return sanitizePath(envPath, DEFAULT_SEC_PATH);
+  }, []);
+
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("Ready.");
-  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [responseText, setResponseText] = useState("");
+  const [secResult, setSecResult] = useState(null);
 
   const baseError = useMemo(() => validateApiBase(apiBase), [apiBase]);
 
-  async function onUpload() {
+  async function postMultipart(path) {
     setResponseText("");
+    setSecResult(null);
 
     if (baseError) {
-      setStatus(`Upload error: ${baseError}`);
+      setStatus(`Error: ${baseError}`);
       return;
     }
-
     if (!file) {
-      setStatus("Upload error: Please choose a file first.");
+      setStatus("Error: Please choose a file first.");
       return;
     }
 
-    setUploading(true);
-    setStatus("Uploading…");
+    setBusy(true);
+    setStatus("Working…");
 
     try {
-      const url = `${apiBase}${UPLOAD_PATH}`;
+      const url = `${apiBase}${path}`;
 
       const form = new FormData();
+      // If your backend expects "image" instead of "file", change this key:
       form.append("file", file);
 
       const res = await fetch(url, {
@@ -79,15 +114,63 @@ export default function App() {
       setResponseText(text);
 
       if (!res.ok) {
-        setStatus(`Upload error: ${res.status} ${res.statusText}`);
-      } else {
-        setStatus("Upload successful.");
+        setStatus(`Error: ${res.status} ${res.statusText}`);
+        return;
       }
+
+      const json = tryParseJson(text);
+      if (json) setSecResult(json);
+
+      setStatus("Success.");
     } catch (err) {
-      setStatus(`Upload error: ${err?.message || String(err)}`);
+      setStatus(`Error: ${err?.message || String(err)}`);
     } finally {
-      setUploading(false);
+      setBusy(false);
     }
+  }
+
+  function renderSecPreview(obj) {
+    if (!obj || typeof obj !== "object") return null;
+
+    // Try to find windage/elevation in common shapes
+    const windage =
+      obj.windage ??
+      obj.Windage ??
+      obj.sec?.windage ??
+      obj.sec?.Windage ??
+      obj.result?.windage ??
+      obj.result?.Windage;
+
+    const elevation =
+      obj.elevation ??
+      obj.Elevation ??
+      obj.sec?.elevation ??
+      obj.sec?.Elevation ??
+      obj.result?.elevation ??
+      obj.result?.Elevation;
+
+    if (windage == null && elevation == null) return null;
+
+    return (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 10,
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>SEC Preview</div>
+        <div style={{ fontSize: 18 }}>
+          <div>
+            <strong>Windage:</strong> {String(windage)}
+          </div>
+          <div>
+            <strong>Elevation:</strong> {String(elevation)}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -108,21 +191,39 @@ export default function App() {
             const f = e.target.files?.[0] || null;
             setFile(f);
             setStatus(f ? "File selected." : "Ready.");
+            setResponseText("");
+            setSecResult(null);
           }}
         />
+
         <button
-          onClick={onUpload}
-          disabled={uploading}
+          onClick={() => postMultipart(uploadPath)}
+          disabled={busy}
           style={{
             marginLeft: 10,
             padding: "8px 14px",
             borderRadius: 10,
             border: "1px solid #ddd",
-            background: uploading ? "#f2f2f2" : "white",
-            cursor: uploading ? "not-allowed" : "pointer",
+            background: busy ? "#f2f2f2" : "white",
+            cursor: busy ? "not-allowed" : "pointer",
           }}
         >
-          {uploading ? "Uploading…" : "Upload"}
+          {busy ? "Working…" : "Upload"}
+        </button>
+
+        <button
+          onClick={() => postMultipart(secPath)}
+          disabled={busy}
+          style={{
+            marginLeft: 10,
+            padding: "8px 14px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: busy ? "#f2f2f2" : "white",
+            cursor: busy ? "not-allowed" : "pointer",
+          }}
+        >
+          {busy ? "Working…" : "Analyze / SEC"}
         </button>
       </div>
 
@@ -130,12 +231,23 @@ export default function App() {
         <strong>Status:</strong> {status}
       </div>
 
-      <div style={{ fontSize: 18, opacity: 0.85, marginBottom: 16 }}>
+      <div style={{ fontSize: 18, opacity: 0.85, marginBottom: 8 }}>
         <strong>API Base:</strong> {apiBase}
       </div>
 
-      {responseText ? (
+      <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 16 }}>
         <div>
+          <strong>Upload Path:</strong> {uploadPath}
+        </div>
+        <div>
+          <strong>SEC Path:</strong> {secPath}
+        </div>
+      </div>
+
+      {renderSecPreview(secResult)}
+
+      {responseText ? (
+        <div style={{ marginTop: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Response</div>
           <pre
             style={{
