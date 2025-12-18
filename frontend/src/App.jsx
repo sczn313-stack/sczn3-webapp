@@ -3,14 +3,12 @@ import React, { useMemo, useState, useEffect } from "react";
 /*
   frontend/src/App.jsx
   SCZN3 Shooter Experience Card (SEC)
-  - Uploads image to /api/upload
-  - Requests SEC clicks from /api/sec
-  - Displays ONLY click corrections + arrows (two decimals) on the card
-  - Auto-increments a 3-digit Index per successful SEC run (001, 002, 003...)
+  - Analyze / SEC (POST /api/sec)
+  - Shows clicks only (two decimals) + arrows + 3-digit index
+  - Download SEC card as PNG image
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
-const UPLOAD_PATH = "/api/upload";
 const SEC_PATH = "/api/sec";
 
 const INDEX_KEY = "SCZN3_SEC_INDEX";
@@ -56,6 +54,66 @@ function elevArrow(clicks) {
   return n > 0 ? "↑" : "↓";
 }
 
+function makeSecPng({ windageClicks, elevationClicks, index }) {
+  // 4x6-ish aspect, but sized for crisp phone viewing
+  const W = 1200;
+  const H = 800;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not supported.");
+
+  // background
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  // border
+  ctx.strokeStyle = "#111111";
+  ctx.lineWidth = 8;
+  ctx.strokeRect(20, 20, W - 40, H - 40);
+
+  // helpers
+  const centerX = W / 2;
+
+  // title
+  ctx.fillStyle = "#111111";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "bold 44px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("SCZN3 Shooter Experience Card (SEC)", centerX, 95);
+
+  // labels
+  ctx.font = "700 34px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("Windage", centerX, 235);
+
+  // windage value
+  ctx.font = "800 92px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  const wArrow = windArrow(windageClicks);
+  const wVal = fmt2(windageClicks);
+  ctx.fillText(`${wArrow} ${wVal}`, centerX, 330);
+
+  // elevation label
+  ctx.font = "700 34px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("Elevation", centerX, 480);
+
+  // elevation value
+  ctx.font = "800 92px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  const eArrow = elevArrow(elevationClicks);
+  const eVal = fmt2(elevationClicks);
+  ctx.fillText(`${eArrow} ${eVal}`, centerX, 575);
+
+  // footer index
+  ctx.font = "italic 34px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.globalAlpha = 0.85;
+  ctx.fillText(`Index: ${index}`, centerX, 710);
+  ctx.globalAlpha = 1;
+
+  return canvas.toDataURL("image/png");
+}
+
 export default function App() {
   const [apiBaseInput] = useState(DEFAULT_API_BASE);
   const apiBase = useMemo(() => sanitizeApiBase(apiBaseInput), [apiBaseInput]);
@@ -81,14 +139,16 @@ export default function App() {
     const current = raw ? Number(raw) : 0;
     const next = (Number.isFinite(current) && current >= 0 ? current : 0) + 1;
     localStorage.setItem(INDEX_KEY, String(next));
-    setSecIndex(pad3(next));
+    const p = pad3(next);
+    setSecIndex(p);
+    return p;
   }
 
-  async function postForm(path) {
+  async function postSec() {
     if (!file) throw new Error("Pick an image first.");
     if (apiBaseError) throw new Error(apiBaseError);
 
-    const url = new URL(path, apiBase).toString();
+    const url = new URL(SEC_PATH, apiBase).toString();
     const form = new FormData();
     form.append("file", file);
 
@@ -110,25 +170,11 @@ export default function App() {
     return data;
   }
 
-  async function onUpload() {
-    try {
-      setBusy(true);
-      setSec(null);
-      setStatus("Uploading...");
-      await postForm(UPLOAD_PATH);
-      setStatus("Upload: Success.");
-    } catch (e) {
-      setStatus(`Upload: Error — ${e.message || String(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function onAnalyzeSEC() {
     try {
       setBusy(true);
       setStatus("Analyzing / SEC...");
-      const data = await postForm(SEC_PATH);
+      const data = await postSec();
 
       const nextSec = data?.sec || null;
       if (!nextSec) throw new Error("No SEC object returned from /api/sec.");
@@ -138,14 +184,30 @@ export default function App() {
         elevation_clicks: Number(nextSec.elevation_clicks ?? 0),
       });
 
-      bumpIndex();
-      setStatus("SEC: Success.");
+      const newIndex = bumpIndex();
+      setStatus(`SEC: Success. Saved Index ${newIndex}.`);
     } catch (e) {
       setSec(null);
       setStatus(`SEC: Error — ${e.message || String(e)}`);
     } finally {
       setBusy(false);
     }
+  }
+
+  function onDownloadPng() {
+    if (!sec) return;
+    const png = makeSecPng({
+      windageClicks: sec.windage_clicks,
+      elevationClicks: sec.elevation_clicks,
+      index: secIndex,
+    });
+
+    const a = document.createElement("a");
+    a.href = png;
+    a.download = `SCZN3_SEC_${secIndex}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   return (
@@ -159,8 +221,8 @@ export default function App() {
           onChange={(e) => setFile(e.target.files?.[0] || null)}
           disabled={busy}
         />
-        <button onClick={onUpload} disabled={busy || !file}>Upload</button>
         <button onClick={onAnalyzeSEC} disabled={busy || !file}>Analyze / SEC</button>
+        <button onClick={onDownloadPng} disabled={!sec}>Download SEC (PNG)</button>
       </div>
 
       <div style={{ marginBottom: 14 }}>
@@ -172,7 +234,6 @@ export default function App() {
         )}
       </div>
 
-      {/* SEC Card — clicks only */}
       {sec && (
         <div style={{ border: "2px solid #111", borderRadius: 12, padding: 18, maxWidth: 520 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, textAlign: "center" }}>
