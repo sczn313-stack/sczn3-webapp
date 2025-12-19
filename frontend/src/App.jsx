@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 
 /*
   SCZN3 Shooter Experience Card (SEC) — Locked customer format
-  - On-screen: Choose File + Analyze + Download (minimal controls)
+  - On-screen: Choose File + Analyze + Download + Share (minimal controls)
   - On-screen preview: shows the generated SEC PNG after Analyze
-  - Downloaded PNG: Title, Windage, Elevation, Index only (no extra text)
+  - Downloaded/Shared PNG: Title, Windage, Elevation, Index only (no extra text)
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
@@ -100,6 +100,23 @@ async function safeJson(res) {
   }
 }
 
+function dataUrlToBlob(dataUrl) {
+  const parts = String(dataUrl).split(",");
+  if (parts.length < 2) throw new Error("Invalid data URL.");
+  const header = parts[0] || "";
+  const base64 = parts[1] || "";
+
+  const mimeMatch = header.match(/data:(.*?);base64/i);
+  const mime = mimeMatch?.[1] || "image/png";
+
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+
+  return new Blob([bytes], { type: mime });
+}
+
 export default function App() {
   const apiBase = useMemo(() => {
     // Vite env var (Render sets this)
@@ -112,8 +129,9 @@ export default function App() {
 
   const [sec, setSec] = useState(null);
   const [secIndex, setSecIndex] = useState("000");
-  const [secPngUrl, setSecPngUrl] = useState(""); // on-screen preview + download source
+  const [secPngUrl, setSecPngUrl] = useState(""); // preview + share/download source
   const [error, setError] = useState("");
+  const [shareNote, setShareNote] = useState("");
 
   useEffect(() => {
     const raw = localStorage.getItem(INDEX_KEY);
@@ -136,7 +154,9 @@ export default function App() {
     if (!file) return;
 
     setError("");
+    setShareNote("");
     setBusy(true);
+
     try {
       const url = new URL(SEC_PATH, apiBase).toString();
       const form = new FormData();
@@ -164,7 +184,7 @@ export default function App() {
 
       setSec(next);
 
-      // Generate the PNG immediately so it can be previewed + downloaded
+      // Generate the PNG immediately so it can be previewed + downloaded + shared
       const png = makeSecPng({
         windageClicks: next.windage_clicks,
         elevationClicks: next.elevation_clicks,
@@ -191,6 +211,42 @@ export default function App() {
     a.remove();
   }
 
+  async function onShare() {
+    if (!sec || !secPngUrl) return;
+
+    setError("");
+    setShareNote("");
+
+    try {
+      const blob = dataUrlToBlob(secPngUrl);
+      const filename = `SCZN3_SEC_${sec.index}.png`;
+      const fileObj = new File([blob], filename, { type: "image/png" });
+
+      // Best path: Web Share w/ files (iOS share sheet)
+      const canShareFiles =
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        (typeof navigator.canShare !== "function" || navigator.canShare({ files: [fileObj] }));
+
+      if (canShareFiles) {
+        await navigator.share({
+          title: "SCZN3 SEC",
+          text: "Shooter Experience Card (SEC)",
+          files: [fileObj],
+        });
+        return;
+      }
+
+      // Fallback: open the image in a new tab so iOS can long-press → Save Image
+      const objUrl = URL.createObjectURL(blob);
+      window.open(objUrl, "_blank", "noopener,noreferrer");
+      setShareNote("Share not supported here — opened the SEC image. Long-press it to Save Image / Share.");
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+    } catch (e) {
+      setError(e?.message || "Share failed.");
+    }
+  }
+
   return (
     <div
       style={{
@@ -215,12 +271,21 @@ export default function App() {
         <button onClick={onDownload} disabled={!sec || !secPngUrl}>
           Download SEC (PNG)
         </button>
+        <button onClick={onShare} disabled={!sec || !secPngUrl}>
+          Share SEC
+        </button>
       </div>
 
       {error ? (
         <div style={{ marginTop: 14, padding: 12, border: "1px solid #d33", borderRadius: 10 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Error</div>
           <div style={{ whiteSpace: "pre-wrap" }}>{error}</div>
+        </div>
+      ) : null}
+
+      {shareNote ? (
+        <div style={{ marginTop: 14, padding: 12, border: "1px solid #111", borderRadius: 10 }}>
+          <div style={{ whiteSpace: "pre-wrap" }}>{shareNote}</div>
         </div>
       ) : null}
 
