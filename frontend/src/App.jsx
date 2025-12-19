@@ -3,11 +3,10 @@ import React, { useEffect, useMemo, useState } from "react";
 /*
   SCZN3 Shooter Experience Card (SEC)
   - Preview + Download + Share
-  - Adds: Convention toggle + Debug (raw backend values vs adjusted display values)
-
-  Convention:
-  - "DIAL_TO_CENTER": directions indicate how to move point of impact to the center.
-  - "DIAL_TO_GROUP": directions indicate "dial toward the group" (common scope-zeroing habit).
+  - Fixes:
+    1) Treat backend values as MOA by default and convert to clicks (MOA * 4 for 1/4 MOA per click)
+    2) Add per-axis flip toggles (hidden in Debug) to stop direction flip-flop
+    3) "Share cancelled" (AbortError) shows as a note, not an error
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
@@ -15,8 +14,11 @@ const SEC_PATH = "/api/sec";
 
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
-// CHANGE THIS if needed after your quick sanity test:
-const DEFAULT_CONVENTION = "DIAL_TO_CENTER"; // or "DIAL_TO_GROUP"
+// Backend unit assumption (most likely correct based on your numbers)
+const DEFAULT_BACKEND_UNIT = "MOA"; // "MOA" or "CLICKS"
+
+// Your default scope adjustment: 1/4 MOA per click
+const MOA_PER_CLICK = 0.25;
 
 function fmt2(n) {
   const num = Number(n);
@@ -129,10 +131,17 @@ export default function App() {
   const [secIndex, setSecIndex] = useState("000");
 
   const [error, setError] = useState("");
-  const [shareNote, setShareNote] = useState("");
+  const [note, setNote] = useState("");
 
-  // NEW
-  const [convention, setConvention] = useState(DEFAULT_CONVENTION);
+  // Controls (keep simple; flips live under Debug)
+  const [convention, setConvention] = useState("DIAL_TO_CENTER"); // or DIAL_TO_GROUP
+  const [backendUnit, setBackendUnit] = useState(DEFAULT_BACKEND_UNIT); // MOA or CLICKS
+
+  // Axis flips (Debug)
+  const [flipWind, setFlipWind] = useState(false);
+  const [flipElev, setFlipElev] = useState(false);
+
+  // Debug capture
   const [rawBackend, setRawBackend] = useState(null);
 
   useEffect(() => {
@@ -155,17 +164,32 @@ export default function App() {
   function applyConvention(val) {
     const n = Number(val);
     if (!Number.isFinite(n)) return 0;
-
-    // If you want "dial toward group", flip direction.
-    // If you want "dial to center", use backend as-is.
     return convention === "DIAL_TO_GROUP" ? -n : n;
+  }
+
+  function unitToClicks(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 0;
+
+    if (backendUnit === "MOA") {
+      // clicks = MOA / 0.25
+      return n / MOA_PER_CLICK;
+    }
+    // already clicks
+    return n;
+  }
+
+  function applyAxisFlip(n, flip) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return 0;
+    return flip ? -v : v;
   }
 
   async function onAnalyze() {
     if (!file) return;
 
     setError("");
-    setShareNote("");
+    setNote("");
     setRawBackend(null);
     setBusy(true);
 
@@ -187,15 +211,23 @@ export default function App() {
 
       const rawWind = Number(nextSec.windage_clicks ?? 0);
       const rawElev = Number(nextSec.elevation_clicks ?? 0);
-      setRawBackend({ rawWind, rawElev });
+
+      setRawBackend({ rawWind, rawElev, backendUnit, convention, flipWind, flipElev });
 
       const newIndex = bumpIndex();
 
-      const next = {
-        windage_clicks: applyConvention(rawWind),
-        elevation_clicks: applyConvention(rawElev),
-        index: newIndex,
-      };
+      // Pipeline:
+      // backend value -> (unit convert) -> (convention) -> (axis flip)
+      let w = unitToClicks(rawWind);
+      let e = unitToClicks(rawElev);
+
+      w = applyConvention(w);
+      e = applyConvention(e);
+
+      w = applyAxisFlip(w, flipWind);
+      e = applyAxisFlip(e, flipElev);
+
+      const next = { windage_clicks: w, elevation_clicks: e, index: newIndex };
 
       setSec(next);
 
@@ -229,7 +261,7 @@ export default function App() {
     if (!sec || !secPngUrl) return;
 
     setError("");
-    setShareNote("");
+    setNote("");
 
     try {
       const blob = dataUrlToBlob(secPngUrl);
@@ -252,9 +284,14 @@ export default function App() {
 
       const objUrl = URL.createObjectURL(blob);
       window.open(objUrl, "_blank", "noopener,noreferrer");
-      setShareNote("Share not supported here — opened the SEC image. Long-press it to Save Image / Share.");
+      setNote("Opened the SEC image. Long-press it to Save Image / Share.");
       setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
     } catch (e) {
+      // iOS Safari: user cancellation often throws AbortError
+      if (e?.name === "AbortError") {
+        setNote("Share cancelled.");
+        return;
+      }
       setError(e?.message || "Share failed.");
     }
   }
@@ -270,13 +307,20 @@ export default function App() {
     >
       <h1 style={{ fontSize: 40, margin: "0 0 16px" }}>SCZN3 Shooter Experience Card (SEC)</h1>
 
-      {/* Convention toggle (dev control) */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 14, opacity: 0.9 }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+        <label style={{ fontSize: 14 }}>
           Convention:&nbsp;
           <select value={convention} onChange={(e) => setConvention(e.target.value)} disabled={busy}>
             <option value="DIAL_TO_CENTER">Dial to center (move impact to center)</option>
             <option value="DIAL_TO_GROUP">Dial to group (dial toward impacts)</option>
+          </select>
+        </label>
+
+        <label style={{ fontSize: 14 }}>
+          Backend units:&nbsp;
+          <select value={backendUnit} onChange={(e) => setBackendUnit(e.target.value)} disabled={busy}>
+            <option value="MOA">MOA (convert to clicks)</option>
+            <option value="CLICKS">Clicks (use as-is)</option>
           </select>
         </label>
       </div>
@@ -306,9 +350,9 @@ export default function App() {
         </div>
       ) : null}
 
-      {shareNote ? (
+      {note ? (
         <div style={{ marginTop: 14, padding: 12, border: "1px solid #111", borderRadius: 10 }}>
-          <div style={{ whiteSpace: "pre-wrap" }}>{shareNote}</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>{note}</div>
         </div>
       ) : null}
 
@@ -329,14 +373,31 @@ export default function App() {
         </div>
       ) : null}
 
-      {/* Debug (collapsed) */}
       <details style={{ marginTop: 16 }}>
         <summary style={{ cursor: "pointer" }}>Debug</summary>
+
+        <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ fontSize: 14 }}>
+            <input type="checkbox" checked={flipWind} onChange={(e) => setFlipWind(e.target.checked)} /> Flip windage
+          </label>
+          <label style={{ fontSize: 14 }}>
+            <input type="checkbox" checked={flipElev} onChange={(e) => setFlipElev(e.target.checked)} /> Flip elevation
+          </label>
+        </div>
+
         <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.4 }}>
           <div><b>API Base:</b> {apiBase}</div>
+          <div><b>Backend units:</b> {backendUnit} (MOA_per_click={MOA_PER_CLICK})</div>
           <div><b>Convention:</b> {convention}</div>
-          <div><b>Raw backend:</b> {rawBackend ? `wind=${rawBackend.rawWind}, elev=${rawBackend.rawElev}` : "—"}</div>
-          <div><b>Displayed:</b> {sec ? `wind=${sec.windage_clicks}, elev=${sec.elevation_clicks}` : "—"}</div>
+          <div><b>Axis flips:</b> wind={String(flipWind)}, elev={String(flipElev)}</div>
+          <div>
+            <b>Raw backend:</b>{" "}
+            {rawBackend ? `wind=${rawBackend.rawWind}, elev=${rawBackend.rawElev}` : "—"}
+          </div>
+          <div>
+            <b>Displayed clicks:</b>{" "}
+            {sec ? `wind=${sec.windage_clicks}, elev=${sec.elevation_clicks}` : "—"}
+          </div>
         </div>
       </details>
     </div>
