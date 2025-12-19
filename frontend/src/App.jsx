@@ -3,10 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 /*
   SCZN3 Shooter Experience Card (SEC)
   - Preview + Download + Share
-  - Fixes:
-    1) Treat backend values as MOA by default and convert to clicks (MOA * 4 for 1/4 MOA per click)
-    2) Add per-axis flip toggles (hidden in Debug) to stop direction flip-flop
-    3) "Share cancelled" (AbortError) shows as a note, not an error
+  - IMPORTANT: Until the backend is proven to output MOA, assume backend returns CLICKS.
+  - Debug contains optional backend-unit override + axis flips.
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
@@ -14,8 +12,8 @@ const SEC_PATH = "/api/sec";
 
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
-// Backend unit assumption (most likely correct based on your numbers)
-const DEFAULT_BACKEND_UNIT = "MOA"; // "MOA" or "CLICKS"
+// Assume backend returns CLICKS (your backend was returning -0.25 / +0.50 which are click-like)
+const DEFAULT_BACKEND_UNIT = "CLICKS"; // "MOA" or "CLICKS"
 
 // Your default scope adjustment: 1/4 MOA per click
 const MOA_PER_CLICK = 0.25;
@@ -133,15 +131,14 @@ export default function App() {
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
 
-  // Controls (keep simple; flips live under Debug)
+  // Convention stays visible (this is a user-facing choice)
   const [convention, setConvention] = useState("DIAL_TO_CENTER"); // or DIAL_TO_GROUP
-  const [backendUnit, setBackendUnit] = useState(DEFAULT_BACKEND_UNIT); // MOA or CLICKS
 
-  // Axis flips (Debug)
+  // Backend unit + axis flips are debug controls
+  const [backendUnit, setBackendUnit] = useState(DEFAULT_BACKEND_UNIT); // MOA or CLICKS
   const [flipWind, setFlipWind] = useState(false);
   const [flipElev, setFlipElev] = useState(false);
 
-  // Debug capture
   const [rawBackend, setRawBackend] = useState(null);
 
   useEffect(() => {
@@ -172,11 +169,9 @@ export default function App() {
     if (!Number.isFinite(n)) return 0;
 
     if (backendUnit === "MOA") {
-      // clicks = MOA / 0.25
-      return n / MOA_PER_CLICK;
+      return n / MOA_PER_CLICK; // clicks = MOA / 0.25
     }
-    // already clicks
-    return n;
+    return n; // already clicks
   }
 
   function applyAxisFlip(n, flip) {
@@ -216,8 +211,7 @@ export default function App() {
 
       const newIndex = bumpIndex();
 
-      // Pipeline:
-      // backend value -> (unit convert) -> (convention) -> (axis flip)
+      // backend value -> unit convert -> convention -> axis flip
       let w = unitToClicks(rawWind);
       let e = unitToClicks(rawElev);
 
@@ -287,7 +281,6 @@ export default function App() {
       setNote("Opened the SEC image. Long-press it to Save Image / Share.");
       setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
     } catch (e) {
-      // iOS Safari: user cancellation often throws AbortError
       if (e?.name === "AbortError") {
         setNote("Share cancelled.");
         return;
@@ -313,14 +306,6 @@ export default function App() {
           <select value={convention} onChange={(e) => setConvention(e.target.value)} disabled={busy}>
             <option value="DIAL_TO_CENTER">Dial to center (move impact to center)</option>
             <option value="DIAL_TO_GROUP">Dial to group (dial toward impacts)</option>
-          </select>
-        </label>
-
-        <label style={{ fontSize: 14 }}>
-          Backend units:&nbsp;
-          <select value={backendUnit} onChange={(e) => setBackendUnit(e.target.value)} disabled={busy}>
-            <option value="MOA">MOA (convert to clicks)</option>
-            <option value="CLICKS">Clicks (use as-is)</option>
           </select>
         </label>
       </div>
@@ -377,6 +362,14 @@ export default function App() {
         <summary style={{ cursor: "pointer" }}>Debug</summary>
 
         <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ fontSize: 14 }}>
+            Backend units:&nbsp;
+            <select value={backendUnit} onChange={(e) => setBackendUnit(e.target.value)} disabled={busy}>
+              <option value="CLICKS">Clicks (use as-is)</option>
+              <option value="MOA">MOA (convert to clicks)</option>
+            </select>
+          </label>
+
           <label style={{ fontSize: 14 }}>
             <input type="checkbox" checked={flipWind} onChange={(e) => setFlipWind(e.target.checked)} /> Flip windage
           </label>
