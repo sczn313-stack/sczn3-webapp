@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 /*
   SCZN3 Shooter Experience Card (SEC) — Locked customer format
   - On-screen: Choose File + Analyze + Download (minimal controls)
+  - On-screen preview: shows the generated SEC PNG after Analyze
   - Downloaded PNG: Title, Windage, Elevation, Index only (no extra text)
 */
 
@@ -90,14 +91,29 @@ function makeSecPng({ windageClicks, elevationClicks, index }) {
   return canvas.toDataURL("image/png");
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
-  const apiBase = useMemo(() => DEFAULT_API_BASE, []);
+  const apiBase = useMemo(() => {
+    // Vite env var (Render sets this)
+    const fromEnv = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL) || "";
+    return String(fromEnv || DEFAULT_API_BASE).replace(/\/+$/, "");
+  }, []);
 
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [sec, setSec] = useState(null);
   const [secIndex, setSecIndex] = useState("000");
+  const [secPngUrl, setSecPngUrl] = useState(""); // on-screen preview + download source
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const raw = localStorage.getItem(INDEX_KEY);
@@ -119,6 +135,7 @@ export default function App() {
   async function onAnalyze() {
     if (!file) return;
 
+    setError("");
     setBusy(true);
     try {
       const url = new URL(SEC_PATH, apiBase).toString();
@@ -126,34 +143,48 @@ export default function App() {
       form.append("file", file);
 
       const res = await fetch(url, { method: "POST", body: form });
-      const data = await res.json();
 
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Backend error (${res.status}): ${body || "Request failed"}`);
+      }
+
+      const data = await safeJson(res);
       const nextSec = data?.sec;
-      if (!nextSec) throw new Error("No SEC returned.");
+
+      if (!nextSec) throw new Error("No SEC returned from backend.");
 
       const newIndex = bumpIndex();
 
-      setSec({
+      const next = {
         windage_clicks: Number(nextSec.windage_clicks ?? 0),
         elevation_clicks: Number(nextSec.elevation_clicks ?? 0),
         index: newIndex,
+      };
+
+      setSec(next);
+
+      // Generate the PNG immediately so it can be previewed + downloaded
+      const png = makeSecPng({
+        windageClicks: next.windage_clicks,
+        elevationClicks: next.elevation_clicks,
+        index: next.index,
       });
+      setSecPngUrl(png);
+    } catch (e) {
+      setSec(null);
+      setSecPngUrl("");
+      setError(e?.message || "Analyze failed.");
     } finally {
       setBusy(false);
     }
   }
 
   function onDownload() {
-    if (!sec) return;
-
-    const png = makeSecPng({
-      windageClicks: sec.windage_clicks,
-      elevationClicks: sec.elevation_clicks,
-      index: sec.index,
-    });
+    if (!sec || !secPngUrl) return;
 
     const a = document.createElement("a");
-    a.href = png;
+    a.href = secPngUrl;
     a.download = `SCZN3_SEC_${sec.index}.png`;
     document.body.appendChild(a);
     a.click();
@@ -161,7 +192,14 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "40px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+    <div
+      style={{
+        maxWidth: 900,
+        margin: "40px auto",
+        padding: "0 16px",
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+      }}
+    >
       <h1 style={{ fontSize: 40, margin: "0 0 16px" }}>SCZN3 Shooter Experience Card (SEC)</h1>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -174,10 +212,34 @@ export default function App() {
         <button onClick={onAnalyze} disabled={busy || !file}>
           {busy ? "Analyzing…" : "Analyze / SEC"}
         </button>
-        <button onClick={onDownload} disabled={!sec}>
+        <button onClick={onDownload} disabled={!sec || !secPngUrl}>
           Download SEC (PNG)
         </button>
       </div>
+
+      {error ? (
+        <div style={{ marginTop: 14, padding: 12, border: "1px solid #d33", borderRadius: 10 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Error</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>{error}</div>
+        </div>
+      ) : null}
+
+      {secPngUrl ? (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>Preview</div>
+          <img
+            src={secPngUrl}
+            alt="SEC Preview"
+            style={{
+              width: "100%",
+              height: "auto",
+              display: "block",
+              border: "1px solid #111",
+              borderRadius: 12,
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
