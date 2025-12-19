@@ -1,16 +1,22 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 /*
-  SCZN3 Shooter Experience Card (SEC) — Locked customer format
-  - On-screen: Choose File + Analyze + Download + Share (minimal controls)
-  - On-screen preview: shows the generated SEC PNG after Analyze
-  - Downloaded/Shared PNG: Title, Windage, Elevation, Index only (no extra text)
+  SCZN3 Shooter Experience Card (SEC)
+  - Preview + Download + Share
+  - Adds: Convention toggle + Debug (raw backend values vs adjusted display values)
+
+  Convention:
+  - "DIAL_TO_CENTER": directions indicate how to move point of impact to the center.
+  - "DIAL_TO_GROUP": directions indicate "dial toward the group" (common scope-zeroing habit).
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
 const SEC_PATH = "/api/sec";
 
 const INDEX_KEY = "SCZN3_SEC_INDEX";
+
+// CHANGE THIS if needed after your quick sanity test:
+const DEFAULT_CONVENTION = "DIAL_TO_CENTER"; // or "DIAL_TO_GROUP"
 
 function fmt2(n) {
   const num = Number(n);
@@ -47,11 +53,9 @@ function makeSecPng({ windageClicks, elevationClicks, index }) {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not supported.");
 
-  // White background
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
-  // Clean border
   ctx.strokeStyle = "#111111";
   ctx.lineWidth = 8;
   ctx.strokeRect(20, 20, W - 40, H - 40);
@@ -62,27 +66,21 @@ function makeSecPng({ windageClicks, elevationClicks, index }) {
 
   const cx = W / 2;
 
-  // Title
   ctx.font = "bold 52px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.fillText("SCZN3 Shooter Experience Card (SEC)", cx, 110);
 
-  // Windage label
   ctx.font = "700 40px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.fillText("Windage", cx, 250);
 
-  // Windage value
   ctx.font = "800 110px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.fillText(`${windArrow(windageClicks)} ${fmt2(windageClicks)}`, cx, 360);
 
-  // Elevation label
   ctx.font = "700 40px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.fillText("Elevation", cx, 505);
 
-  // Elevation value
   ctx.font = "800 110px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.fillText(`${elevArrow(elevationClicks)} ${fmt2(elevationClicks)}`, cx, 615);
 
-  // Index footer (italic)
   ctx.font = "italic 40px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.globalAlpha = 0.9;
   ctx.fillText(`Index: ${index}`, cx, 725);
@@ -119,7 +117,6 @@ function dataUrlToBlob(dataUrl) {
 
 export default function App() {
   const apiBase = useMemo(() => {
-    // Vite env var (Render sets this)
     const fromEnv = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL) || "";
     return String(fromEnv || DEFAULT_API_BASE).replace(/\/+$/, "");
   }, []);
@@ -128,10 +125,15 @@ export default function App() {
   const [busy, setBusy] = useState(false);
 
   const [sec, setSec] = useState(null);
+  const [secPngUrl, setSecPngUrl] = useState("");
   const [secIndex, setSecIndex] = useState("000");
-  const [secPngUrl, setSecPngUrl] = useState(""); // preview + share/download source
+
   const [error, setError] = useState("");
   const [shareNote, setShareNote] = useState("");
+
+  // NEW
+  const [convention, setConvention] = useState(DEFAULT_CONVENTION);
+  const [rawBackend, setRawBackend] = useState(null);
 
   useEffect(() => {
     const raw = localStorage.getItem(INDEX_KEY);
@@ -150,11 +152,21 @@ export default function App() {
     return p;
   }
 
+  function applyConvention(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 0;
+
+    // If you want "dial toward group", flip direction.
+    // If you want "dial to center", use backend as-is.
+    return convention === "DIAL_TO_GROUP" ? -n : n;
+  }
+
   async function onAnalyze() {
     if (!file) return;
 
     setError("");
     setShareNote("");
+    setRawBackend(null);
     setBusy(true);
 
     try {
@@ -171,20 +183,22 @@ export default function App() {
 
       const data = await safeJson(res);
       const nextSec = data?.sec;
-
       if (!nextSec) throw new Error("No SEC returned from backend.");
+
+      const rawWind = Number(nextSec.windage_clicks ?? 0);
+      const rawElev = Number(nextSec.elevation_clicks ?? 0);
+      setRawBackend({ rawWind, rawElev });
 
       const newIndex = bumpIndex();
 
       const next = {
-        windage_clicks: Number(nextSec.windage_clicks ?? 0),
-        elevation_clicks: Number(nextSec.elevation_clicks ?? 0),
+        windage_clicks: applyConvention(rawWind),
+        elevation_clicks: applyConvention(rawElev),
         index: newIndex,
       };
 
       setSec(next);
 
-      // Generate the PNG immediately so it can be previewed + downloaded + shared
       const png = makeSecPng({
         windageClicks: next.windage_clicks,
         elevationClicks: next.elevation_clicks,
@@ -222,7 +236,6 @@ export default function App() {
       const filename = `SCZN3_SEC_${sec.index}.png`;
       const fileObj = new File([blob], filename, { type: "image/png" });
 
-      // Best path: Web Share w/ files (iOS share sheet)
       const canShareFiles =
         typeof navigator !== "undefined" &&
         typeof navigator.share === "function" &&
@@ -237,7 +250,6 @@ export default function App() {
         return;
       }
 
-      // Fallback: open the image in a new tab so iOS can long-press → Save Image
       const objUrl = URL.createObjectURL(blob);
       window.open(objUrl, "_blank", "noopener,noreferrer");
       setShareNote("Share not supported here — opened the SEC image. Long-press it to Save Image / Share.");
@@ -257,6 +269,17 @@ export default function App() {
       }}
     >
       <h1 style={{ fontSize: 40, margin: "0 0 16px" }}>SCZN3 Shooter Experience Card (SEC)</h1>
+
+      {/* Convention toggle (dev control) */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 14, opacity: 0.9 }}>
+          Convention:&nbsp;
+          <select value={convention} onChange={(e) => setConvention(e.target.value)} disabled={busy}>
+            <option value="DIAL_TO_CENTER">Dial to center (move impact to center)</option>
+            <option value="DIAL_TO_GROUP">Dial to group (dial toward impacts)</option>
+          </select>
+        </label>
+      </div>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <input
@@ -305,6 +328,17 @@ export default function App() {
           />
         </div>
       ) : null}
+
+      {/* Debug (collapsed) */}
+      <details style={{ marginTop: 16 }}>
+        <summary style={{ cursor: "pointer" }}>Debug</summary>
+        <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.4 }}>
+          <div><b>API Base:</b> {apiBase}</div>
+          <div><b>Convention:</b> {convention}</div>
+          <div><b>Raw backend:</b> {rawBackend ? `wind=${rawBackend.rawWind}, elev=${rawBackend.rawElev}` : "—"}</div>
+          <div><b>Displayed:</b> {sec ? `wind=${sec.windage_clicks}, elev=${sec.elevation_clicks}` : "—"}</div>
+        </div>
+      </details>
     </div>
   );
 }
