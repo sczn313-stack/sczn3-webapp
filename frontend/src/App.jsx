@@ -2,42 +2,29 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * SCZN3 Shooter Experience Card (SEC) UI
- * - Upload target photo -> POST /api/sec (multipart/form-data key: "file")
+ * - Take Photo OR Upload Photo (two buttons so iOS can’t force camera-only)
+ * - POST image to /api/sec (multipart/form-data key MUST be: "file")
  * - Shows target preview
- * - Renders SEC card (clicks only, two decimals, arrows)
+ * - Renders SEC card (clicks only, two decimals)
  * - Download PNG + Share (if supported)
  *
- * Notes:
- * - We intentionally DO NOT set `capture` on the file input so iOS shows options (Camera or Photo Library).
- * - Arrow mapping is "normal":
- *      windageClicks > 0 => RIGHT arrow
- *      elevationClicks > 0 => UP arrow
- *   (If your backend uses opposite sign, flip it in the Debug toggles.)
+ * IMPORTANT:
+ * - We FAIL CLOSED if backend does NOT return click values.
+ * - We DO NOT default missing clicks to 0.00.
  */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
 const SEC_PATH = "/api/sec";
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
+// Hard-wired message for blank / not-enough-holes cases
 const NO_SHOTS_MSG =
-  "No / not enough bullet holes detected. Shoot 3–7 rounds, then Take or Upload Target Photo.";
+  "No / not enough bullet holes detected.\nShoot 3–7 rounds, then take or upload a target photo.";
 
-function pad3(n) {
-  const s = String(n);
-  if (s.length >= 3) return s;
-  return "0".repeat(3 - s.length) + s;
-}
-
-function nextIndex() {
-  const cur = Number(localStorage.getItem(INDEX_KEY) || "0");
-  const nxt = Number.isFinite(cur) ? cur + 1 : 1;
-  localStorage.setItem(INDEX_KEY, String(nxt));
-  return pad3(nxt);
-}
-
-function isNum(x) {
-  return Number.isFinite(Number(x));
-}
+// If your arrow directions are reversed, set these to true.
+// (You said BOTH windage + elevation were wrong.)
+const FLIP_WINDAGE = true;
+const FLIP_ELEVATION = true;
 
 function toFixed2(n) {
   const x = Number(n);
@@ -45,9 +32,12 @@ function toFixed2(n) {
   return x.toFixed(2);
 }
 
-// Safely read nested paths like "result.windage_clicks"
+function isNum(x) {
+  return Number.isFinite(Number(x));
+}
+
+// Safely read nested paths like "clicks.windage" or "result.windage_clicks"
 function getPath(obj, path) {
-  if (!obj || typeof obj !== "object") return undefined;
   const parts = path.split(".");
   let cur = obj;
   for (const p of parts) {
@@ -57,105 +47,142 @@ function getPath(obj, path) {
   return cur;
 }
 
-// Try many shapes the backend might return.
-function pickFirstNumber(obj, paths) {
+// Extract click values ONLY from click-looking keys (no generic "windage"/"elevation").
+function pickClickNumber(obj, paths) {
   for (const p of paths) {
-    const v = getPath(obj, p);
-    if (isNum(v)) return Number(v);
-    // Sometimes values are strings like "+4.25"
-    if (typeof v === "string") {
-      const m = v.match(/-?\d+(\.\d+)?/);
+    const cur = getPath(obj, p);
+    if (isNum(cur)) return Number(cur);
+
+    // Also handle strings like "R 2.50" or "2.50 clicks"
+    if (typeof cur === "string") {
+      const m = cur.match(/-?\d+(\.\d+)?/);
       if (m && isNum(m[0])) return Number(m[0]);
     }
   }
   return null;
 }
 
-function buildSecSvg({ windageArrow, windageAbs, elevationArrow, elevationAbs, index }) {
-  // Portrait 4x6 ratio (2:3). Use high-res for crisp PNG.
+function nextIndex() {
+  const cur = Number(localStorage.getItem(INDEX_KEY) || "0");
+  const nxt = Number.isFinite(cur) ? cur + 1 : 1;
+  localStorage.setItem(INDEX_KEY, String(nxt));
+  return String(nxt).padStart(3, "0");
+}
+
+function arrowForWindage(clicks) {
+  if (!isNum(clicks) || Number(clicks) === 0) return "→";
+  const right = Number(clicks) > 0;
+  const effectiveRight = FLIP_WINDAGE ? !right : right;
+  return effectiveRight ? "→" : "←";
+}
+
+function arrowForElevation(clicks) {
+  if (!isNum(clicks) || Number(clicks) === 0) return "↑";
+  const up = Number(clicks) > 0;
+  const effectiveUp = FLIP_ELEVATION ? !up : up;
+  return effectiveUp ? "↑" : "↓";
+}
+
+function abs2(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "";
+  return Math.abs(x).toFixed(2);
+}
+
+// Build the SEC SVG (4x6 portrait ratio)
+function buildSecSvg({ windageClicks, elevationClicks, index }) {
   const W = 1200;
   const H = 1800;
 
-  // Layout anchors
-  const titleY = 210;
-  const label1Y = 650;
-  const value1Y = 820;
-  const label2Y = 1120;
-  const value2Y = 1290;
-  const indexY = 1600;
+  const wArrow = arrowForWindage(windageClicks);
+  const eArrow = arrowForElevation(elevationClicks);
 
+  const wVal = abs2(windageClicks);
+  const eVal = abs2(elevationClicks);
+
+  // Clean, customer-facing: clicks only, two decimals
   return `
-  <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-    <rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff" />
-    <!-- Outer + inner border -->
-    <rect x="45" y="45" width="${W - 90}" height="${H - 90}" fill="none" stroke="#000" stroke-width="10" />
-    <rect x="80" y="80" width="${W - 160}" height="${H - 160}" fill="none" stroke="#000" stroke-width="6" />
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <rect x="40" y="40" width="${W - 80}" height="${H - 80}" fill="#fff" stroke="#000" stroke-width="8"/>
+  <rect x="70" y="70" width="${W - 140}" height="${H - 140}" fill="none" stroke="#000" stroke-width="4"/>
 
-    <text x="${W / 2}" y="${titleY}" text-anchor="middle"
-      font-family="Arial, Helvetica, sans-serif" font-size="74" font-weight="800">
-      SCZN3 Shooter Experience Card (SEC)
-    </text>
+  <text x="${W / 2}" y="190" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" text-anchor="middle">
+    SCZN3 Shooter Experience Card (SEC)
+  </text>
 
-    <text x="${W / 2}" y="${label1Y}" text-anchor="middle"
-      font-family="Arial, Helvetica, sans-serif" font-size="68" font-weight="700">
-      Windage
-    </text>
+  <text x="${W / 2}" y="620" font-family="Arial, Helvetica, sans-serif" font-size="68" font-weight="700" text-anchor="middle">
+    Windage
+  </text>
+  <text x="${W / 2 - 220}" y="780" font-family="Arial, Helvetica, sans-serif" font-size="120" font-weight="700" text-anchor="middle">
+    ${wArrow}
+  </text>
+  <text x="${W / 2 + 120}" y="810" font-family="Arial, Helvetica, sans-serif" font-size="140" font-weight="700" text-anchor="middle">
+    ${wVal}
+  </text>
 
-    <text x="${W / 2}" y="${value1Y}" text-anchor="middle"
-      font-family="Arial, Helvetica, sans-serif" font-size="160" font-weight="900">
-      ${windageArrow} ${windageAbs}
-    </text>
+  <text x="${W / 2}" y="1140" font-family="Arial, Helvetica, sans-serif" font-size="68" font-weight="700" text-anchor="middle">
+    Elevation
+  </text>
+  <text x="${W / 2 - 220}" y="1300" font-family="Arial, Helvetica, sans-serif" font-size="120" font-weight="700" text-anchor="middle">
+    ${eArrow}
+  </text>
+  <text x="${W / 2 + 120}" y="1330" font-family="Arial, Helvetica, sans-serif" font-size="140" font-weight="700" text-anchor="middle">
+    ${eVal}
+  </text>
 
-    <text x="${W / 2}" y="${label2Y}" text-anchor="middle"
-      font-family="Arial, Helvetica, sans-serif" font-size="68" font-weight="700">
-      Elevation
-    </text>
-
-    <text x="${W / 2}" y="${value2Y}" text-anchor="middle"
-      font-family="Arial, Helvetica, sans-serif" font-size="160" font-weight="900">
-      ${elevationArrow} ${elevationAbs}
-    </text>
-
-    <text x="${W / 2}" y="${indexY}" text-anchor="middle"
-      font-family="Arial, Helvetica, sans-serif" font-size="60" font-style="italic" fill="#111">
-      Index: ${index}
-    </text>
-  </svg>`;
+  <text x="${W / 2}" y="${H - 120}" font-family="Arial, Helvetica, sans-serif" font-size="54" font-style="italic" text-anchor="middle">
+    Index ${index}
+  </text>
+</svg>
+`.trim();
 }
 
-async function svgToPngDataUrl(svgText) {
-  const svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
-  const svgUrl = URL.createObjectURL(svgBlob);
+async function svgToPngDataUrl(svgString, scale = 2) {
+  const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
 
   try {
     const img = new Image();
     img.decoding = "async";
-    img.src = svgUrl;
 
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = (e) => reject(e);
     });
 
+    img.src = url;
+    await loaded;
+
+    const W = img.width || 1200;
+    const H = img.height || 1800;
+
     const canvas = document.createElement("canvas");
-    canvas.width = img.width;
-    canvas.height = img.height;
+    canvas.width = Math.round(W * scale);
+    canvas.height = Math.round(H * scale);
 
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw scaled (prevents weird clipping on some Safari builds)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     return canvas.toDataURL("image/png");
   } finally {
-    URL.revokeObjectURL(svgUrl);
+    URL.revokeObjectURL(url);
   }
 }
 
 export default function App() {
-  const fileInputRef = useRef(null);
+  const apiBase = useMemo(() => {
+    return (import.meta.env.VITE_API_BASE || DEFAULT_API_BASE).trim();
+  }, []);
 
-  const [apiBase] = useState(DEFAULT_API_BASE);
+  const takeRef = useRef(null);
+  const uploadRef = useRef(null);
+
   const [file, setFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [targetUrl, setTargetUrl] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -163,380 +190,376 @@ export default function App() {
 
   const [rawBackend, setRawBackend] = useState(null);
 
-  // Direction controls (in case backend sign convention differs)
-  const [flipWindage, setFlipWindage] = useState(false);
-  const [flipElevation, setFlipElevation] = useState(false);
-
-  const [sec, setSec] = useState(null); // { windageClicks, elevationClicks, index }
-  const [secSvg, setSecSvg] = useState("");
+  const [sec, setSec] = useState(null);
   const [secPngUrl, setSecPngUrl] = useState("");
 
-  // Convention selector (UI only for now, keeps your current label)
-  const [convention] = useState("Dial to center (move impact to center)");
-
   useEffect(() => {
-    // Cleanup object URL when file changes
-    return () => {
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!file) {
+      setTargetUrl("");
+      return;
+    }
+    const u = URL.createObjectURL(file);
+    setTargetUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
 
-  function onPickFileClick() {
-    if (fileInputRef.current) fileInputRef.current.click();
-  }
-
-  function onFileChange(e) {
-    const f = e.target.files && e.target.files[0];
+  function onPickFile(f) {
+    if (!f) return;
+    setFile(f);
+    setFileName(f.name || "target.jpg");
     setError("");
     setNote("");
     setRawBackend(null);
     setSec(null);
-    setSecSvg("");
     setSecPngUrl("");
-
-    if (!f) {
-      setFile(null);
-      setFileUrl("");
-      return;
-    }
-
-    setFile(f);
-    const url = URL.createObjectURL(f);
-    setFileUrl(url);
-  }
-
-  function arrowForWindage(clicks) {
-    // normal: + => right, - => left
-    const c = flipWindage ? -clicks : clicks;
-    if (c === 0) return "→";
-    return c > 0 ? "→" : "←";
-  }
-
-  function arrowForElevation(clicks) {
-    // normal: + => up, - => down
-    const c = flipElevation ? -clicks : clicks;
-    if (c === 0) return "↑";
-    return c > 0 ? "↑" : "↓";
   }
 
   async function onAnalyze() {
-    if (!file) return;
+    if (!file || busy) return;
 
     setBusy(true);
     setError("");
     setNote("");
     setRawBackend(null);
     setSec(null);
-    setSecSvg("");
     setSecPngUrl("");
 
     try {
+      const form = new FormData();
+      form.append("file", file);
+
       const url = new URL(SEC_PATH, apiBase).toString();
-      const fd = new FormData();
-      fd.append("file", file);
+      const res = await fetch(url, { method: "POST", body: form });
 
-      const res = await fetch(url, { method: "POST", body: fd });
-
-      // If your backend uses 422 for "no holes", handle cleanly
+      // 422 = expected “no holes” fail-closed behavior
       if (res.status === 422) {
-        setError(NO_SHOTS_MSG);
+        setNote(NO_SHOTS_MSG);
         return;
       }
-
-      let data = null;
-      const text = await res.text();
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = { raw: text };
-      }
-
-      setRawBackend(data);
 
       if (!res.ok) {
-        setError(`Backend error (${res.status}).`);
-        return;
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Backend error (${res.status}). ${txt}`.trim());
       }
 
-      // Try to find click values in many possible keys
-      const w = pickFirstNumber(data, [
+      const data = await res.json();
+      setRawBackend(data);
+
+      // Click extraction: ONLY click-ish keys (do not accept generic windage/elevation).
+      const windageClicks = pickClickNumber(data, [
         "windageClicks",
         "windage_clicks",
-        "windage",
         "clicks.windage",
         "clicks.windageClicks",
-        "result.windageClicks",
         "result.windage_clicks",
-        "result.windage",
-        "data.windageClicks",
-        "data.windage_clicks",
-        "data.windage",
+        "result.windageClicks",
+        "result.clicks.windage",
+        "result.clicks.windageClicks",
       ]);
 
-      const el = pickFirstNumber(data, [
+      const elevationClicks = pickClickNumber(data, [
         "elevationClicks",
         "elevation_clicks",
-        "elevation",
         "clicks.elevation",
         "clicks.elevationClicks",
-        "result.elevationClicks",
         "result.elevation_clicks",
-        "result.elevation",
-        "data.elevationClicks",
-        "data.elevation_clicks",
-        "data.elevation",
+        "result.elevationClicks",
+        "result.clicks.elevation",
+        "result.clicks.elevationClicks",
       ]);
 
-      if (!isNum(w) || !isNum(el)) {
-        setError("Backend response missing windage/elevation click values.");
-        return;
+      // FAIL CLOSED: if missing, show the same clear error
+      if (!isNum(windageClicks) || !isNum(elevationClicks)) {
+        throw new Error("Backend response missing windage/elevation click values.");
       }
 
       const index = nextIndex();
 
-      const windageArrow = arrowForWindage(Number(w));
-      const elevationArrow = arrowForElevation(Number(el));
+      const secObj = { windageClicks, elevationClicks, index };
+      setSec(secObj);
 
-      const windageAbs = toFixed2(Math.abs(Number(flipWindage ? -w : w)));
-      const elevationAbs = toFixed2(Math.abs(Number(flipElevation ? -el : el)));
-
-      const svg = buildSecSvg({
-        windageArrow,
-        windageAbs,
-        elevationArrow,
-        elevationAbs,
-        index,
-      });
-
-      setSec({ windageClicks: Number(w), elevationClicks: Number(el), index });
-      setSecSvg(svg);
-
-      const png = await svgToPngDataUrl(svg);
+      const svg = buildSecSvg(secObj);
+      const png = await svgToPngDataUrl(svg, 2);
       setSecPngUrl(png);
-    } catch (err) {
-      setError("Network or parsing error.");
+    } catch (e) {
+      setError(e?.message || "Unknown error.");
     } finally {
       setBusy(false);
     }
   }
 
-  function onDownload() {
-    if (!secPngUrl || !sec) return;
+  function downloadPng() {
+    if (!secPngUrl) return;
     const a = document.createElement("a");
     a.href = secPngUrl;
-    a.download = `SCZN3_SEC_${sec.index}.png`;
+    a.download = `SCZN3_SEC_${sec?.index || "000"}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
   }
 
-  async function onShare() {
-    if (!secPngUrl || !sec) return;
-    if (!navigator.share) {
-      setNote("Sharing not supported on this device/browser.");
-      return;
-    }
-
+  async function sharePng() {
+    if (!secPngUrl) return;
     try {
-      const blob = await (await fetch(secPngUrl)).blob();
-      const file = new File([blob], `SCZN3_SEC_${sec.index}.png`, { type: "image/png" });
-
-      // Some browsers require `files` support check
-      if (navigator.canShare && !navigator.canShare({ files: [file] })) {
-        setNote("Sharing not supported for files on this device/browser.");
-        return;
-      }
-
-      await navigator.share({
-        title: "SCZN3 SEC",
-        text: "SCZN3 Shooter Experience Card (SEC)",
-        files: [file],
+      const resp = await fetch(secPngUrl);
+      const blob = await resp.blob();
+      const file = new File([blob], `SCZN3_SEC_${sec?.index || "000"}.png`, {
+        type: "image/png",
       });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: "SCZN3 Shooter Experience Card (SEC)",
+          files: [file],
+        });
+      } else {
+        setNote("Sharing not supported on this device/browser. Use Download SEC (PNG).");
+      }
     } catch {
-      // user cancelled share or share error
+      setNote("Share failed. Use Download SEC (PNG).");
     }
   }
 
-  const canDownload = Boolean(secPngUrl);
-  const canShare = Boolean(secPngUrl) && typeof navigator !== "undefined" && !!navigator.share;
+  const uiMax = 900;
 
   return (
-    <div style={{ padding: 18, fontFamily: "Arial, Helvetica, sans-serif" }}>
-      <h1 style={{ margin: "8px 0 16px", fontSize: 44, fontWeight: 900 }}>
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 18 }}>
+      <h1 style={{ margin: "6px 0 14px", fontSize: 44, fontWeight: 800 }}>
         SCZN3 Shooter Experience Card (SEC)
       </h1>
 
-      <div style={{ marginBottom: 10 }}>
-        <span style={{ fontWeight: 700, marginRight: 8 }}>Convention:</span>
-        <select value={convention} disabled style={{ padding: "6px 10px", borderRadius: 8 }}>
-          <option>{convention}</option>
+      <div style={{ maxWidth: uiMax }}>
+        <div style={{ marginBottom: 10, fontWeight: 700 }}>Convention:</div>
+        <select
+          value="dial_to_center"
+          onChange={() => {}}
+          style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc", width: "fit-content" }}
+        >
+          <option value="dial_to_center">Dial to center (move impact to center)</option>
         </select>
-      </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={onFileChange}
-          style={{ display: "none" }}
-        />
-
-        <button
-          type="button"
-          onClick={onPickFileClick}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "1px solid #bbb",
-            background: "#fff",
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Take or Upload Target Photo
-        </button>
-
-        <button
-          type="button"
-          onClick={onAnalyze}
-          disabled={!file || busy}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "1px solid #bbb",
-            background: !file || busy ? "#eee" : "#fff",
-            fontWeight: 800,
-            cursor: !file || busy ? "not-allowed" : "pointer",
-          }}
-        >
-          {busy ? "Analyzing..." : "Analyze / SEC"}
-        </button>
-
-        <button
-          type="button"
-          onClick={onDownload}
-          disabled={!canDownload}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "1px solid #bbb",
-            background: canDownload ? "#fff" : "#eee",
-            fontWeight: 800,
-            cursor: canDownload ? "pointer" : "not-allowed",
-          }}
-        >
-          Download SEC (PNG)
-        </button>
-
-        <button
-          type="button"
-          onClick={onShare}
-          disabled={!canShare}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "1px solid #bbb",
-            background: canShare ? "#fff" : "#eee",
-            fontWeight: 800,
-            cursor: canShare ? "pointer" : "not-allowed",
-          }}
-        >
-          Share SEC
-        </button>
-
-        <div style={{ fontWeight: 700, opacity: 0.8 }}>
-          {file ? file.name : ""}
-        </div>
-      </div>
-
-      {error ? (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 14,
-            borderRadius: 10,
-            border: "2px solid #b11",
-            background: "#fff7f7",
-            color: "#111",
-            fontWeight: 700,
-          }}
-        >
-          <div style={{ fontSize: 20, marginBottom: 6 }}>Error</div>
-          <div style={{ fontWeight: 700 }}>{error}</div>
-        </div>
-      ) : null}
-
-      {note ? (
-        <div style={{ marginTop: 12, padding: 10, borderRadius: 10, border: "1px solid #ccc" }}>
-          {note}
-        </div>
-      ) : null}
-
-      {fileUrl ? (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>Target Preview</div>
-          <img
-            src={fileUrl}
-            alt="Target preview"
-            style={{ maxWidth: 520, width: "100%", borderRadius: 10, border: "1px solid #ddd" }}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+          {/* Hidden inputs */}
+          <input
+            ref={takeRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) => onPickFile(e.target.files?.[0])}
           />
-        </div>
-      ) : null}
-
-      {secPngUrl ? (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>SEC Preview</div>
-          <img
-            src={secPngUrl}
-            alt="SEC preview"
-            style={{ maxWidth: 520, width: "100%", borderRadius: 10, border: "1px solid #ddd" }}
+          <input
+            ref={uploadRef}
+            type="file"
+            accept="image/*"
+            // NOTE: no capture here so iOS offers Photo Library / Files
+            style={{ display: "none" }}
+            onChange={(e) => onPickFile(e.target.files?.[0])}
           />
-        </div>
-      ) : null}
 
-      <details style={{ marginTop: 16 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 900 }}>Debug</summary>
-
-        <div style={{ marginTop: 10, display: "flex", gap: 18, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={flipWindage}
-              onChange={(e) => setFlipWindage(e.target.checked)}
-            />
-            Flip Windage Direction
-          </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={flipElevation}
-              onChange={(e) => setFlipElevation(e.target.checked)}
-            />
-            Flip Elevation Direction
-          </label>
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Backend Raw</div>
-          <pre
+          <button
+            type="button"
+            onClick={() => takeRef.current?.click()}
             style={{
-              padding: 12,
+              padding: "12px 18px",
               borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#fafafa",
-              maxWidth: 900,
-              overflowX: "auto",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+              border: "1px solid #ccc",
+              fontWeight: 700,
+              background: "#f7f7f7",
             }}
           >
-            {rawBackend ? JSON.stringify(rawBackend, null, 2) : "(none)"}
-          </pre>
+            Take Target Photo
+          </button>
+
+          <button
+            type="button"
+            onClick={() => uploadRef.current?.click()}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontWeight: 700,
+              background: "#f7f7f7",
+            }}
+          >
+            Upload Target Photo
+          </button>
+
+          <button
+            type="button"
+            onClick={onAnalyze}
+            disabled={!file || busy}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontWeight: 800,
+              background: busy ? "#eee" : "#e9f2ff",
+              cursor: !file || busy ? "not-allowed" : "pointer",
+            }}
+          >
+            {busy ? "Analyzing..." : "Analyze / SEC"}
+          </button>
+
+          <button
+            type="button"
+            onClick={downloadPng}
+            disabled={!secPngUrl}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontWeight: 700,
+              background: secPngUrl ? "#f7f7f7" : "#eee",
+              cursor: secPngUrl ? "pointer" : "not-allowed",
+            }}
+          >
+            Download SEC (PNG)
+          </button>
+
+          <button
+            type="button"
+            onClick={sharePng}
+            disabled={!secPngUrl}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontWeight: 700,
+              background: secPngUrl ? "#f7f7f7" : "#eee",
+              cursor: secPngUrl ? "pointer" : "not-allowed",
+            }}
+          >
+            Share SEC
+          </button>
+
+          <div style={{ alignSelf: "center", opacity: 0.75, fontWeight: 700 }}>
+            {fileName}
+          </div>
         </div>
-      </details>
+
+        {error ? (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 14,
+              border: "2px solid #b00020",
+              borderRadius: 12,
+              background: "#fff5f5",
+              color: "#111",
+              fontWeight: 800,
+            }}
+          >
+            <div style={{ marginBottom: 6 }}>Error</div>
+            <div style={{ fontWeight: 700 }}>{error}</div>
+          </div>
+        ) : null}
+
+        {note ? (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 14,
+              border: "1px solid #ccc",
+              borderRadius: 12,
+              background: "#fafafa",
+              whiteSpace: "pre-wrap",
+              fontWeight: 800,
+            }}
+          >
+            {note}
+          </div>
+        ) : null}
+
+        {targetUrl ? (
+          <div style={{ marginTop: 18 }}>
+            <h2 style={{ margin: "0 0 10px", fontSize: 26 }}>Target Preview</h2>
+            <img
+              src={targetUrl}
+              alt="Target preview"
+              style={{
+                width: "100%",
+                maxWidth: 520,
+                height: "auto",
+                display: "block",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                objectFit: "contain",
+                objectPosition: "center",
+              }}
+            />
+          </div>
+        ) : null}
+
+        {secPngUrl ? (
+          <div style={{ marginTop: 18 }}>
+            <h2 style={{ margin: "0 0 10px", fontSize: 26 }}>SEC Preview</h2>
+
+            {/* Wrap in a container that prevents weird cropping */}
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 520,
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fff",
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src={secPngUrl}
+                alt="SEC preview"
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                  objectFit: "contain",
+                  objectPosition: "center",
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={() => {
+              // simple toggle: show/hide by setting rawBackend null if already set
+              // (keeps UI simple)
+              setRawBackend((v) => (v ? null : v));
+              if (!rawBackend) setNote("");
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontWeight: 800,
+              background: "#f7f7f7",
+            }}
+          >
+            Debug
+          </button>
+
+          {rawBackend ? (
+            <pre
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fafafa",
+                maxWidth: uiMax,
+                overflowX: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {JSON.stringify(rawBackend, null, 2)}
+            </pre>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
