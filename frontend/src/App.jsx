@@ -4,10 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
   SCZN3 Shooter Experience Card (SEC) — Frontend (App.jsx)
 
   Fixes included:
-  - File chooser does NOT force camera (no capture attribute) so iOS shows choices.
-  - Button/label text changed to "Take or Upload Target Photo".
-  - Hard-wired "No / not enough bullet holes" message on 422 from backend.
-  - Windage + Elevation arrow directions inverted (per your current convention needs).
+  - iOS file picker shows choices (no capture attribute).
+  - Button/label text: "Take or Upload Target Photo"
+  - Fail-closed message on 422 (no holes)
+  - Very robust click-extraction from backend JSON (handles many payload shapes)
+  - Arrow directions inverted (per your current direction issue)
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
@@ -15,30 +16,23 @@ const SEC_PATH = "/api/sec";
 
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
-// Hard-wired message for blank / not-enough-holes cases
 const NO_SHOTS_MSG =
   "No / not enough bullet holes detected. Shoot 3–7 rounds, then Take or Upload Target Photo.";
 
-function toNum(v) {
-  if (v === null || v === undefined) return null;
-  const n = typeof v === "number" ? v : Number(String(v).trim());
+// ---------- helpers ----------
+
+function extractFirstNumberFromString(s) {
+  if (typeof s !== "string") return null;
+  const m = s.match(/-?\d+(\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
   return Number.isFinite(n) ? n : null;
 }
 
-function pickFirstNumber(obj, keys) {
-  for (const k of keys) {
-    const parts = k.split(".");
-    let cur = obj;
-    for (const p of parts) {
-      if (!cur || typeof cur !== "object") {
-        cur = undefined;
-        break;
-      }
-      cur = cur[p];
-    }
-    const n = toNum(cur);
-    if (n !== null) return n;
-  }
+function toNum(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") return extractFirstNumberFromString(v);
   return null;
 }
 
@@ -55,16 +49,14 @@ function nextIndex() {
   return pad3(nxt);
 }
 
-// Invert BOTH axes for direction (your current output is reversed)
+// Invert BOTH axes for direction (because you said both were wrong)
 function arrowForWindage(clicks) {
   if (clicks === 0) return "→";
-  // inverted
   return clicks > 0 ? "←" : "→";
 }
 
 function arrowForElevation(clicks) {
   if (clicks === 0) return "↑";
-  // inverted
   return clicks > 0 ? "↓" : "↑";
 }
 
@@ -73,6 +65,206 @@ function abs2(v) {
   if (n === null) return "0.00";
   return Math.abs(n).toFixed(2);
 }
+
+function isPlainObject(x) {
+  return x && typeof x === "object" && !Array.isArray(x);
+}
+
+// Collect every numeric-ish value in a JSON tree along with its "path"
+function collectNumericCandidates(root) {
+  const out = [];
+
+  const walk = (node, path) => {
+    const n = toNum(node);
+    if (n !== null) out.push({ path, value: n });
+
+    if (Array.isArray(node)) {
+      node.forEach((v, i) => walk(v, `${path}[${i}]`));
+      return;
+    }
+    if (isPlainObject(node)) {
+      Object.entries(node).forEach(([k, v]) => {
+        walk(v, path ? `${path}.${k}` : k);
+      });
+    }
+  };
+
+  walk(root, "");
+  return out;
+}
+
+// Quick direct-path getter: "a.b.c"
+function getPath(obj, path) {
+  if (!obj || !path) return undefined;
+  const parts = path.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (!cur || typeof cur !== "object") return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+// Best-effort extraction for windage/elevation clicks from many backend shapes.
+function extractClicksFromBackend(data) {
+  // 1) direct common keys (fast path)
+  const directKeySets = {
+    w: [
+      "windageClicks",
+      "windage_clicks",
+      "windage_click",
+      "windage",
+      "wind",
+      "w",
+      "xClicks",
+      "x_clicks",
+      "x",
+      "dxClicks",
+      "dx",
+      "horizontalClicks",
+      "horizontal_clicks",
+      "horizontal",
+      "leftRightClicks",
+      "lrClicks",
+    ],
+    e: [
+      "elevationClicks",
+      "elevation_clicks",
+      "elevation_click",
+      "elevation",
+      "elev",
+      "e",
+      "yClicks",
+      "y_clicks",
+      "y",
+      "dyClicks",
+      "dy",
+      "verticalClicks",
+      "vertical_clicks",
+      "vertical",
+      "upDownClicks",
+      "udClicks",
+    ],
+  };
+
+  for (const k of directKeySets.w) {
+    const n = toNum(getPath(data, k));
+    if (n !== null) {
+      for (const ke of directKeySets.e) {
+        const ne = toNum(getPath(data, ke));
+        if (ne !== null) return { windageClicks: n, elevationClicks: ne };
+      }
+    }
+  }
+
+  // 2) known nested layouts
+  // clicks: { windage: X, elevation: Y }
+  const clickObj = getPath(data, "clicks");
+  if (isPlainObject(clickObj)) {
+    const w =
+      toNum(clickObj.windage) ??
+      toNum(clickObj.w) ??
+      toNum(clickObj.x) ??
+      toNum(clickObj.horizontal);
+    const e =
+      toNum(clickObj.elevation) ??
+      toNum(clickObj.e) ??
+      toNum(clickObj.y) ??
+      toNum(clickObj.vertical);
+    if (w !== null && e !== null) return { windageClicks: w, elevationClicks: e };
+  }
+
+  // clicks: [w, e]
+  if (Array.isArray(clickObj) && clickObj.length >= 2) {
+    const w = toNum(clickObj[0]);
+    const e = toNum(clickObj[1]);
+    if (w !== null && e !== null) return { windageClicks: w, elevationClicks: e };
+  }
+
+  // adjustment / corrections objects (common naming)
+  const adj = getPath(data, "adjustment") || getPath(data, "correction") || getPath(data, "corrections");
+  if (isPlainObject(adj)) {
+    const w =
+      toNum(adj.windageClicks) ??
+      toNum(adj.windage) ??
+      toNum(adj.w) ??
+      toNum(adj.x) ??
+      toNum(adj.horizontal) ??
+      toNum(adj.leftRight);
+    const e =
+      toNum(adj.elevationClicks) ??
+      toNum(adj.elevation) ??
+      toNum(adj.e) ??
+      toNum(adj.y) ??
+      toNum(adj.vertical) ??
+      toNum(adj.upDown);
+    if (w !== null && e !== null) return { windageClicks: w, elevationClicks: e };
+  }
+
+  // 3) scoring-based auto-detect by key path
+  const candidates = collectNumericCandidates(data);
+
+  const windRe = /(wind|winda|horizontal|left|right|lr|x)(click)?/i;
+  const elevRe = /(elev|vertical|up|down|ud|y)(click)?/i;
+  const clicksRe = /(click|clicks)/i;
+
+  const score = (path, isWind) => {
+    let s = 0;
+    if (!path) return s;
+
+    if (clicksRe.test(path)) s += 3;
+
+    if (isWind) {
+      if (windRe.test(path)) s += 6;
+      if (elevRe.test(path)) s -= 2;
+    } else {
+      if (elevRe.test(path)) s += 6;
+      if (windRe.test(path)) s -= 2;
+    }
+
+    // bonus if path ends with something meaningful
+    if (/\.(windage|elevation|w|e|x|y)$/.test(path)) s += 2;
+
+    return s;
+  };
+
+  let bestW = null;
+  let bestE = null;
+
+  for (const c of candidates) {
+    const sw = score(c.path, true);
+    if (!bestW || sw > bestW.s) bestW = { ...c, s: sw };
+
+    const se = score(c.path, false);
+    if (!bestE || se > bestE.s) bestE = { ...c, s: se };
+  }
+
+  // If we got decent scores, use them (avoid using same candidate twice if possible)
+  if (bestW && bestE && (bestW.s >= 5 || bestE.s >= 5)) {
+    if (bestW.path !== bestE.path) {
+      return { windageClicks: bestW.value, elevationClicks: bestE.value };
+    }
+    // same path chosen for both; find next-best for elevation
+    let secondE = null;
+    for (const c of candidates) {
+      if (c.path === bestW.path) continue;
+      const se = score(c.path, false);
+      if (!secondE || se > secondE.s) secondE = { ...c, s: se };
+    }
+    if (secondE && secondE.s >= 3) {
+      return { windageClicks: bestW.value, elevationClicks: secondE.value };
+    }
+  }
+
+  // 4) last resort: first two numbers found in the payload
+  if (candidates.length >= 2) {
+    return { windageClicks: candidates[0].value, elevationClicks: candidates[1].value };
+  }
+
+  return null;
+}
+
+// ---------- component ----------
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -128,12 +320,10 @@ export default function App() {
       const res = await fetch(url, { method: "POST", body: fd });
 
       if (!res.ok) {
-        // 422: "no holes" is expected fail-closed
         if (res.status === 422) {
           setNote(NO_SHOTS_MSG);
           return;
         }
-
         const txt = await res.text().catch(() => "");
         setError(`Backend error (${res.status}). ${txt || ""}`.trim());
         return;
@@ -142,28 +332,9 @@ export default function App() {
       const data = await res.json();
       setRawBackend(data);
 
-      // Try common shapes/keys (supporting multiple backend variants)
-      const windageClicks = pickFirstNumber(data, [
-        "windageClicks",
-        "windage_clicks",
-        "clicks.windage",
-        "clicks.windageClicks",
-        "windage",
-        "W",
-        "w",
-      ]);
+      const extracted = extractClicksFromBackend(data);
 
-      const elevationClicks = pickFirstNumber(data, [
-        "elevationClicks",
-        "elevation_clicks",
-        "clicks.elevation",
-        "clicks.elevationClicks",
-        "elevation",
-        "E",
-        "e",
-      ]);
-
-      if (windageClicks === null || elevationClicks === null) {
+      if (!extracted) {
         setError("Backend response missing windage/elevation click values.");
         return;
       }
@@ -171,8 +342,8 @@ export default function App() {
       const index = nextIndex();
 
       setSec({
-        windageClicks,
-        elevationClicks,
+        windageClicks: extracted.windageClicks,
+        elevationClicks: extracted.elevationClicks,
         index,
       });
     } catch (e) {
@@ -182,7 +353,6 @@ export default function App() {
     }
   }
 
-  // Draw SEC to canvas whenever sec updates
   useEffect(() => {
     if (!sec || !canvasRef.current) return;
 
@@ -190,22 +360,18 @@ export default function App() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // 4×6 at 300 DPI = 1200×1800 (but that's big). Use 1000×1500 for snappy UI.
     const W = 1000;
     const H = 1500;
     canvas.width = W;
     canvas.height = H;
 
-    // Background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
 
-    // Border
     ctx.strokeStyle = "#000000";
     ctx.lineWidth = 10;
     ctx.strokeRect(40, 40, W - 80, H - 80);
 
-    // Title
     ctx.fillStyle = "#000000";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
@@ -213,33 +379,27 @@ export default function App() {
     ctx.font = "bold 64px Arial";
     ctx.fillText("SCZN3 Shooter Experience Card (SEC)", W / 2, 160);
 
-    // Windage label
     ctx.font = "bold 54px Arial";
     ctx.fillText("Windage", W / 2, 430);
 
-    // Windage arrow + value
     const wArrow = arrowForWindage(sec.windageClicks);
     const wVal = abs2(sec.windageClicks);
 
     ctx.font = "bold 140px Arial";
     ctx.fillText(`${wArrow} ${wVal}`, W / 2, 620);
 
-    // Elevation label
     ctx.font = "bold 54px Arial";
     ctx.fillText("Elevation", W / 2, 920);
 
-    // Elevation arrow + value
     const eArrow = arrowForElevation(sec.elevationClicks);
     const eVal = abs2(sec.elevationClicks);
 
     ctx.font = "bold 140px Arial";
     ctx.fillText(`${eArrow} ${eVal}`, W / 2, 1110);
 
-    // Index
     ctx.font = "italic 48px Arial";
     ctx.fillText(`Index: ${sec.index}`, W / 2, 1285);
 
-    // Export PNG URL
     const png = canvas.toDataURL("image/png");
     setSecPngUrl(png);
   }, [sec]);
@@ -256,17 +416,13 @@ export default function App() {
 
   async function onShare() {
     if (!secPngUrl) return;
-
     try {
       if (!navigator.share) {
         setNote("Share not supported on this device/browser.");
         return;
       }
-
       const blob = await (await fetch(secPngUrl)).blob();
-      const f = new File([blob], `SCZN3_SEC_${sec?.index || "000"}.png`, {
-        type: "image/png",
-      });
+      const f = new File([blob], `SCZN3_SEC_${sec?.index || "000"}.png`, { type: "image/png" });
 
       await navigator.share({
         files: [f],
@@ -336,9 +492,7 @@ export default function App() {
           Share SEC
         </button>
 
-        <div style={{ opacity: 0.7 }}>
-          {file ? file.name : "No photo selected"}
-        </div>
+        <div style={{ opacity: 0.7 }}>{file ? file.name : "No photo selected"}</div>
       </div>
 
       {error ? (
