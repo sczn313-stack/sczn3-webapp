@@ -1,19 +1,3 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-/**
- * SCZN3 Shooter Experience Card (SEC) — Windage/Elevation LOCKED
- *
- * LOCK RULE (must be true end-to-end):
- * - Backend returns SIGNED numbers:
- *     windage_clicks:  negative = LEFT,  positive = RIGHT
- *     elevation_clicks: negative = DOWN, positive = UP
- * - UI decides ARROW from the sign FIRST.
- * - UI displays MAGNITUDE as abs(value).toFixed(2).
- *
- * This prevents the classic "not locked / flips direction" bug caused by Math.abs() too early.
- */
-
-// ✅ Hard default backend (override-able via VITE_API_BASE if you set it later)
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
 const API_BASE = (
   (typeof import.meta !== "undefined" &&
