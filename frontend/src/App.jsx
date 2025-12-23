@@ -2,216 +2,235 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /*
   SCZN3 Shooter Experience Card (SEC) — v1 (Simple)
-  - Defaults are locked in v1 experience:
-      Distance = 100 yards
-      MOA per click = 0.25
-      Target = 23x23
-  - Frontend does NOT ask for yardage in the primary flow.
-  - Two file buttons so iPad/iOS doesn’t force camera-only.
-  - FAIL CLOSED on no holes (422) and on missing click values.
-  - SEC PNG stays clean: Title + Windage + Elevation + Index ONLY.
+  - SEC output: clicks ONLY (2 decimals), with direction arrows.
+  - Direction is locked from raw SIGNED click values first.
+  - Then magnitude is displayed as absolute value (2 decimals).
+
+  Buttons:
+  - Take Target Photo (camera capture)
+  - Upload Target Photo (normal file picker)
 */
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
 const SEC_PATH = "/api/sec";
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
-const NO_SHOTS_MSG =
-  "No / not enough bullet holes detected.\nShoot 3–7 rounds, then take or upload a target photo.";
+// ---------- helpers ----------
+function isNum(x) {
+  return typeof x === "number" && Number.isFinite(x);
+}
 
-function fmt2(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "0.00";
-  return x.toFixed(2);
+function asNum(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : NaN;
 }
-function abs2(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "0.00";
-  return Math.abs(x).toFixed(2);
-}
+
 function pad3(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x) || x < 0) return "000";
-  return String(Math.floor(x)).padStart(3, "0");
+  const s = String(n ?? "");
+  if (s.length >= 3) return s.slice(-3);
+  return ("000" + s).slice(-3);
 }
+
 function nextIndex() {
-  const raw = localStorage.getItem(INDEX_KEY);
-  const cur = raw ? Number(raw) : 0;
-  const nxt = (Number.isFinite(cur) && cur >= 0 ? cur : 0) + 1;
-  localStorage.setItem(INDEX_KEY, String(nxt));
-  return pad3(nxt);
-}
-function isNum(v) {
-  return Number.isFinite(Number(v));
+  const cur = Number(localStorage.getItem(INDEX_KEY) || "0");
+  const next = (Number.isFinite(cur) ? cur : 0) + 1;
+  localStorage.setItem(INDEX_KEY, String(next));
+  return pad3(next);
 }
 
-// Read click values from common shapes
+function pickApiBase() {
+  // Allow override: ?api=https://your-backend.onrender.com
+  try {
+    const u = new URL(window.location.href);
+    const q = u.searchParams.get("api");
+    if (q && /^https?:\/\//i.test(q)) return q.replace(/\/+$/, "");
+  } catch {}
+  return DEFAULT_API_BASE;
+}
+
 function getClicks(payload) {
-  const p = payload || {};
+  // Accept a few possible shapes, but we mainly expect:
+  // { windage_clicks: number, elevation_clicks: number }
+  if (!payload || typeof payload !== "object") return { w: NaN, e: NaN };
 
-  // Preferred shape: { sec: { windage_clicks, elevation_clicks } }
-  const w1 = p?.sec?.windage_clicks;
-  const e1 = p?.sec?.elevation_clicks;
+  const w =
+    asNum(payload.windage_clicks) ??
+    asNum(payload.windage) ??
+    asNum(payload.w) ??
+    NaN;
 
-  // Fallbacks (in case backend changes)
-  const w2 = p?.windage_clicks ?? p?.windageClicks ?? p?.clicks?.windage;
-  const e2 = p?.elevation_clicks ?? p?.elevationClicks ?? p?.clicks?.elevation;
-
-  const w = isNum(w1) ? Number(w1) : isNum(w2) ? Number(w2) : null;
-  const e = isNum(e1) ? Number(e1) : isNum(e2) ? Number(e2) : null;
+  const e =
+    asNum(payload.elevation_clicks) ??
+    asNum(payload.elevation) ??
+    asNum(payload.e) ??
+    NaN;
 
   return { w, e };
 }
 
-function windArrow(clicks, flipWind) {
-  const n0 = Number(clicks);
-  if (!Number.isFinite(n0) || n0 === 0) return "→";
-  const n = flipWind ? -n0 : n0;
-  return n > 0 ? "→" : "←";
-}
-function elevArrow(clicks, flipElev) {
-  const n0 = Number(clicks);
-  if (!Number.isFinite(n0) || n0 === 0) return "↑";
-  const n = flipElev ? -n0 : n0;
-  return n > 0 ? "↑" : "↓";
-}
+// ---------- canvas SEC drawing ----------
+function drawSEC({
+  canvas,
+  windageSigned,
+  elevationSigned,
+  index,
+  title = "SCZN3 Shooter Experience Card (SEC)",
+}) {
+  if (!canvas) return null;
 
-function makeSecPng({ windageClicks, elevationClicks, index, flipWind, flipElev }) {
-  // 4x6 portrait-ish (2:3)
-  const W = 1200;
-  const H = 1800;
-
-  const canvas = document.createElement("canvas");
+  // Fixed 4x6 aspect (portrait) at a nice pixel density
+  const W = 1200; // width px
+  const H = 1800; // height px
   canvas.width = W;
   canvas.height = H;
 
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported.");
+  if (!ctx) return null;
 
-  // background
+  // Background
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
-  // borders
-  ctx.strokeStyle = "#111111";
+  // Border
+  const outer = 60;
+  const inner = 90;
+
+  ctx.strokeStyle = "#000000";
   ctx.lineWidth = 10;
-  ctx.strokeRect(40, 40, W - 80, H - 80);
-  ctx.lineWidth = 5;
-  ctx.strokeRect(75, 75, W - 150, H - 150);
+  roundRect(ctx, outer, outer, W - outer * 2, H - outer * 2, 28);
+  ctx.stroke();
 
-  ctx.fillStyle = "#111111";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  const cx = W / 2;
+  ctx.lineWidth = 6;
+  roundRect(ctx, inner, inner, W - inner * 2, H - inner * 2, 24);
+  ctx.stroke();
 
   // Title
-  ctx.font = "800 64px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  ctx.fillText("SCZN3 Shooter Experience Card (SEC)", cx, 185);
+  ctx.fillStyle = "#000000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "bold 74px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(title, W / 2, 230);
 
-  // Windage
-  ctx.font = "800 70px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  ctx.fillText("Windage", cx, 630);
+  // Divider space
+  // WINDAGE block
+  ctx.font = "800 96px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("Windage", W / 2, 620);
 
-  ctx.font = "900 160px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  ctx.fillText(`${windArrow(windageClicks, flipWind)} ${abs2(windageClicks)}`, cx, 820);
+  // LOCKED DIRECTION: decide arrow from signed number FIRST
+  const w = Number(windageSigned);
+  const wArrow = w === 0 ? "" : w < 0 ? "←" : "→";
+  const wText = Number.isFinite(w) ? Math.abs(w).toFixed(2) : "--";
 
-  // Elevation
-  ctx.font = "800 70px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  ctx.fillText("Elevation", cx, 1140);
+  // Big arrow + value
+  ctx.font = "900 230px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  // Arrow
+  ctx.fillText(wArrow, W / 2 - 280, 850);
+  // Value
+  ctx.fillText(wText, W / 2 + 120, 850);
 
-  ctx.font = "900 160px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  ctx.fillText(`${elevArrow(elevationClicks, flipElev)} ${abs2(elevationClicks)}`, cx, 1330);
+  // ELEVATION block
+  ctx.font = "800 96px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("Elevation", W / 2, 1120);
+
+  const e = Number(elevationSigned);
+
+  // IMPORTANT: positive elevation = DIAL UP (↑)
+  const eArrow = e === 0 ? "" : e < 0 ? "↓" : "↑";
+  const eText = Number.isFinite(e) ? Math.abs(e).toFixed(2) : "--";
+
+  ctx.font = "900 230px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(eArrow, W / 2 - 280, 1350);
+  ctx.fillText(eText, W / 2 + 120, 1350);
 
   // Index
-  ctx.font = "italic 60px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  ctx.globalAlpha = 0.92;
-  ctx.fillText(`Index: ${index}`, cx, 1635);
-  ctx.globalAlpha = 1;
+  ctx.font = "italic 62px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(`Index: ${index}`, W / 2, 1640);
 
   return canvas.toDataURL("image/png");
 }
 
-function dataUrlToBlob(dataUrl) {
-  const [header, b64] = String(dataUrl).split(",");
-  const mime = (header.match(/data:(.*?);base64/i) || [])[1] || "image/png";
-  const bin = atob(b64 || "");
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
+function roundRect(ctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
 }
 
+// ---------- main ----------
 export default function App() {
-  const apiBase = useMemo(() => {
-    const env =
-      (import.meta?.env?.VITE_API_BASE_URL || import.meta?.env?.VITE_API_BASE || "").trim();
-    return (env || DEFAULT_API_BASE).replace(/\/+$/, "");
-  }, []);
-
-  const takeRef = useRef(null);
-  const uploadRef = useRef(null);
-
+  const apiBase = useMemo(() => pickApiBase(), []);
   const [file, setFile] = useState(null);
-  const [targetUrl, setTargetUrl] = useState("");
-
+  const [fileUrl, setFileUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [note, setNote] = useState("");
-
-  const [flipWind, setFlipWind] = useState(false);
-  const [flipElev, setFlipElev] = useState(false);
-
   const [rawBackend, setRawBackend] = useState(null);
 
-  const [sec, setSec] = useState(null); // { windage_clicks, elevation_clicks, index }
+  const [result, setResult] = useState(null); // { windage_clicks, elevation_clicks, index }
   const [secPngUrl, setSecPngUrl] = useState("");
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    if (!file) {
-      setTargetUrl("");
-      return;
-    }
-    const u = URL.createObjectURL(file);
-    setTargetUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [file]);
-
-  function resetOutputs() {
-    setError("");
-    setNote("");
-    setRawBackend(null);
-    setSec(null);
-    setSecPngUrl("");
-  }
+    // cleanup object url
+    return () => {
+      if (fileUrl) URL.revokeObjectURL(fileUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onPickFile(f) {
-    resetOutputs();
-    setFile(f || null);
+    setError("");
+    setRawBackend(null);
+    setResult(null);
+    setSecPngUrl("");
+
+    if (fileUrl) {
+      try {
+        URL.revokeObjectURL(fileUrl);
+      } catch {}
+      setFileUrl("");
+    }
+
+    if (!f) {
+      setFile(null);
+      return;
+    }
+
+    setFile(f);
+    const u = URL.createObjectURL(f);
+    setFileUrl(u);
   }
 
   async function onAnalyze() {
-    if (!file || busy) return;
+    setError("");
+    setRawBackend(null);
+    setResult(null);
+    setSecPngUrl("");
 
-    resetOutputs();
+    if (!file) {
+      setError("Pick a target photo first.");
+      return;
+    }
+
     setBusy(true);
-
     try {
-      const url = new URL(SEC_PATH, apiBase).toString();
       const form = new FormData();
       form.append("file", file);
 
-      const res = await fetch(url, { method: "POST", body: form });
+      const url = apiBase.replace(/\/+$/, "") + SEC_PATH;
 
-      // Fail-closed “no holes”
-      if (res.status === 422) {
-        setNote(NO_SHOTS_MSG);
-        return;
-      }
+      const res = await fetch(url, {
+        method: "POST",
+        body: form,
+      });
 
-      let data = null;
       const text = await res.text().catch(() => "");
+      let data = null;
       try {
         data = text ? JSON.parse(text) : null;
       } catch {
@@ -227,7 +246,7 @@ export default function App() {
 
       const { w, e } = getClicks(data);
 
-      // Fail closed if missing clicks
+      // Fail closed if missing
       if (!isNum(w) || !isNum(e)) {
         setError("Backend response missing windage/elevation click values.");
         return;
@@ -235,232 +254,387 @@ export default function App() {
 
       const index = nextIndex();
 
+      // Store SIGNED values (lock depends on sign)
       const next = {
         windage_clicks: Number(w),
         elevation_clicks: Number(e),
         index,
       };
 
-      setSec(next);
+      setResult(next);
 
-      const png = makeSecPng({
-        windageClicks: next.windage_clicks,
-        elevationClicks: next.elevation_clicks,
+      // Draw SEC PNG
+      const png = drawSEC({
+        canvas: canvasRef.current,
+        windageSigned: next.windage_clicks,
+        elevationSigned: next.elevation_clicks,
         index: next.index,
-        flipWind,
-        flipElev,
       });
 
-      setSecPngUrl(png);
+      if (png) setSecPngUrl(png);
     } catch (e) {
-      setError(e?.message || "Analyze failed.");
+      setError(String(e?.message || e));
     } finally {
       setBusy(false);
     }
   }
 
   function onDownload() {
-    if (!sec || !secPngUrl) return;
+    if (!secPngUrl) return;
     const a = document.createElement("a");
     a.href = secPngUrl;
-    a.download = `SCZN3_SEC_${sec.index}.png`;
+    a.download = `SCZN3_SEC_${result?.index || "000"}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
   }
 
   async function onShare() {
-    if (!sec || !secPngUrl) return;
+    if (!secPngUrl) return;
 
     try {
-      const blob = dataUrlToBlob(secPngUrl);
-      const filename = `SCZN3_SEC_${sec.index}.png`;
-      const fileObj = new File([blob], filename, { type: "image/png" });
+      const blob = await (await fetch(secPngUrl)).blob();
+      const fileName = `SCZN3_SEC_${result?.index || "000"}.png`;
+      const shareFile = new File([blob], fileName, { type: "image/png" });
 
-      const canShareFiles =
-        typeof navigator !== "undefined" &&
-        typeof navigator.share === "function" &&
-        (typeof navigator.canShare !== "function" || navigator.canShare({ files: [fileObj] }));
-
-      if (canShareFiles) {
+      if (navigator.share && navigator.canShare?.({ files: [shareFile] })) {
         await navigator.share({
+          files: [shareFile],
           title: "SCZN3 SEC",
-          text: "Shooter Experience Card (SEC)",
-          files: [fileObj],
+          text: "SCZN3 Shooter Experience Card (SEC)",
         });
-        return;
+      } else {
+        // fallback: download
+        onDownload();
       }
-
-      // fallback: open image so user can long-press -> Save Image
-      const objUrl = URL.createObjectURL(blob);
-      window.open(objUrl, "_blank", "noopener,noreferrer");
-      setNote("Opened the SEC image. Long-press it to Save Image / Share.");
-      setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
     } catch (e) {
-      // Share cancel on iOS often throws AbortError
-      if (e?.name === "AbortError") {
-        setNote("Share cancelled.");
-        return;
-      }
-      setError("Share failed. Use Download SEC (PNG).");
+      setError(`Share failed: ${String(e?.message || e)}`);
     }
   }
 
+  // UI rendering: numbers shown are ABS magnitude to 2 decimals
+  const windSigned = result?.windage_clicks;
+  const elevSigned = result?.elevation_clicks;
+
+  const windArrow =
+    typeof windSigned === "number" && Number.isFinite(windSigned)
+      ? windSigned === 0
+        ? ""
+        : windSigned < 0
+        ? "←"
+        : "→"
+      : "";
+
+  // positive elevation = UP
+  const elevArrow =
+    typeof elevSigned === "number" && Number.isFinite(elevSigned)
+      ? elevSigned === 0
+        ? ""
+        : elevSigned < 0
+        ? "↓"
+        : "↑"
+      : "";
+
+  const windText =
+    typeof windSigned === "number" && Number.isFinite(windSigned)
+      ? Math.abs(windSigned).toFixed(2)
+      : "--";
+
+  const elevText =
+    typeof elevSigned === "number" && Number.isFinite(elevSigned)
+      ? Math.abs(elevSigned).toFixed(2)
+      : "--";
+
   return (
-    <div style={{ maxWidth: 920, margin: "32px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h1 style={{ fontSize: 40, margin: "0 0 14px", fontWeight: 900 }}>
-        SCZN3 Shooter Experience Card (SEC)
-      </h1>
+    <div style={styles.page}>
+      <h1 style={styles.h1}>SCZN3 Shooter Experience Card (SEC)</h1>
 
-      {/* Primary controls (simple) */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        {/* Hidden inputs (two-button strategy for iOS) */}
-        <input
-          ref={takeRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          style={{ display: "none" }}
-          onChange={(e) => onPickFile(e.target.files?.[0] || null)}
-          disabled={busy}
-        />
-        <input
-          ref={uploadRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={(e) => onPickFile(e.target.files?.[0] || null)}
-          disabled={busy}
-        />
-
-        <button onClick={() => takeRef.current?.click()} disabled={busy} style={btn()}>
+      <div style={styles.row}>
+        {/* Two file inputs so iOS doesn’t force camera-only */}
+        <label style={styles.btn}>
           Take Target Photo
-        </button>
+          <input
+            style={styles.file}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+          />
+        </label>
 
-        <button onClick={() => uploadRef.current?.click()} disabled={busy} style={btn()}>
+        <label style={styles.btn}>
           Upload Target Photo
-        </button>
+          <input
+            style={styles.file}
+            type="file"
+            accept="image/*"
+            onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+          />
+        </label>
 
-        <button onClick={onAnalyze} disabled={busy || !file} style={btn({ strong: true, disabled: busy || !file })}>
+        <button
+          style={{ ...styles.btnPlain, opacity: file && !busy ? 1 : 0.45 }}
+          disabled={!file || busy}
+          onClick={onAnalyze}
+        >
           {busy ? "Analyzing..." : "Analyze / SEC"}
         </button>
 
-        <button onClick={onDownload} disabled={!secPngUrl} style={btn({ disabled: !secPngUrl })}>
+        <button
+          style={{ ...styles.btnPlain, opacity: secPngUrl ? 1 : 0.45 }}
+          disabled={!secPngUrl}
+          onClick={onDownload}
+        >
           Download SEC (PNG)
         </button>
 
-        <button onClick={onShare} disabled={!secPngUrl} style={btn({ disabled: !secPngUrl })}>
+        <button
+          style={{ ...styles.btnPlain, opacity: secPngUrl ? 1 : 0.45 }}
+          disabled={!secPngUrl}
+          onClick={onShare}
+        >
           Share SEC
         </button>
       </div>
 
-      {/* Message boxes */}
       {error ? (
-        <div style={box({ border: "#b00020", bg: "#fff5f5" })}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Error</div>
-          <div style={{ whiteSpace: "pre-wrap", fontWeight: 700 }}>{error}</div>
+        <div style={styles.errorBox}>
+          <strong>Error:</strong> {error}
         </div>
       ) : null}
 
-      {note ? (
-        <div style={box({ border: "#111", bg: "#fafafa" })}>
-          <div style={{ whiteSpace: "pre-wrap", fontWeight: 800 }}>{note}</div>
-        </div>
-      ) : null}
-
-      {/* Target Preview */}
-      {targetUrl ? (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 8, fontWeight: 800 }}>Target Preview</div>
-          <img
-            src={targetUrl}
-            alt="Target preview"
-            style={{ width: "100%", maxWidth: 520, height: "auto", display: "block", border: "1px solid #111", borderRadius: 12 }}
-          />
-        </div>
-      ) : null}
-
-      {/* SEC Preview */}
-      {secPngUrl ? (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 8, fontWeight: 800 }}>SEC Preview</div>
-          <img
-            src={secPngUrl}
-            alt="SEC preview"
-            style={{ width: "100%", maxWidth: 520, height: "auto", display: "block", border: "1px solid #111", borderRadius: 12 }}
-          />
-
-          {/* Come-back hook (page only; NOT on the SEC image) */}
-          <div style={{ marginTop: 12, padding: 12, border: "1px solid #ddd", borderRadius: 12, maxWidth: 520 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Want more?</div>
-            <div style={{ fontWeight: 700, opacity: 0.85, marginBottom: 10 }}>
-              Unlock Advanced Mode (distance-aware clicks, saved sessions, coaching).
-            </div>
-            <button onClick={() => setShowAdvanced((v) => !v)} style={btn({ strong: true })}>
-              {showAdvanced ? "Hide Advanced" : "Unlock Advanced"}
-            </button>
-
-            {showAdvanced ? (
-              <div style={{ marginTop: 12, borderTop: "1px solid #eee", paddingTop: 12 }}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Advanced (optional)</div>
-                <div style={{ fontWeight: 700, opacity: 0.85 }}>
-                  v1 defaults are locked: <b>100 yards</b> and <b>¼ MOA/click</b>.
-                  (We’ll wire the controls here next.)
-                </div>
-              </div>
-            ) : null}
+      <div style={styles.grid2}>
+        <div>
+          <div style={styles.sectionTitle}>Target Preview</div>
+          <div style={styles.previewBox}>
+            {fileUrl ? (
+              <img
+                src={fileUrl}
+                alt="Target preview"
+                style={styles.previewImg}
+              />
+            ) : (
+              <div style={styles.placeholder}>No image selected.</div>
+            )}
           </div>
         </div>
-      ) : null}
 
-      {/* Debug (kept minimal) */}
-      <details style={{ marginTop: 16 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 900 }}>Debug</summary>
+        <div>
+          <div style={styles.sectionTitle}>SEC Preview</div>
+          <div style={styles.previewBox}>
+            {secPngUrl ? (
+              <img src={secPngUrl} alt="SEC preview" style={styles.secImg} />
+            ) : (
+              <div style={styles.placeholder}>
+                Analyze to generate the SEC card.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
-        <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-          <label style={{ fontSize: 14, fontWeight: 800 }}>
-            <input type="checkbox" checked={flipWind} onChange={(e) => setFlipWind(e.target.checked)} /> Flip windage
-          </label>
-          <label style={{ fontSize: 14, fontWeight: 800 }}>
-            <input type="checkbox" checked={flipElev} onChange={(e) => setFlipElev(e.target.checked)} /> Flip elevation
-          </label>
+      {/* Hidden canvas used to generate the PNG */}
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {/* Debug (collapsible) */}
+      <details style={styles.details}>
+        <summary style={styles.summary}>Debug</summary>
+
+        <div style={styles.debugRow}>
+          <div style={styles.debugCard}>
+            <div style={styles.debugTitle}>API Base</div>
+            <div style={styles.mono}>{apiBase}</div>
+            <div style={{ height: 8 }} />
+            <div style={styles.debugTitle}>Endpoint</div>
+            <div style={styles.mono}>{SEC_PATH}</div>
+          </div>
+
+          <div style={styles.debugCard}>
+            <div style={styles.debugTitle}>Locked Output (Signed → Arrow)</div>
+            <div style={styles.mono}>
+              windage_signed:{" "}
+              {isNum(windSigned) ? windSigned.toFixed(2) : "--"} | arrow:{" "}
+              {windArrow || "(none)"} | shown: {windText}
+            </div>
+            <div style={styles.mono}>
+              elevation_signed:{" "}
+              {isNum(elevSigned) ? elevSigned.toFixed(2) : "--"} | arrow:{" "}
+              {elevArrow || "(none)"} | shown: {elevText}
+            </div>
+            <div style={styles.mono}>
+              index: {result?.index || "--"}
+            </div>
+          </div>
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.5 }}>
-          <div><b>API Base:</b> {apiBase}</div>
-          <div><b>Raw backend:</b></div>
-          <pre style={{ padding: 10, border: "1px solid #ddd", borderRadius: 12, background: "#fafafa", maxWidth: 900, overflowX: "auto" }}>
+        <div style={styles.debugCard}>
+          <div style={styles.debugTitle}>Raw Backend Response</div>
+          <pre style={styles.pre}>
             {rawBackend ? JSON.stringify(rawBackend, null, 2) : "—"}
           </pre>
-          <div>
-            <b>Displayed clicks:</b>{" "}
-            {sec ? `wind=${fmt2(sec.windage_clicks)}, elev=${fmt2(sec.elevation_clicks)}` : "—"}
-          </div>
         </div>
       </details>
+
+      <div style={styles.footerNote}>
+        Want more? Unlock Advanced Mode (distance-aware clicks, saved sessions,
+        coaching).
+      </div>
+
+      <button style={styles.unlockBtn} disabled>
+        Unlock Advanced
+      </button>
     </div>
   );
 }
 
-function btn(opts = {}) {
-  const strong = !!opts.strong;
-  const disabled = !!opts.disabled;
-  return {
+// ---------- styles ----------
+const styles = {
+  page: {
+    maxWidth: 1100,
+    margin: "0 auto",
+    padding: "28px 18px 60px",
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    color: "#111",
+  },
+  h1: {
+    fontSize: 48,
+    lineHeight: 1.1,
+    margin: "10px 0 18px",
+    fontWeight: 900,
+  },
+  row: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  btn: {
+    position: "relative",
+    display: "inline-block",
     padding: "12px 16px",
     borderRadius: 10,
-    border: "1px solid #bbb",
-    background: disabled ? "#eee" : strong ? "#fff" : "#f7f7f7",
-    fontWeight: strong ? 900 : 800,
-    cursor: disabled ? "not-allowed" : "pointer",
-  };
-}
-function box({ border, bg }) {
-  return {
-    marginTop: 14,
+    border: "1px solid #cfcfcf",
+    background: "#fff",
+    fontWeight: 700,
+    cursor: "pointer",
+    userSelect: "none",
+  },
+  btnPlain: {
+    padding: "12px 16px",
+    borderRadius: 10,
+    border: "1px solid #cfcfcf",
+    background: "#fff",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  file: {
+    position: "absolute",
+    inset: 0,
+    opacity: 0,
+    width: "100%",
+    height: "100%",
+    cursor: "pointer",
+  },
+  errorBox: {
+    border: "1px solid #ffb4b4",
+    background: "#ffecec",
+    padding: "12px 14px",
+    borderRadius: 10,
+    marginBottom: 18,
+  },
+  grid2: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 18,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    margin: "6px 0 10px",
+  },
+  previewBox: {
+    border: "1px solid #ddd",
+    borderRadius: 14,
     padding: 12,
-    border: `2px solid ${border}`,
+    minHeight: 260,
+    background: "#fff",
+  },
+  previewImg: {
+    width: "100%",
+    height: "auto",
+    borderRadius: 10,
+    display: "block",
+  },
+  secImg: {
+    width: "100%",
+    height: "auto",
+    borderRadius: 10,
+    display: "block",
+  },
+  placeholder: {
+    padding: 18,
+    color: "#555",
+  },
+  details: {
+    marginTop: 22,
+    borderTop: "1px solid #eee",
+    paddingTop: 12,
+  },
+  summary: {
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 16,
+    marginBottom: 10,
+  },
+  debugRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 14,
+    marginBottom: 14,
+  },
+  debugCard: {
+    border: "1px solid #e5e5e5",
     borderRadius: 12,
-    background: bg,
-    maxWidth: 720,
-  };
-}
+    padding: 12,
+    background: "#fafafa",
+  },
+  debugTitle: {
+    fontWeight: 900,
+    marginBottom: 8,
+  },
+  mono: {
+    fontFamily:
+      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: 13,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
+  pre: {
+    margin: 0,
+    padding: 10,
+    borderRadius: 10,
+    background: "#fff",
+    border: "1px solid #eee",
+    overflowX: "auto",
+    fontSize: 12,
+  },
+  footerNote: {
+    marginTop: 24,
+    padding: "14px 16px",
+    borderRadius: 12,
+    border: "1px solid #e5e5e5",
+    background: "#fafafa",
+    fontWeight: 700,
+  },
+  unlockBtn: {
+    marginTop: 10,
+    padding: "12px 16px",
+    borderRadius: 10,
+    border: "1px solid #cfcfcf",
+    background: "#fff",
+    fontWeight: 800,
+    cursor: "not-allowed",
+    opacity: 0.6,
+  },
+};
