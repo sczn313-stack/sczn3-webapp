@@ -11,7 +11,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
   - Upload Target Photo (normal file picker)
 */
 
-const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
+const DEFAULT_API_BASE = "https://sczn3-webapp-1.onrender.com";
 const SEC_PATH = "/api/sec";
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
