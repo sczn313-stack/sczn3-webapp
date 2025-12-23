@@ -1,330 +1,504 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * SCZN3 Shooter Experience Card (SEC) — v1 (Simple)
+ *
+ * HARD RULE (LOCK):
+ *  - Direction is determined ONLY from the RAW SIGNED click numbers.
+ *  - Display shows ABS(value) with 2 decimals AFTER direction is chosen.
+ *
+ * Signed convention (required):
+ *  - windage_clicks:  negative = LEFT,  positive = RIGHT
+ *  - elevation_clicks: negative = DOWN, positive = UP
+ *
+ * If your backend uses the opposite sign, fix backend. Do not “flip” in the UI.
+ */
+
+// ✅ Default backend (change only if you deploy a new backend)
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
-const API_BASE = (
-  (typeof import.meta !== "undefined" &&
-    import.meta.env &&
-    import.meta.env.VITE_API_BASE) ||
-  DEFAULT_API_BASE
-).replace(/\/+$/, "");
+const SEC_PATH = "/api/sec";
+const INDEX_KEY = "SCZN3_SEC_INDEX";
 
-// API endpoint
-const SEC_ENDPOINT = `${API_BASE}/api/sec`;
-
-// 2-decimal hard rule
-const fmt2 = (n) => {
+// ---------- small helpers ----------
+function round2(n) {
   const x = Number(n);
-  if (!Number.isFinite(x)) return "0.00";
-  return x.toFixed(2);
-};
-
-// SIGNED parse (never abs here)
-const toNum = (v) => {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : NaN;
-};
-
-function getClicksFromBackend(data) {
-  // Only pull the raw signed values from backend.
-  // DO NOT use Math.abs here.
-  const w = toNum(data?.windage_clicks);
-  const e = toNum(data?.elevation_clicks);
-  return { w, e };
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 100) / 100;
 }
 
-function arrowForWindage(w) {
-  if (!Number.isFinite(w) || w === 0) return "";
-  return w < 0 ? "←" : "→";
-}
-function arrowForElevation(e) {
-  if (!Number.isFinite(e) || e === 0) return "";
-  return e < 0 ? "↓" : "↑";
+function isNum(n) {
+  return Number.isFinite(Number(n));
 }
 
-function labelForWindage(w) {
-  // Display magnitude only
-  return fmt2(Math.abs(w));
-}
-function labelForElevation(e) {
-  return fmt2(Math.abs(e));
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
-function useImageFromFile(file) {
-  const [img, setImg] = useState(null);
-  useEffect(() => {
-    if (!file) return setImg(null);
-    const url = URL.createObjectURL(file);
-    const i = new Image();
-    i.onload = () => setImg(i);
-    i.onerror = () => setImg(null);
-    i.src = url;
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-  return img;
+/**
+ * Try hard to extract windage/elevation clicks from many possible backend shapes.
+ * Returns { w, e } as NUMBERS (signed).
+ */
+function extractClicks(payload) {
+  if (!payload) return { w: null, e: null };
+
+  // If backend wraps result
+  const obj = payload.result && typeof payload.result === "object" ? payload.result : payload;
+
+  // Common key variants
+  const wCandidates = [
+    obj.windage_clicks,
+    obj.windageClicks,
+    obj.windage,
+    obj.w,
+    obj.clicks?.windage_clicks,
+    obj.clicks?.windageClicks,
+    obj.clicks?.windage,
+  ];
+
+  const eCandidates = [
+    obj.elevation_clicks,
+    obj.elevationClicks,
+    obj.elevation,
+    obj.e,
+    obj.clicks?.elevation_clicks,
+    obj.clicks?.elevationClicks,
+    obj.clicks?.elevation,
+  ];
+
+  const w = wCandidates.find((v) => isNum(v));
+  const e = eCandidates.find((v) => isNum(v));
+
+  return {
+    w: isNum(w) ? Number(w) : null,
+    e: isNum(e) ? Number(e) : null,
+  };
+}
+
+/**
+ * LOCKED direction logic:
+ * - Decide arrow from SIGN.
+ * - Display ABS(value) formatted to 2 decimals.
+ */
+function lockedDirection(value, axis) {
+  const v = Number(value);
+  if (!Number.isFinite(v) || v === 0) {
+    return { arrow: "", text: "0.00" };
+  }
+
+  if (axis === "windage") {
+    // negative LEFT, positive RIGHT
+    const arrow = v < 0 ? "←" : "→";
+    return { arrow, text: Math.abs(v).toFixed(2) };
+  }
+
+  if (axis === "elevation") {
+    // negative DOWN, positive UP
+    const arrow = v < 0 ? "↓" : "↑";
+    return { arrow, text: Math.abs(v).toFixed(2) };
+  }
+
+  return { arrow: "", text: Math.abs(v).toFixed(2) };
+}
+
+/**
+ * Simple SEC PNG generator (canvas)
+ */
+function renderSecPng({ windage, elevation, index }) {
+  const W = 1200;
+  const H = 800;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // background
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, H);
+
+  // border
+  ctx.strokeStyle = "#111111";
+  ctx.lineWidth = 10;
+  ctx.strokeRect(30, 30, W - 60, H - 60);
+  ctx.lineWidth = 4;
+  ctx.strokeRect(60, 60, W - 120, H - 120);
+
+  // Title
+  ctx.fillStyle = "#111111";
+  ctx.font = "bold 64px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("SCZN3 Shooter Experience Card (SEC)", W / 2, 140);
+
+  // Labels
+  ctx.font = "bold 52px Arial";
+  ctx.fillText("Windage", W / 2, 270);
+  ctx.fillText("Elevation", W / 2, 520);
+
+  // Values
+  ctx.font = "bold 150px Arial";
+  ctx.fillText(`${windage.arrow} ${windage.text}`, W / 2, 410);
+  ctx.fillText(`${elevation.arrow} ${elevation.text}`, W / 2, 660);
+
+  // Index
+  ctx.font = "italic 44px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(`Index: ${String(index).padStart(3, "0")}`, W / 2, 740);
+
+  return canvas.toDataURL("image/png");
 }
 
 function nextIndex() {
-  // Simple 3-digit index that increments per device/session
-  const key = "SCZN3_SEC_INDEX";
-  const cur = Number(localStorage.getItem(key) || "0");
-  const nxt = (Number.isFinite(cur) ? cur : 0) + 1;
-  localStorage.setItem(key, String(nxt));
-  return String(nxt).padStart(3, "0");
+  const raw = localStorage.getItem(INDEX_KEY);
+  const n = Number(raw);
+  const next = Number.isFinite(n) ? n + 1 : 1;
+  localStorage.setItem(INDEX_KEY, String(next));
+  return next;
+}
+
+function useApiBase() {
+  // Allow build-time override if you ever set VITE_API_BASE in Vite:
+  // const base = import.meta.env.VITE_API_BASE;
+  // but keep safe for environments where import.meta is undefined.
+  let base = "";
+  try {
+    base = (import.meta?.env?.VITE_API_BASE || "").trim();
+  } catch {
+    base = "";
+  }
+  return base || DEFAULT_API_BASE;
 }
 
 export default function App() {
+  const apiBase = useApiBase();
+
+  const cameraInputRef = useRef(null);
+  const uploadInputRef = useRef(null);
+
   const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const [rawBackend, setRawBackend] = useState(null);
   const [error, setError] = useState("");
+  const [rawBackend, setRawBackend] = useState(null);
 
-  const [result, setResult] = useState(null); // { w, e, index }
-  const [index, setIndex] = useState("001");
+  const [result, setResult] = useState(null); // { windage_clicks, elevation_clicks, index, pngDataUrl }
+  const [secPngUrl, setSecPngUrl] = useState("");
 
-  const img = useImageFromFile(file);
-
-  const canvasRef = useRef(null);
-
-  // Derive UI-safe values (LOCKED)
-  const derived = useMemo(() => {
-    const w = result?.w;
-    const e = result?.e;
-
-    return {
-      windArrow: arrowForWindage(w),
-      elevArrow: arrowForElevation(e),
-      windText: labelForWindage(w),
-      elevText: labelForElevation(e),
-    };
-  }, [result]);
-
-  // Draw SEC card to canvas for download
+  // revoke old object URLs
   useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
+    return () => {
+      if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
-
-    // 4x6-ish canvas (high-res for crisp PNG)
-    const W = 1200;
-    const H = 1800;
-    c.width = W;
-    c.height = H;
-
-    // White background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, W, H);
-
-    // Border
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 18;
-    ctx.strokeRect(40, 40, W - 80, H - 80);
-    ctx.lineWidth = 6;
-    ctx.strokeRect(80, 80, W - 160, H - 160);
-
-    // Title
-    ctx.fillStyle = "#000000";
-    ctx.font = "bold 86px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("SCZN3 Shooter Experience Card (SEC)", W / 2, 210);
-
-    // Sections
-    ctx.font = "bold 84px Arial";
-    ctx.fillText("Windage", W / 2, 620);
-
-    // Windage arrow + number
-    ctx.font = "bold 200px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(`${derived.windArrow} ${derived.windText}`.trim(), W / 2, 860);
-
-    // Elevation label
-    ctx.font = "bold 84px Arial";
-    ctx.fillText("Elevation", W / 2, 1180);
-
-    // Elevation arrow + number
-    ctx.font = "bold 200px Arial";
-    ctx.fillText(`${derived.elevArrow} ${derived.elevText}`.trim(), W / 2, 1420);
-
-    // Index
-    ctx.font = "italic 64px Arial";
-    ctx.fillText(`Index: ${index}`, W / 2, 1670);
-  }, [derived, index]);
-
-  const onPickFile = (e) => {
+  function onPickFile(f) {
     setError("");
     setRawBackend(null);
     setResult(null);
+    setSecPngUrl("");
 
-    const f = e.target.files?.[0] || null;
+    if (!f) {
+      setFile(null);
+      setPreviewUrl("");
+      return;
+    }
+
     setFile(f);
-  };
+    const url = URL.createObjectURL(f);
+    setPreviewUrl(url);
+  }
 
   async function onAnalyze() {
     setError("");
     setRawBackend(null);
     setResult(null);
+    setSecPngUrl("");
 
     if (!file) {
-      setError("Choose a target photo first.");
+      setError("Pick a target photo first.");
       return;
     }
 
-    setLoading(true);
+    setBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
+      const fd = new FormData();
+      fd.append("file", file);
 
-      const res = await fetch(SEC_ENDPOINT, {
+      const url = `${apiBase}${SEC_PATH}`;
+
+      const res = await fetch(url, {
         method: "POST",
-        body: form,
+        body: fd,
       });
 
       const text = await res.text().catch(() => "");
-      let data = null;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = { raw: text };
-      }
+      const json = safeJsonParse(text);
 
-      setRawBackend(data);
+      // Preserve raw for Debug section
+      setRawBackend(json ?? { raw: text, status: res.status });
 
       if (!res.ok) {
-        setError(
-          `Backend error (${res.status}). ${
-            data?.error || data?.message || "See Debug."
-          }`
-        );
+        setError(`Backend error (${res.status}). Check Debug.`);
         return;
       }
 
-      const { w, e } = getClicksFromBackend(data);
+      const payload = json ?? {};
+      const { w, e } = extractClicks(payload);
 
       // FAIL CLOSED if missing clicks
-      if (!Number.isFinite(w) || !Number.isFinite(e)) {
+      if (!isNum(w) || !isNum(e)) {
         setError("Backend response missing windage/elevation click values.");
         return;
       }
 
-      const idx = nextIndex();
-      setIndex(idx);
-      setResult({ w: Number(w), e: Number(e), index: idx });
+      // LOCKED direction + formatting
+      const windage = lockedDirection(w, "windage");
+      const elevation = lockedDirection(e, "elevation");
+
+      const index = nextIndex();
+
+      const png = renderSecPng({ windage, elevation, index });
+      if (!png) {
+        setError("PNG render failed.");
+        return;
+      }
+
+      setResult({
+        windage_clicks: round2(w),
+        elevation_clicks: round2(e),
+        index,
+        windage,
+        elevation,
+        pngDataUrl: png,
+      });
+
+      setSecPngUrl(png);
     } catch (err) {
-      setError(`Load failed: ${err?.message || String(err)}`);
+      setError("Load failed");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
-  function onDownloadPng() {
-    const c = canvasRef.current;
-    if (!c) return;
-    const url = c.toDataURL("image/png");
-
+  function downloadPng() {
+    if (!secPngUrl) return;
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `SCZN3_SEC_${index}.png`;
+    a.href = secPngUrl;
+    a.download = `SCZN3_SEC_${String(result?.index ?? 0).padStart(3, "0")}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
   }
 
-  return (
-    <div style={{ fontFamily: "Arial, sans-serif", padding: 20, maxWidth: 1100, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 54, margin: "10px 0 20px" }}>SCZN3 Shooter Experience Card (SEC)</h1>
+  async function sharePng() {
+    if (!secPngUrl) return;
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-        <label style={{ display: "inline-block" }}>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={onPickFile}
-            style={{ display: "none" }}
-          />
-          <span
-            style={{
-              display: "inline-block",
-              padding: "12px 18px",
-              border: "1px solid #ccc",
-              borderRadius: 10,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            Choose Target Photo
-          </span>
-        </label>
+    // Convert dataURL to Blob/File for Web Share
+    try {
+      const res = await fetch(secPngUrl);
+      const blob = await res.blob();
+      const fileObj = new File([blob], "SCZN3_SEC.png", { type: "image/png" });
+
+      if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+        await navigator.share({
+          title: "SCZN3 SEC",
+          text: "SCZN3 Shooter Experience Card (SEC)",
+          files: [fileObj],
+        });
+      } else {
+        // fallback: just download
+        downloadPng();
+      }
+    } catch {
+      downloadPng();
+    }
+  }
+
+  const analyzeDisabled = busy || !file;
+  const downloadDisabled = !secPngUrl;
+  const shareDisabled = !secPngUrl;
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "40px auto", padding: 20, fontFamily: "Arial, sans-serif" }}>
+      <h1 style={{ fontSize: 46, marginBottom: 20 }}>SCZN3 Shooter Experience Card (SEC)</h1>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+        <button
+          onClick={() => cameraInputRef.current?.click()}
+          style={btnStyle}
+          disabled={busy}
+        >
+          Take Target Photo
+        </button>
+
+        <button
+          onClick={() => uploadInputRef.current?.click()}
+          style={btnStyle}
+          disabled={busy}
+        >
+          Upload Target Photo
+        </button>
 
         <button
           onClick={onAnalyze}
-          disabled={!file || loading}
-          style={{
-            padding: "12px 18px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: !file || loading ? "not-allowed" : "pointer",
-            fontWeight: 700,
-          }}
+          style={{ ...btnStyle, opacity: analyzeDisabled ? 0.55 : 1 }}
+          disabled={analyzeDisabled}
         >
-          {loading ? "Analyzing..." : "Analyze / SEC"}
+          Analyze / SEC
         </button>
 
         <button
-          onClick={onDownloadPng}
-          disabled={!result}
-          style={{
-            padding: "12px 18px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: !result ? "not-allowed" : "pointer",
-            fontWeight: 700,
-            opacity: !result ? 0.5 : 1,
-          }}
+          onClick={downloadPng}
+          style={{ ...btnStyle, opacity: downloadDisabled ? 0.55 : 1 }}
+          disabled={downloadDisabled}
         >
           Download SEC (PNG)
         </button>
+
+        <button
+          onClick={sharePng}
+          style={{ ...btnStyle, opacity: shareDisabled ? 0.55 : 1 }}
+          disabled={shareDisabled}
+        >
+          Share SEC
+        </button>
       </div>
 
+      {/* Hidden inputs */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+      />
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+      />
+
       {error ? (
-        <div style={{ background: "#ffe5e5", border: "1px solid #ffb3b3", padding: 12, borderRadius: 10, marginBottom: 16 }}>
+        <div style={errorStyle}>
           <b>Error:</b> {error}
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
+        {/* Target Preview */}
         <div>
-          <h3 style={{ margin: "10px 0" }}>Target Preview</h3>
-          <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12, minHeight: 300 }}>
-            {img ? (
+          <h2 style={{ marginTop: 14 }}>Target Preview</h2>
+          <div style={panelStyle}>
+            {previewUrl ? (
               <img
-                src={img.src}
+                src={previewUrl}
                 alt="Target preview"
-                style={{ width: "100%", borderRadius: 10 }}
+                style={{ width: "100%", display: "block", borderRadius: 8 }}
               />
             ) : (
-              <div style={{ color: "#777" }}>Choose a target photo to preview it.</div>
+              <div style={{ color: "#666" }}>Pick a photo to preview it here.</div>
             )}
           </div>
         </div>
 
+        {/* SEC Preview */}
         <div>
-          <h3 style={{ margin: "10px 0" }}>SEC Preview</h3>
-          <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12 }}>
-            <canvas ref={canvasRef} style={{ width: "100%", borderRadius: 10 }} />
+          <h2 style={{ marginTop: 14 }}>SEC Preview</h2>
+          <div style={panelStyle}>
+            {secPngUrl ? (
+              <img
+                src={secPngUrl}
+                alt="SEC preview"
+                style={{ width: "100%", display: "block", borderRadius: 8 }}
+              />
+            ) : (
+              <div style={{ color: "#666" }}>Analyze to generate the SEC card.</div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Unlock section (kept simple) */}
+      <div style={{ marginTop: 18, ...panelStyle }}>
+        <b>Want more?</b>
+        <div style={{ marginTop: 6, fontSize: 16 }}>
+          Unlock Advanced Mode (distance-aware clicks, saved sessions, coaching).
+        </div>
+        <button style={{ ...btnStyle, marginTop: 10 }} disabled>
+          Unlock Advanced
+        </button>
+      </div>
+
+      {/* Debug */}
       <details style={{ marginTop: 18 }}>
         <summary style={{ cursor: "pointer", fontWeight: 700 }}>Debug</summary>
-        <div style={{ marginTop: 10, fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
-          <div><b>API_BASE:</b> {API_BASE || "(same-origin)"} </div>
-          <div><b>SEC_ENDPOINT:</b> {SEC_ENDPOINT}</div>
-          <div><b>Index:</b> {index}</div>
-          <div><b>Result (signed):</b> {result ? JSON.stringify(result, null, 2) : "(none)"}</div>
-          <div><b>Raw backend:</b> {rawBackend ? JSON.stringify(rawBackend, null, 2) : "(none)"}</div>
+        <div style={{ marginTop: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+          <div><b>API Base:</b> {apiBase}</div>
+          <div><b>SEC Path:</b> {SEC_PATH}</div>
+          <div><b>Has file:</b> {file ? "yes" : "no"}</div>
+          <div style={{ marginTop: 10 }}>
+            <b>Raw backend response:</b>
+            <pre style={{ whiteSpace: "pre-wrap", background: "#f7f7f7", padding: 12, borderRadius: 8 }}>
+{rawBackend ? JSON.stringify(rawBackend, null, 2) : "(none)"}
+            </pre>
+          </div>
+
+          {result ? (
+            <div style={{ marginTop: 10 }}>
+              <b>Parsed clicks (SIGNED):</b>
+              <pre style={{ whiteSpace: "pre-wrap", background: "#f7f7f7", padding: 12, borderRadius: 8 }}>
+{JSON.stringify(
+  {
+    windage_clicks: result.windage_clicks,
+    elevation_clicks: result.elevation_clicks,
+    index: result.index,
+    windage_display: `${result.windage.arrow} ${result.windage.text}`,
+    elevation_display: `${result.elevation.arrow} ${result.elevation.text}`,
+  },
+  null,
+  2
+)}
+              </pre>
+            </div>
+          ) : null}
         </div>
       </details>
     </div>
   );
 }
+
+const btnStyle = {
+  padding: "12px 16px",
+  borderRadius: 10,
+  border: "1px solid #cfcfcf",
+  background: "#ffffff",
+  fontSize: 16,
+  fontWeight: 700,
+};
+
+const panelStyle = {
+  border: "1px solid #ddd",
+  borderRadius: 12,
+  padding: 14,
+  background: "#fff",
+  minHeight: 260,
+};
+
+const errorStyle = {
+  marginTop: 8,
+  marginBottom: 12,
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid #f3b5b5",
+  background: "#ffe6e6",
+};
