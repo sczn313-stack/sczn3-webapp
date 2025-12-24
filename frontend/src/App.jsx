@@ -1,24 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /*
-  SCZN3 Shooter Experience Card (SEC) — v1 (Simple)
-  - Defaults are locked in v1 experience:
-      Distance = 100 yards
-      MOA per click = 0.25
-      Target = 23x23
-  - Frontend does NOT ask for yardage in the primary flow.
-  - Two file buttons so iPad/iOS doesn’t force camera-only.
-  - FAIL CLOSED on no holes (422) and on missing click values.
-  - SEC PNG stays clean: Title + Windage + Elevation + Index ONLY.
+  SCZN3 Shooter Experience Card (SEC) — LOCKED
+  - Direction (arrows) MUST be decided from the raw SIGNED numbers.
+  - Display MUST be absolute value with two decimals.
+  - Backend: POST /api/sec returns { sec: { windage_clicks, elevation_clicks } }
 */
 
-const BUILD_TAG = "LOCK_v3_2025-12-23";
+const BUILD_TAG = "LOCK_v4_2025-12-23";
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
 const SEC_PATH = "/api/sec";
 const INDEX_KEY = "SCZN3_SEC_INDEX";
 
-// ----------------- helpers (LOCK) -----------------
+// ----------------- helpers -----------------
 
 function isNum(n) {
   return typeof n === "number" && Number.isFinite(n);
@@ -39,6 +34,11 @@ function toNum(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+function abs2(n) {
+  if (!isNum(n)) return "0.00";
+  return Math.abs(n).toFixed(2);
+}
+
 function nextIndex() {
   const cur = Number(localStorage.getItem(INDEX_KEY) || "0");
   const nxt = cur + 1;
@@ -47,27 +47,18 @@ function nextIndex() {
 }
 
 function arrowForWindage(w) {
-  // LOCK: sign decides arrow (DIAL_TO_CENTER)
-  // negative => LEFT, positive => RIGHT
+  // DIAL_TO_CENTER: negative => LEFT, positive => RIGHT
   if (!isNum(w) || w === 0) return "";
   return w < 0 ? "←" : "→";
 }
 
 function arrowForElevation(e) {
-  // LOCK: sign decides arrow (DIAL_TO_CENTER)
-  // negative => DOWN, positive => UP
+  // DIAL_TO_CENTER: negative => DOWN, positive => UP
   if (!isNum(e) || e === 0) return "";
   return e < 0 ? "↓" : "↑";
 }
 
-function labelFromSigned(n) {
-  // LOCK: magnitude is always ABS, displayed to 2 decimals.
-  if (!isNum(n)) return "0.00";
-  return Math.abs(n).toFixed(2);
-}
-
 function getApiBase() {
-  // Allows override via ?api=... if you ever need it.
   try {
     const u = new URL(window.location.href);
     const api = u.searchParams.get("api");
@@ -77,35 +68,49 @@ function getApiBase() {
 }
 
 function getClicksFromBackend(data) {
-  // ONLY pull raw SIGNED values from backend.
-  // Your backend response is: { sec: { windage_clicks, elevation_clicks } }
-  const sec = data?.sec && typeof data.sec === "object" ? data.sec : null;
+  // Expected shapes:
+  // 1) { sec: { windage_clicks, elevation_clicks }, ... }
+  // 2) { windage_clicks, elevation_clicks, ... }  (fallback)
+  const src =
+    data && typeof data === "object" && data.sec && typeof data.sec === "object"
+      ? data.sec
+      : data;
 
-  const w = toNum(sec?.windage_clicks);
-  const e = toNum(sec?.elevation_clicks);
-
+  const w = toNum(src?.windage_clicks);
+  const e = toNum(src?.elevation_clicks);
   return { w, e };
+}
+
+function looksLikeHeic(file) {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  return type.includes("heic") || type.includes("heif") || name.endsWith(".heic") || name.endsWith(".heif");
 }
 
 // ----------------- UI -----------------
 
 export default function App() {
   const [apiBase] = useState(getApiBase());
+
   const [file, setFile] = useState(null);
   const [imgUrl, setImgUrl] = useState("");
+
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   // Raw backend response for debug panel
   const [rawBackend, setRawBackend] = useState(null);
 
-  // LOCKED: store signed clicks separately (never overwrite with display formatting)
-  const [signed, setSigned] = useState({ w: 0, e: 0, index: "000" });
+  // Locked signed results
+  const [result, setResult] = useState({
+    windage_clicks: 0,
+    elevation_clicks: 0,
+    index: "000",
+  });
 
   const inputCameraRef = useRef(null);
   const inputUploadRef = useRef(null);
 
-  // create preview URL
   useEffect(() => {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -113,22 +118,16 @@ export default function App() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const secView = useMemo(() => {
-    const w = toNum(signed.w);
-    const e = toNum(signed.e);
+  const view = useMemo(() => {
+    const w = Number(result.windage_clicks);
+    const e = Number(result.elevation_clicks);
 
     return {
-      windArrow: arrowForWindage(w),
-      elevArrow: arrowForElevation(e),
-      windText: labelFromSigned(w),
-      elevText: labelFromSigned(e),
-      index: signed.index,
-
-      // Debug
-      windSigned: isNum(w) ? w : 0,
-      elevSigned: isNum(e) ? e : 0,
+      wind: { arrow: arrowForWindage(w), text: abs2(w), signed: w },
+      elev: { arrow: arrowForElevation(e), text: abs2(e), signed: e },
+      index: result.index,
     };
-  }, [signed]);
+  }, [result]);
 
   async function onAnalyze() {
     setError("");
@@ -140,11 +139,25 @@ export default function App() {
         return;
       }
 
+      // Prevent common iOS HEIC crash on some servers
+      if (looksLikeHeic(file)) {
+        setError("This photo is HEIC/HEIF. Convert to JPG/PNG and try again.");
+        return;
+      }
+
       const form = new FormData();
-      form.append("image", file);
+      // Backend expects field name: "image"
+      form.append("image", file, file.name || "target.jpg");
 
       const url = `${apiBase}${SEC_PATH}`;
-      const res = await fetch(url, { method: "POST", body: form });
+      const res = await fetch(url, {
+        method: "POST",
+        body: form,
+        headers: {
+          // helps some backends choose JSON error responses
+          Accept: "application/json",
+        },
+      });
 
       const text = await res.text().catch(() => "");
       let data = null;
@@ -163,7 +176,7 @@ export default function App() {
 
       const { w, e } = getClicksFromBackend(data);
 
-      // FAIL CLOSED if missing clicks (prevents “not locked” behavior)
+      // Fail closed if missing clicks
       if (!isNum(w) || !isNum(e)) {
         setError("Backend response missing windage/elevation click values.");
         return;
@@ -171,8 +184,11 @@ export default function App() {
 
       const index = nextIndex();
 
-      // STORE RAW SIGNED NUMBERS ONLY
-      setSigned({ w, e, index });
+      setResult({
+        windage_clicks: w,
+        elevation_clicks: e,
+        index,
+      });
     } catch (err) {
       setError("Error: Load failed");
     } finally {
@@ -201,10 +217,6 @@ export default function App() {
       <h1 style={{ fontSize: 56, margin: 0, lineHeight: 1.05 }}>
         SCZN3 Shooter Experience Card (SEC)
       </h1>
-
-      <div style={{ marginTop: 6, opacity: 0.55, fontSize: 12 }}>
-        Build: {BUILD_TAG}
-      </div>
 
       <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button onClick={onPickCamera} style={btnStyle}>
@@ -243,7 +255,7 @@ export default function App() {
         <div>
           <h2 style={{ marginBottom: 8 }}>SEC Preview</h2>
           <div style={panelStyle}>
-            <SecCard wind={secView} elev={secView} />
+            <SecCard wind={view.wind} elev={view.elev} index={view.index} />
           </div>
         </div>
       </div>
@@ -261,23 +273,27 @@ export default function App() {
 
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 700 }}>Raw backend response:</div>
-            <pre style={preStyle}>{rawBackend ? JSON.stringify(rawBackend, null, 2) : "(none)"}</pre>
+            <pre style={preStyle}>
+              {rawBackend ? JSON.stringify(rawBackend, null, 2) : "(none)"}
+            </pre>
           </div>
 
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 700 }}>Parsed clicks (SIGNED):</div>
             <pre style={preStyle}>
-{JSON.stringify(
-  {
-    windage_clicks: signed.w,
-    elevation_clicks: signed.e,
-    index: signed.index,
-    windage_display: secView.windText,
-    elevation_display: secView.elevText,
-  },
-  null,
-  2
-)}
+              {JSON.stringify(
+                {
+                  windage_clicks: view.wind.signed,
+                  elevation_clicks: view.elev.signed,
+                  index: view.index,
+                  windage_display: view.wind.text,
+                  elevation_display: view.elev.text,
+                  windage_arrow: view.wind.arrow,
+                  elevation_arrow: view.elev.arrow,
+                },
+                null,
+                2
+              )}
             </pre>
           </div>
         </div>
@@ -303,7 +319,7 @@ export default function App() {
   );
 }
 
-function SecCard({ wind, elev }) {
+function SecCard({ wind, elev, index }) {
   return (
     <div style={cardStyle}>
       <div style={{ textAlign: "center", fontSize: 18, fontWeight: 700 }}>
@@ -314,9 +330,9 @@ function SecCard({ wind, elev }) {
         <div style={{ fontSize: 28, fontWeight: 700 }}>Windage</div>
         <div style={{ fontSize: 92, fontWeight: 900, lineHeight: 1 }}>
           <span style={{ display: "inline-block", width: 92, textAlign: "center" }}>
-            {wind.windArrow}
+            {wind.arrow}
           </span>
-          <span>{wind.windText}</span>
+          <span>{wind.text}</span>
         </div>
       </div>
 
@@ -324,14 +340,14 @@ function SecCard({ wind, elev }) {
         <div style={{ fontSize: 28, fontWeight: 700 }}>Elevation</div>
         <div style={{ fontSize: 92, fontWeight: 900, lineHeight: 1 }}>
           <span style={{ display: "inline-block", width: 92, textAlign: "center" }}>
-            {elev.elevArrow}
+            {elev.arrow}
           </span>
-          <span>{elev.elevText}</span>
+          <span>{elev.text}</span>
         </div>
       </div>
 
       <div style={{ marginTop: 22, textAlign: "center", fontStyle: "italic", fontSize: 22 }}>
-        Index: {wind.index}
+        Index: {index}
       </div>
     </div>
   );
@@ -374,5 +390,8 @@ const cardStyle = {
 const preStyle = {
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
-  margin: 0,
+  background: "#f7f7f7",
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid #e6e6e6",
 };
