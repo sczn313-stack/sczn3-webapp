@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /*
   SCZN3 Shooter Experience Card (SEC) — LOCKED
-  - Direction (arrows) MUST be decided from the raw SIGNED numbers.
-  - Display MUST be absolute value with two decimals.
+  - Arrows MUST come from raw SIGNED values.
+  - Display MUST be ABS(value) with two decimals.
+  - Frontend normalizes uploads to JPEG (downscaled) to prevent iOS/HEIC/huge-image backend 500s.
   - Backend: POST /api/sec returns { sec: { windage_clicks, elevation_clicks } }
 */
 
-const BUILD_TAG = "LOCK_v4_2025-12-23";
+const BUILD_TAG = "LOCK_v5_2025-12-23";
 
 const DEFAULT_API_BASE = "https://sczn3-sec-backend-144.onrender.com";
 const SEC_PATH = "/api/sec";
@@ -81,10 +82,43 @@ function getClicksFromBackend(data) {
   return { w, e };
 }
 
-function looksLikeHeic(file) {
-  const name = (file?.name || "").toLowerCase();
-  const type = (file?.type || "").toLowerCase();
-  return type.includes("heic") || type.includes("heif") || name.endsWith(".heic") || name.endsWith(".heif");
+async function normalizeToJpeg(file, maxDim = 1800, quality = 0.9) {
+  // Converts browser-decodable images into a safe JPEG (and downscales big images).
+  // This prevents many iOS-related backend 500s (HEIC / huge resolution / memory spikes).
+  const imgUrl = URL.createObjectURL(file);
+
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = imgUrl;
+    });
+
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const outW = Math.max(1, Math.round(w * scale));
+    const outH = Math.max(1, Math.round(h * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, outW, outH);
+
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", quality)
+    );
+
+    if (!blob) throw new Error("JPEG conversion failed");
+
+    return { blob, filename: "target.jpg" };
+  } finally {
+    URL.revokeObjectURL(imgUrl);
+  }
 }
 
 // ----------------- UI -----------------
@@ -139,24 +173,17 @@ export default function App() {
         return;
       }
 
-      // Prevent common iOS HEIC crash on some servers
-      if (looksLikeHeic(file)) {
-        setError("This photo is HEIC/HEIF. Convert to JPG/PNG and try again.");
-        return;
-      }
+      // Normalize upload to safe JPEG (prevents many backend 500s from iOS images)
+      const norm = await normalizeToJpeg(file);
 
       const form = new FormData();
-      // Backend expects field name: "image"
-      form.append("image", file, file.name || "target.jpg");
+      form.append("image", norm.blob, norm.filename);
 
       const url = `${apiBase}${SEC_PATH}`;
       const res = await fetch(url, {
         method: "POST",
         body: form,
-        headers: {
-          // helps some backends choose JSON error responses
-          Accept: "application/json",
-        },
+        headers: { Accept: "application/json" },
       });
 
       const text = await res.text().catch(() => "");
