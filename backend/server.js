@@ -1,17 +1,16 @@
-// SCZN3 SEC Backend — JSON-safe error wrapper for /api/sec
-// Paste this as the ENTIRE FILE that currently contains your POST /api/sec route.
-
+// server.js — SCZN3 SEC Backend (LOCK_BACKEND_v2)
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import sharp from "sharp";
 
-// If your existing code imports the SEC engine, keep that import here.
-// Example (rename to match your project):
-// import { runSec } from "./secEngine.js";
+const BUILD_TAG = "LOCK_BACKEND_v2_2025-12-24";
 
 const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json({ limit: "2mb" }));
 
-// ---- LOCKED CONFIG (matches your /api/health screenshot) ----
+// ---- LOCKED CONFIG ----
 const CONFIG = {
   DISTANCE_YARDS: 100,
   MOA_PER_CLICK: 0.25,
@@ -21,113 +20,326 @@ const CONFIG = {
   MAX_ABS_CLICKS: 80,
 };
 
-// ---- CORS ----
-app.use(cors({ origin: "*" }));
-
-// ---- Multer: memory upload (simple & reliable on Render) ----
+// Accept BOTH: "image" (frontend) and "file" (older code)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 12 * 1024 * 1024, // 12MB
-  },
+  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB
 });
 
-// ---- Helpers ----
 function safeError(err) {
   return {
     name: err?.name || "Error",
     message: err?.message || String(err),
-    // keep stack short so it’s readable on iPad
-    stack: (err?.stack || "").split("\n").slice(0, 8).join("\n"),
+    stack: (err?.stack || "").split("\n").slice(0, 10).join("\n"),
   };
 }
 
-function isFiniteNumber(n) {
-  return typeof n === "number" && Number.isFinite(n);
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function inchesPerMOA(distanceYds) {
+  return 1.047 * (distanceYds / 100);
+}
+
+function to2(n) {
+  return Number(Number(n).toFixed(2));
+}
+
+function otsuThreshold(gray) {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+
+  const total = gray.length;
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+
+  let sumB = 0;
+  let wB = 0;
+  let varMax = -1;
+  let threshold = 90;
+
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > varMax) {
+      varMax = between;
+      threshold = t;
+    }
+  }
+  return threshold;
+}
+
+function findBBoxNotWhite(gray, w, h, notWhiteThresh = 235) {
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let i = 0; i < gray.length; i++) {
+    if (gray[i] < notWhiteThresh) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+function connectedComponents(mask, w, h, region) {
+  const visited = new Uint8Array(w * h);
+  const comps = [];
+  const { minX, minY, maxX, maxY } = region;
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const i0 = y * w + x;
+      if (!mask[i0] || visited[i0]) continue;
+
+      const stack = [i0];
+      visited[i0] = 1;
+
+      let area = 0;
+      let sumX = 0;
+      let sumY = 0;
+      let bx0 = w, by0 = h, bx1 = -1, by1 = -1;
+
+      while (stack.length) {
+        const i = stack.pop();
+        area++;
+
+        const ix = i % w;
+        const iy = (i / w) | 0;
+
+        sumX += ix;
+        sumY += iy;
+
+        if (ix < bx0) bx0 = ix;
+        if (iy < by0) by0 = iy;
+        if (ix > bx1) bx1 = ix;
+        if (iy > by1) by1 = iy;
+
+        const left = i - 1;
+        const right = i + 1;
+        const up = i - w;
+        const down = i + w;
+
+        if (ix > minX && mask[left] && !visited[left]) { visited[left] = 1; stack.push(left); }
+        if (ix < maxX && mask[right] && !visited[right]) { visited[right] = 1; stack.push(right); }
+        if (iy > minY && mask[up] && !visited[up]) { visited[up] = 1; stack.push(up); }
+        if (iy < maxY && mask[down] && !visited[down]) { visited[down] = 1; stack.push(down); }
+      }
+
+      const bw = bx1 - bx0 + 1;
+      const bh = by1 - by0 + 1;
+      const fill = area / (bw * bh);
+      const aspect = Math.max(bw / bh, bh / bw);
+
+      comps.push({ area, cx: sumX / area, cy: sumY / area, bx0, by0, bx1, by1, bw, bh, fill, aspect });
+    }
+  }
+  return comps;
+}
+
+function pickTightest(points, kMax) {
+  if (points.length <= kMax) return points;
+  const mx = points.reduce((a, p) => a + p.cx, 0) / points.length;
+  const my = points.reduce((a, p) => a + p.cy, 0) / points.length;
+
+  return points
+    .map((p) => ({ p, d2: (p.cx - mx) ** 2 + (p.cy - my) ** 2 }))
+    .sort((a, b) => a.d2 - b.d2)
+    .slice(0, kMax)
+    .map((x) => x.p);
 }
 
 // ---- Routes ----
 app.get("/", (_req, res) => {
-  res.json({ ok: true, routes: ["GET /", "GET /api/health", "POST /api/sec"] });
+  res.json({ ok: true, build: BUILD_TAG, routes: ["GET /", "GET /api/health", "POST /api/sec"] });
 });
 
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
+    build: BUILD_TAG,
     routes: ["GET /", "GET /api/health", "POST /api/sec"],
     config: CONFIG,
   });
 });
 
-app.post("/api/sec", upload.single("image"), async (req, res) => {
-  const started = Date.now();
+app.post(
+  "/api/sec",
+  upload.fields([{ name: "image", maxCount: 1 }, { name: "file", maxCount: 1 }]),
+  async (req, res) => {
+    const started = Date.now();
+    try {
+      const f = req.files?.image?.[0] || req.files?.file?.[0] || null;
 
-  try {
-    if (!req.file) {
-      return res.status(400).json({
+      if (!f?.buffer) {
+        return res.status(400).json({
+          ok: false,
+          error: "NO_FILE",
+          message: 'No file uploaded. Expected form field name: "image" (or legacy "file").',
+        });
+      }
+
+      if (!f.mimetype?.startsWith("image/")) {
+        return res.status(400).json({
+          ok: false,
+          error: "NOT_IMAGE",
+          message: `Upload must be an image. Got mimetype: ${f.mimetype}`,
+        });
+      }
+
+      // iOS-safe normalize: rotate + resize + grayscale
+      const MAX_W = 1400;
+      const img = sharp(f.buffer).rotate();
+      const meta = await img.metadata();
+
+      const { data, info } = await img
+        .resize({ width: MAX_W, withoutEnlargement: true })
+        .grayscale()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+      const w = info.width;
+      const h = info.height;
+
+      const inkBox = findBBoxNotWhite(data, w, h, 235);
+      if (!inkBox || inkBox.width < 200 || inkBox.height < 200) {
+        return res.status(422).json({
+          ok: false,
+          error: "NO_TARGET",
+          message: "Could not find target region. Use a clearer photo with the full target in frame.",
+        });
+      }
+
+      // pad + square crop
+      const INK_PAD_PCT = 0.03;
+      const padX = Math.round(inkBox.width * INK_PAD_PCT);
+      const padY = Math.round(inkBox.height * INK_PAD_PCT);
+
+      let minX = clamp(inkBox.minX - padX, 0, w - 1);
+      let minY = clamp(inkBox.minY - padY, 0, h - 1);
+      let maxX = clamp(inkBox.maxX + padX, 0, w - 1);
+      let maxY = clamp(inkBox.maxY + padY, 0, h - 1);
+
+      const bw = maxX - minX + 1;
+      const bh = maxY - minY + 1;
+      const side = Math.min(bw, bh);
+      const cx = minX + bw / 2;
+      const cy = minY + bh / 2;
+
+      minX = clamp(Math.round(cx - side / 2), 0, w - side);
+      minY = clamp(Math.round(cy - side / 2), 0, h - side);
+      maxX = minX + side - 1;
+      maxY = minY + side - 1;
+
+      const region = { minX, minY, maxX, maxY, width: side, height: side };
+      const targetCx = minX + side / 2;
+      const targetCy = minY + side / 2;
+
+      // Otsu in region
+      const regionGray = new Uint8Array(region.width * region.height);
+      let k = 0;
+      for (let y = minY; y <= maxY; y++) {
+        const row = y * w;
+        for (let x = minX; x <= maxX; x++) regionGray[k++] = data[row + x];
+      }
+
+      let t = otsuThreshold(regionGray);
+      t = clamp(t, 35, 150);
+
+      const mask = new Uint8Array(w * h);
+      for (let y = minY; y <= maxY; y++) {
+        const row = y * w;
+        for (let x = minX; x <= maxX; x++) {
+          const i = row + x;
+          mask[i] = data[i] < t ? 1 : 0;
+        }
+      }
+
+      const comps = connectedComponents(mask, w, h, region);
+
+      const targetArea = region.width * region.height;
+      const minArea = Math.round(targetArea * 0.00003);
+      const maxArea = Math.round(targetArea * 0.006);
+      const margin = Math.max(8, Math.round(region.width * 0.01));
+
+      const candidates = comps.filter((c) => {
+        if (c.area < minArea || c.area > maxArea) return false;
+        if (c.aspect > 3.0) return false;
+        if (c.fill < 0.20) return false;
+        if (c.bx0 <= minX + margin) return false;
+        if (c.by0 <= minY + margin) return false;
+        if (c.bx1 >= maxX - margin) return false;
+        if (c.by1 >= maxY - margin) return false;
+        return true;
+      });
+
+      if (candidates.length < CONFIG.MIN_SHOTS) {
+        return res.status(422).json({
+          ok: false,
+          error: "NO_HOLES",
+          message: `Not enough shots detected (${candidates.length}). Need at least ${CONFIG.MIN_SHOTS}.`,
+          debug: { threshold: t, candidates: candidates.length },
+        });
+      }
+
+      const cluster = pickTightest(candidates, Math.min(CONFIG.MAX_SHOTS, candidates.length));
+
+      const poiX = cluster.reduce((a, p) => a + p.cx, 0) / cluster.length;
+      const poiY = cluster.reduce((a, p) => a + p.cy, 0) / cluster.length;
+
+      const dxPx = poiX - targetCx;
+      const dyPx = poiY - targetCy;
+
+      const inchPerPx = CONFIG.TARGET_WIDTH_IN / region.width;
+      const dxIn = dxPx * inchPerPx;
+      const dyIn = dyPx * inchPerPx;
+
+      const inPerMoa = inchesPerMOA(CONFIG.DISTANCE_YARDS);
+      const windMoa = dxIn / inPerMoa;
+      const elevMoa = dyIn / inPerMoa;
+
+      let windClicks = -(windMoa / CONFIG.MOA_PER_CLICK);
+      let elevClicks = +(elevMoa / CONFIG.MOA_PER_CLICK);
+
+      windClicks = clamp(windClicks, -CONFIG.MAX_ABS_CLICKS, CONFIG.MAX_ABS_CLICKS);
+      elevClicks = clamp(elevClicks, -CONFIG.MAX_ABS_CLICKS, CONFIG.MAX_ABS_CLICKS);
+
+      return res.json({
+        ok: true,
+        units: "CLICKS",
+        convention: "DIAL_TO_CENTER",
+        sec: {
+          windage_clicks: to2(windClicks),
+          elevation_clicks: to2(elevClicks),
+        },
+        meta: { ms: Date.now() - started, build: BUILD_TAG, input: { w: meta?.width, h: meta?.height } },
+      });
+    } catch (err) {
+      return res.status(500).json({
         ok: false,
-        error: "NO_FILE",
-        message: 'No file uploaded. Expected form field name: "image".',
+        error: "SEC_500",
+        message: "SEC processing failed in backend.",
+        detail: safeError(err),
       });
     }
-
-    const { originalname, mimetype, size } = req.file;
-
-    // Basic sanity check
-    if (!mimetype?.startsWith("image/")) {
-      return res.status(400).json({
-        ok: false,
-        error: "NOT_IMAGE",
-        message: `Upload must be an image. Got mimetype: ${mimetype}`,
-      });
-    }
-
-    // ---- CALL YOUR EXISTING ENGINE HERE ----
-    // Replace this block with your existing logic that produces signed click numbers.
-    //
-    // Example expected return:
-    // const { windage_clicks, elevation_clicks } = await runSec(req.file.buffer, CONFIG);
-    //
-    // For now, this placeholder throws so we *see* exactly what file you’re in
-    // if you forgot to wire your existing function.
-    throw new Error(
-      "SEC engine call not wired in this file yet. Paste your existing SEC engine call where indicated."
-    );
-
-    // if (!isFiniteNumber(windage_clicks) || !isFiniteNumber(elevation_clicks)) {
-    //   return res.status(422).json({
-    //     ok: false,
-    //     error: "MISSING_CLICKS",
-    //     message: "Engine did not return numeric windage/elevation clicks.",
-    //   });
-    // }
-
-    // return res.json({
-    //   ok: true,
-    //   units: "CLICKS",
-    //   convention: "DIAL_TO_CENTER",
-    //   sec: { windage_clicks, elevation_clicks },
-    //   meta: { ms: Date.now() - started, originalname, mimetype, size },
-    // });
-  } catch (err) {
-    // IMPORTANT: always return JSON (never HTML)
-    return res.status(500).json({
-      ok: false,
-      error: "SEC_500",
-      message: "SEC processing failed in backend.",
-      meta: {
-        ms: Date.now() - started,
-        file: req?.file
-          ? { originalname: req.file.originalname, mimetype: req.file.mimetype, size: req.file.size }
-          : null,
-      },
-      detail: safeError(err),
-    });
   }
+);
+
+app.use((req, res) => {
+  res.status(404).json({ ok: false, error: `Not found: ${req.method} ${req.path}` });
 });
 
-// ---- Start ----
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`SCZN3 SEC backend listening on ${PORT}`);
-});
+app.listen(PORT, () => console.log(`SCZN3 SEC backend listening on ${PORT}`));
