@@ -1,6 +1,6 @@
 // backend/server.js
-// SCZN3 SEC Backend (LOCK_BACKEND_v3_2025-12-24)
-// - Always JSON (never HTML error pages)
+// SCZN3 SEC Backend (LOCK_BACKEND_v4_2025-12-24)
+// - Always returns JSON (never HTML error pages)
 // - Accepts multipart field: "image" (frontend) OR legacy "file"
 // - Returns: { ok:true, sec:{ windage_clicks, elevation_clicks } } (SIGNED, two decimals)
 
@@ -9,11 +9,7 @@ import cors from "cors";
 import multer from "multer";
 import sharp from "sharp";
 
-const BUILD_TAG = "LOCK_BACKEND_v3_2025-12-24";
-
-const app = express();
-app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "2mb" }));
+const BUILD_TAG = "LOCK_BACKEND_v4_2025-12-24";
 
 // ---- SCZN3 defaults (v1.2 locked) ----
 const CONFIG = {
@@ -37,11 +33,17 @@ const CONFIG = {
   MIN_FILL: 0.20,
 };
 
+const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json({ limit: "2mb" }));
+
 // ---- Multer: in-memory upload ----
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 12 * 1024 * 1024 }, // 12MB
 });
+
+// ----------------- helpers -----------------
 
 function safeError(err) {
   return {
@@ -55,13 +57,13 @@ function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+function inchesPerMOA(distanceYds) {
+  return 1.047 * (distanceYds / 100);
+}
+
 function to2(n) {
   const x = Number(n);
   return Number.isFinite(x) ? Number(x.toFixed(2)) : 0;
-}
-
-function inchesPerMOA(distanceYds) {
-  return 1.047 * (distanceYds / 100);
 }
 
 // Otsu threshold on grayscale bytes (0..255)
@@ -81,7 +83,6 @@ function otsuThreshold(grayBytes) {
   for (let t = 0; t < 256; t++) {
     wB += hist[t];
     if (wB === 0) continue;
-
     const wF = total - wB;
     if (wF === 0) break;
 
@@ -95,6 +96,7 @@ function otsuThreshold(grayBytes) {
       threshold = t;
     }
   }
+
   return threshold;
 }
 
@@ -115,6 +117,7 @@ function findBBoxNotWhite(gray, w, h, notWhiteThresh = 235) {
       if (y > maxY) maxY = y;
     }
   }
+
   if (maxX < 0) return null;
 
   return {
@@ -225,9 +228,14 @@ function pickTightest(points, kMax) {
     .map((x) => x.p);
 }
 
-// ---- Routes ----
+// ----------------- routes -----------------
+
 app.get("/", (_req, res) => {
-  res.json({ ok: true, build: BUILD_TAG, routes: ["GET /", "GET /api/health", "POST /api/sec"] });
+  res.json({
+    ok: true,
+    build: BUILD_TAG,
+    routes: ["GET /", "GET /api/health", "POST /api/sec"],
+  });
 });
 
 app.get("/api/health", (_req, res) => {
@@ -235,7 +243,14 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     build: BUILD_TAG,
     routes: ["GET /", "GET /api/health", "POST /api/sec"],
-    config: CONFIG,
+    config: {
+      DISTANCE_YARDS: CONFIG.DISTANCE_YARDS,
+      MOA_PER_CLICK: CONFIG.MOA_PER_CLICK,
+      TARGET_WIDTH_IN: CONFIG.TARGET_WIDTH_IN,
+      MIN_SHOTS: CONFIG.MIN_SHOTS,
+      MAX_SHOTS: CONFIG.MAX_SHOTS,
+      MAX_ABS_CLICKS: CONFIG.MAX_ABS_CLICKS,
+    },
   });
 });
 
@@ -257,7 +272,8 @@ app.post(
         return res.status(400).json({
           ok: false,
           error: "NO_FILE",
-          message: 'No file uploaded. Expected form field name: "image" (or legacy "file").',
+          message:
+            'No file uploaded. Expected form field name: "image" (or legacy "file").',
         });
       }
 
@@ -288,7 +304,8 @@ app.post(
         return res.status(422).json({
           ok: false,
           error: "NO_TARGET",
-          message: "Could not find target region. Make sure the full target is in frame with decent lighting.",
+          message:
+            "Could not find target region. Make sure the full target is in frame with decent lighting.",
         });
       }
 
@@ -321,7 +338,9 @@ app.post(
       let k = 0;
       for (let y = minY; y <= maxY; y++) {
         const row = y * w;
-        for (let x = minX; x <= maxX; x++) regionGray[k++] = data[row + x];
+        for (let x = minX; x <= maxX; x++) {
+          regionGray[k++] = data[row + x];
+        }
       }
 
       let t = otsuThreshold(regionGray);
@@ -349,10 +368,12 @@ app.post(
         if (c.area < minArea || c.area > maxArea) return false;
         if (c.aspect > CONFIG.MAX_ASPECT) return false;
         if (c.fill < CONFIG.MIN_FILL) return false;
+
         if (c.bx0 <= minX + margin) return false;
         if (c.by0 <= minY + margin) return false;
         if (c.bx1 >= maxX - margin) return false;
         if (c.by1 >= maxY - margin) return false;
+
         return true;
       });
 
@@ -361,10 +382,14 @@ app.post(
           ok: false,
           error: "NO_HOLES",
           message: `Not enough shots detected (${candidates.length}). Need at least ${CONFIG.MIN_SHOTS}.`,
+          debug: { threshold: t, candidates: candidates.length },
         });
       }
 
-      const cluster = pickTightest(candidates, Math.min(CONFIG.MAX_SHOTS, candidates.length));
+      const cluster = pickTightest(
+        candidates,
+        Math.min(CONFIG.MAX_SHOTS, candidates.length)
+      );
 
       // POIB (centroid)
       const poiX = cluster.reduce((a, p) => a + p.cx, 0) / cluster.length;
@@ -374,7 +399,7 @@ app.post(
       const dxPx = poiX - targetCx;
       const dyPx = poiY - targetCy;
 
-      // Pixels -> inches using known target width
+      // Pixel -> inches
       const inchPerPx = CONFIG.TARGET_WIDTH_IN / region.width;
       const dxIn = dxPx * inchPerPx; // +right
       const dyIn = dyPx * inchPerPx; // +down
@@ -384,9 +409,9 @@ app.post(
       const windMoa = dxIn / inPerMoa; // +right impacts
       const elevMoa = dyIn / inPerMoa; // +down impacts
 
-      // Corrections to center (DIAL_TO_CENTER):
+      // DIAL_TO_CENTER:
       // impacts right => dial left (negative wind clicks)
-      // impacts low  => dial up  (positive elev clicks)
+      // impacts low   => dial up   (positive elev clicks)
       let windClicks = -(windMoa / CONFIG.MOA_PER_CLICK);
       let elevClicks = +(elevMoa / CONFIG.MOA_PER_CLICK);
 
@@ -404,6 +429,7 @@ app.post(
         },
         meta: {
           ms: Date.now() - started,
+          shots_used: cluster.length,
           input: {
             originalname: f.originalname,
             mimetype: f.mimetype,
@@ -428,6 +454,17 @@ app.post(
 // 404 JSON
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: `Not found: ${req.method} ${req.path}` });
+});
+
+// Final JSON error handler (prevents HTML error pages)
+app.use((err, _req, res, _next) => {
+  res.status(500).json({
+    ok: false,
+    error: "UNHANDLED_500",
+    message: "Unhandled server error.",
+    build: BUILD_TAG,
+    detail: safeError(err),
+  });
 });
 
 const PORT = process.env.PORT || 10000;
