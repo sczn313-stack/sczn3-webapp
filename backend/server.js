@@ -1,16 +1,13 @@
-// server.js — SCZN3 SEC Backend (LOCK_BACKEND_v2)
+// server.js — SCZN3 SEC Backend (LOCK_BACKEND_v3_2025-12-24)
+// Always returns JSON (never HTML) for /api/sec errors.
+
 import express from "express";
 import cors from "cors";
 import multer from "multer";
 import sharp from "sharp";
 
-const BUILD_TAG = "LOCK_BACKEND_v2_2025-12-24";
+const BUILD_TAG = "LOCK_BACKEND_v3_2025-12-24";
 
-const app = express();
-app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "2mb" }));
-
-// ---- LOCKED CONFIG ----
 const CONFIG = {
   DISTANCE_YARDS: 100,
   MOA_PER_CLICK: 0.25,
@@ -20,11 +17,17 @@ const CONFIG = {
   MAX_ABS_CLICKS: 80,
 };
 
-// Accept BOTH: "image" (frontend) and "file" (older code)
+const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json({ limit: "2mb" }));
+
+// Accept BOTH: "image" (frontend) and "file" (legacy)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 12 * 1024 * 1024 }, // 12MB
 });
+
+// ----------------- helpers -----------------
 
 function safeError(err) {
   return {
@@ -62,6 +65,7 @@ function otsuThreshold(gray) {
   for (let t = 0; t < 256; t++) {
     wB += hist[t];
     if (wB === 0) continue;
+
     const wF = total - wB;
     if (wF === 0) break;
 
@@ -79,7 +83,11 @@ function otsuThreshold(gray) {
 }
 
 function findBBoxNotWhite(gray, w, h, notWhiteThresh = 235) {
-  let minX = w, minY = h, maxX = -1, maxY = -1;
+  let minX = w,
+    minY = h,
+    maxX = -1,
+    maxY = -1;
+
   for (let i = 0; i < gray.length; i++) {
     if (gray[i] < notWhiteThresh) {
       const x = i % w;
@@ -90,6 +98,7 @@ function findBBoxNotWhite(gray, w, h, notWhiteThresh = 235) {
       if (y > maxY) maxY = y;
     }
   }
+
   if (maxX < 0) return null;
   return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
@@ -110,7 +119,10 @@ function connectedComponents(mask, w, h, region) {
       let area = 0;
       let sumX = 0;
       let sumY = 0;
-      let bx0 = w, by0 = h, bx1 = -1, by1 = -1;
+      let bx0 = w,
+        by0 = h,
+        bx1 = -1,
+        by1 = -1;
 
       while (stack.length) {
         const i = stack.pop();
@@ -132,10 +144,22 @@ function connectedComponents(mask, w, h, region) {
         const up = i - w;
         const down = i + w;
 
-        if (ix > minX && mask[left] && !visited[left]) { visited[left] = 1; stack.push(left); }
-        if (ix < maxX && mask[right] && !visited[right]) { visited[right] = 1; stack.push(right); }
-        if (iy > minY && mask[up] && !visited[up]) { visited[up] = 1; stack.push(up); }
-        if (iy < maxY && mask[down] && !visited[down]) { visited[down] = 1; stack.push(down); }
+        if (ix > minX && mask[left] && !visited[left]) {
+          visited[left] = 1;
+          stack.push(left);
+        }
+        if (ix < maxX && mask[right] && !visited[right]) {
+          visited[right] = 1;
+          stack.push(right);
+        }
+        if (iy > minY && mask[up] && !visited[up]) {
+          visited[up] = 1;
+          stack.push(up);
+        }
+        if (iy < maxY && mask[down] && !visited[down]) {
+          visited[down] = 1;
+          stack.push(down);
+        }
       }
 
       const bw = bx1 - bx0 + 1;
@@ -143,7 +167,19 @@ function connectedComponents(mask, w, h, region) {
       const fill = area / (bw * bh);
       const aspect = Math.max(bw / bh, bh / bw);
 
-      comps.push({ area, cx: sumX / area, cy: sumY / area, bx0, by0, bx1, by1, bw, bh, fill, aspect });
+      comps.push({
+        area,
+        cx: sumX / area,
+        cy: sumY / area,
+        bx0,
+        by0,
+        bx1,
+        by1,
+        bw,
+        bh,
+        fill,
+        aspect,
+      });
     }
   }
   return comps;
@@ -151,6 +187,7 @@ function connectedComponents(mask, w, h, region) {
 
 function pickTightest(points, kMax) {
   if (points.length <= kMax) return points;
+
   const mx = points.reduce((a, p) => a + p.cx, 0) / points.length;
   const my = points.reduce((a, p) => a + p.cy, 0) / points.length;
 
@@ -161,7 +198,8 @@ function pickTightest(points, kMax) {
     .map((x) => x.p);
 }
 
-// ---- Routes ----
+// ----------------- routes -----------------
+
 app.get("/", (_req, res) => {
   res.json({ ok: true, build: BUILD_TAG, routes: ["GET /", "GET /api/health", "POST /api/sec"] });
 });
@@ -177,9 +215,13 @@ app.get("/api/health", (_req, res) => {
 
 app.post(
   "/api/sec",
-  upload.fields([{ name: "image", maxCount: 1 }, { name: "file", maxCount: 1 }]),
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "file", maxCount: 1 },
+  ]),
   async (req, res) => {
     const started = Date.now();
+
     try {
       const f = req.files?.image?.[0] || req.files?.file?.[0] || null;
 
@@ -187,7 +229,7 @@ app.post(
         return res.status(400).json({
           ok: false,
           error: "NO_FILE",
-          message: 'No file uploaded. Expected form field name: "image" (or legacy "file").',
+          message: 'No file uploaded. Expected form field: "image" (or legacy "file").',
         });
       }
 
@@ -199,7 +241,7 @@ app.post(
         });
       }
 
-      // iOS-safe normalize: rotate + resize + grayscale
+      // Normalize (rotation fix) + resize for speed + grayscale
       const MAX_W = 1400;
       const img = sharp(f.buffer).rotate();
       const meta = await img.metadata();
@@ -213,6 +255,7 @@ app.post(
       const w = info.width;
       const h = info.height;
 
+      // Find non-white region (rough target bbox)
       const inkBox = findBBoxNotWhite(data, w, h, 235);
       if (!inkBox || inkBox.width < 200 || inkBox.height < 200) {
         return res.status(422).json({
@@ -222,7 +265,7 @@ app.post(
         });
       }
 
-      // pad + square crop
+      // pad + force square crop
       const INK_PAD_PCT = 0.03;
       const padX = Math.round(inkBox.width * INK_PAD_PCT);
       const padY = Math.round(inkBox.height * INK_PAD_PCT);
@@ -247,7 +290,7 @@ app.post(
       const targetCx = minX + side / 2;
       const targetCy = minY + side / 2;
 
-      // Otsu in region
+      // Otsu threshold in region
       const regionGray = new Uint8Array(region.width * region.height);
       let k = 0;
       for (let y = minY; y <= maxY; y++) {
@@ -258,6 +301,7 @@ app.post(
       let t = otsuThreshold(regionGray);
       t = clamp(t, 35, 150);
 
+      // Build dark-pixel mask
       const mask = new Uint8Array(w * h);
       for (let y = minY; y <= maxY; y++) {
         const row = y * w;
@@ -267,8 +311,10 @@ app.post(
         }
       }
 
+      // Connected components
       const comps = connectedComponents(mask, w, h, region);
 
+      // Filter candidates (try to avoid gridlines/text)
       const targetArea = region.width * region.height;
       const minArea = Math.round(targetArea * 0.00003);
       const maxArea = Math.round(targetArea * 0.006);
@@ -296,20 +342,27 @@ app.post(
 
       const cluster = pickTightest(candidates, Math.min(CONFIG.MAX_SHOTS, candidates.length));
 
+      // POI balance (centroid)
       const poiX = cluster.reduce((a, p) => a + p.cx, 0) / cluster.length;
       const poiY = cluster.reduce((a, p) => a + p.cy, 0) / cluster.length;
 
+      // Pixel offsets from center (+right, +down)
       const dxPx = poiX - targetCx;
       const dyPx = poiY - targetCy;
 
+      // Pixels -> inches using known target width
       const inchPerPx = CONFIG.TARGET_WIDTH_IN / region.width;
-      const dxIn = dxPx * inchPerPx;
-      const dyIn = dyPx * inchPerPx;
+      const dxIn = dxPx * inchPerPx; // +right
+      const dyIn = dyPx * inchPerPx; // +down
 
+      // Inches -> MOA
       const inPerMoa = inchesPerMOA(CONFIG.DISTANCE_YARDS);
-      const windMoa = dxIn / inPerMoa;
-      const elevMoa = dyIn / inPerMoa;
+      const windMoa = dxIn / inPerMoa; // impacts right => +MOA
+      const elevMoa = dyIn / inPerMoa; // impacts down  => +MOA (down)
 
+      // DIAL_TO_CENTER:
+      // impacts right => dial left (negative wind clicks)
+      // impacts low   => dial up   (positive elev clicks)
       let windClicks = -(windMoa / CONFIG.MOA_PER_CLICK);
       let elevClicks = +(elevMoa / CONFIG.MOA_PER_CLICK);
 
@@ -318,13 +371,16 @@ app.post(
 
       return res.json({
         ok: true,
-        units: "CLICKS",
-        convention: "DIAL_TO_CENTER",
         sec: {
           windage_clicks: to2(windClicks),
           elevation_clicks: to2(elevClicks),
         },
-        meta: { ms: Date.now() - started, build: BUILD_TAG, input: { w: meta?.width, h: meta?.height } },
+        meta: {
+          build: BUILD_TAG,
+          ms: Date.now() - started,
+          input: { w: meta?.width || null, h: meta?.height || null },
+          shots_used: cluster.length,
+        },
       });
     } catch (err) {
       return res.status(500).json({
@@ -337,8 +393,19 @@ app.post(
   }
 );
 
+// 404
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: `Not found: ${req.method} ${req.path}` });
+});
+
+// Final JSON error handler (prevents HTML error pages)
+app.use((err, _req, res, _next) => {
+  res.status(500).json({
+    ok: false,
+    error: "UNHANDLED_500",
+    message: "Unhandled server error.",
+    detail: safeError(err),
+  });
 });
 
 const PORT = process.env.PORT || 10000;
