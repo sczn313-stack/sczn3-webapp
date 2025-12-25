@@ -11,6 +11,10 @@ import sharp from "sharp";
 
 const BUILD_TAG = "LOCK_BACKEND_v4_2025-12-24";
 
+const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json({ limit: "2mb" }));
+
 // ---- SCZN3 defaults (v1.2 locked) ----
 const CONFIG = {
   DISTANCE_YARDS: 100,
@@ -32,10 +36,6 @@ const CONFIG = {
   MAX_ASPECT: 3.0,
   MIN_FILL: 0.20,
 };
-
-const app = express();
-app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "2mb" }));
 
 // ---- Multer: in-memory upload ----
 const upload = multer({
@@ -96,7 +96,6 @@ function otsuThreshold(grayBytes) {
       threshold = t;
     }
   }
-
   return threshold;
 }
 
@@ -243,14 +242,7 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     build: BUILD_TAG,
     routes: ["GET /", "GET /api/health", "POST /api/sec"],
-    config: {
-      DISTANCE_YARDS: CONFIG.DISTANCE_YARDS,
-      MOA_PER_CLICK: CONFIG.MOA_PER_CLICK,
-      TARGET_WIDTH_IN: CONFIG.TARGET_WIDTH_IN,
-      MIN_SHOTS: CONFIG.MIN_SHOTS,
-      MAX_SHOTS: CONFIG.MAX_SHOTS,
-      MAX_ABS_CLICKS: CONFIG.MAX_ABS_CLICKS,
-    },
+    config: CONFIG,
   });
 });
 
@@ -274,6 +266,7 @@ app.post(
           error: "NO_FILE",
           message:
             'No file uploaded. Expected form field name: "image" (or legacy "file").',
+          build: BUILD_TAG,
         });
       }
 
@@ -282,6 +275,7 @@ app.post(
           ok: false,
           error: "NOT_IMAGE",
           message: `Upload must be an image. Got mimetype: ${f.mimetype}`,
+          build: BUILD_TAG,
         });
       }
 
@@ -306,6 +300,7 @@ app.post(
           error: "NO_TARGET",
           message:
             "Could not find target region. Make sure the full target is in frame with decent lighting.",
+          build: BUILD_TAG,
         });
       }
 
@@ -338,9 +333,7 @@ app.post(
       let k = 0;
       for (let y = minY; y <= maxY; y++) {
         const row = y * w;
-        for (let x = minX; x <= maxX; x++) {
-          regionGray[k++] = data[row + x];
-        }
+        for (let x = minX; x <= maxX; x++) regionGray[k++] = data[row + x];
       }
 
       let t = otsuThreshold(regionGray);
@@ -368,12 +361,10 @@ app.post(
         if (c.area < minArea || c.area > maxArea) return false;
         if (c.aspect > CONFIG.MAX_ASPECT) return false;
         if (c.fill < CONFIG.MIN_FILL) return false;
-
         if (c.bx0 <= minX + margin) return false;
         if (c.by0 <= minY + margin) return false;
         if (c.bx1 >= maxX - margin) return false;
         if (c.by1 >= maxY - margin) return false;
-
         return true;
       });
 
@@ -382,7 +373,7 @@ app.post(
           ok: false,
           error: "NO_HOLES",
           message: `Not enough shots detected (${candidates.length}). Need at least ${CONFIG.MIN_SHOTS}.`,
-          debug: { threshold: t, candidates: candidates.length },
+          build: BUILD_TAG,
         });
       }
 
@@ -399,7 +390,6 @@ app.post(
       const dxPx = poiX - targetCx;
       const dyPx = poiY - targetCy;
 
-      // Pixel -> inches
       const inchPerPx = CONFIG.TARGET_WIDTH_IN / region.width;
       const dxIn = dxPx * inchPerPx; // +right
       const dyIn = dyPx * inchPerPx; // +down
@@ -409,9 +399,7 @@ app.post(
       const windMoa = dxIn / inPerMoa; // +right impacts
       const elevMoa = dyIn / inPerMoa; // +down impacts
 
-      // DIAL_TO_CENTER:
-      // impacts right => dial left (negative wind clicks)
-      // impacts low   => dial up   (positive elev clicks)
+      // Corrections to center (DIAL_TO_CENTER)
       let windClicks = -(windMoa / CONFIG.MOA_PER_CLICK);
       let elevClicks = +(elevMoa / CONFIG.MOA_PER_CLICK);
 
@@ -421,8 +409,6 @@ app.post(
       return res.json({
         ok: true,
         build: BUILD_TAG,
-        units: "CLICKS",
-        convention: "DIAL_TO_CENTER",
         sec: {
           windage_clicks: to2(windClicks),
           elevation_clicks: to2(elevClicks),
@@ -453,7 +439,12 @@ app.post(
 
 // 404 JSON
 app.use((req, res) => {
-  res.status(404).json({ ok: false, error: `Not found: ${req.method} ${req.path}` });
+  res.status(404).json({
+    ok: false,
+    error: "NOT_FOUND",
+    message: `Not found: ${req.method} ${req.path}`,
+    build: BUILD_TAG,
+  });
 });
 
 // Final JSON error handler (prevents HTML error pages)
