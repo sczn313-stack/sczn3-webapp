@@ -1,136 +1,133 @@
 import React, { useMemo, useState } from "react";
 
-/**
- * SCZN3 / Smart Target — simple uploader
- * Sends multipart/form-data with field name: "image"
- * Endpoint: /api/sec
- */
 export default function App() {
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
-
-  const apiBase = useMemo(() => {
-    // Prefer env if present, otherwise same-origin (works when frontend+backend are together)
-    const envBase =
-      (typeof import.meta !== "undefined" &&
-        import.meta.env &&
-        (import.meta.env.VITE_API_BASE || import.meta.env.VITE_BACKEND_URL)) ||
-      "";
-    return (envBase || "").replace(/\/$/, "");
+  // Always point at the real backend (NOT /api/sec on the static site)
+  const API_BASE = useMemo(() => {
+    const raw = (import.meta?.env?.VITE_API_BASE || "").trim();
+    const base = raw || "https://sczn3-sec-backend-pipe.onrender.com";
+    return base.replace(/\/+$/, "");
   }, []);
 
-  const endpoint = useMemo(() => {
-    // IMPORTANT: backend currently accepts POST /api/sec (not /api/sec/compute)
-    const path = "/api/sec";
-    return apiBase ? `${apiBase}${path}` : path;
-  }, [apiBase]);
+  const ENDPOINT = `${API_BASE}/api/sec`;
+
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resp, setResp] = useState(null);
+  const [error, setError] = useState("");
 
   function onPickFile(e) {
-    const f = e.target.files && e.target.files[0];
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setResp(null);
     setError("");
-    setResult(null);
-    setFile(f || null);
 
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     if (f) setPreviewUrl(URL.createObjectURL(f));
     else setPreviewUrl("");
   }
 
-  async function onSubmit(e) {
-    e.preventDefault();
+  async function onSend() {
+    setResp(null);
     setError("");
-    setResult(null);
 
     if (!file) {
-      setError('Pick an image first (required field: "image").');
+      setError("Pick an image first.");
       return;
     }
 
-    setBusy(true);
+    setLoading(true);
     try {
-      const fd = new FormData();
-      // MUST be exactly "image" (matches backend)
-      fd.append("image", file, file.name);
+      const form = new FormData();
+      // IMPORTANT: multipart field name must be exactly "image"
+      form.append("image", file);
 
-      const res = await fetch(endpoint, {
+      const r = await fetch(ENDPOINT, {
         method: "POST",
-        body: fd,
+        body: form,
       });
 
-      const contentType = res.headers.get("content-type") || "";
-      const isJson = contentType.includes("application/json");
-      const data = isJson ? await res.json() : await res.text();
-
-      if (!res.ok) {
-        throw new Error(
-          isJson ? JSON.stringify(data, null, 2) : String(data || res.statusText)
-        );
+      const text = await r.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
       }
 
-      setResult(data);
+      if (!r.ok) {
+        setError(`Request failed (${r.status}). See response below.`);
+      }
+
+      setResp(data);
     } catch (err) {
-      setError(err?.message || "Request failed.");
+      setError(
+        `Network/CORS error. If this happens, we’ll allow your site domain in backend CORS.\n\n${String(
+          err?.message || err
+        )}`
+      );
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h1 style={{ margin: "8px 0" }}>The Smart Target™</h1>
-      <div style={{ opacity: 0.8, marginBottom: 16 }}>Upload → /api/sec → show response</div>
+      <h2 style={{ marginTop: 0 }}>SCZN3 SEC — Upload Test</h2>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={onPickFile}
-        />
+      <div style={{ marginBottom: 10, fontSize: 14, opacity: 0.85 }}>
+        <div><b>Endpoint:</b> {ENDPOINT}</div>
+        <div><b>multipart field:</b> image</div>
+      </div>
 
-        {previewUrl && (
-          <div style={{ border: "1px solid #333", borderRadius: 8, padding: 12 }}>
-            <div style={{ marginBottom: 8, opacity: 0.8 }}>Preview</div>
-            <img
-              src={previewUrl}
-              alt="preview"
-              style={{ maxWidth: "100%", height: "auto", borderRadius: 6 }}
-            />
-          </div>
-        )}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 320px" }}>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={onPickFile}
+            style={{ marginBottom: 10 }}
+          />
 
-        <button
-          type="submit"
-          disabled={busy}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #333",
-            cursor: busy ? "not-allowed" : "pointer",
-            fontWeight: 600,
-          }}
-        >
-          {busy ? "Sending..." : "Send to SCZN3 SEC backend"}
-        </button>
+          <button
+            onClick={onSend}
+            disabled={loading || !file}
+            style={{
+              width: "100%",
+              padding: "14px 12px",
+              fontSize: 16,
+              borderRadius: 10,
+              border: "1px solid rgba(0,0,0,0.1)",
+              cursor: loading || !file ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Sending..." : "Send to SCZN3 SEC backend"}
+          </button>
 
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          Endpoint: <code>{endpoint}</code> (multipart field: <code>image</code>)
+          {error ? (
+            <div style={{ marginTop: 10, whiteSpace: "pre-wrap", color: "crimson" }}>
+              {error}
+            </div>
+          ) : null}
         </div>
-      </form>
 
-      {error && (
-        <pre style={{ marginTop: 16, padding: 12, borderRadius: 8, background: "#2b0000", color: "#ffd6d6", overflowX: "auto" }}>
-          {error}
-        </pre>
-      )}
+        <div style={{ flex: "1 1 320px" }}>
+          {previewUrl ? (
+            <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, overflow: "hidden" }}>
+              <img src={previewUrl} alt="preview" style={{ width: "100%", display: "block" }} />
+            </div>
+          ) : (
+            <div style={{ opacity: 0.7, fontSize: 14 }}>Preview will show here after you pick an image.</div>
+          )}
+        </div>
+      </div>
 
-      {result != null && (
-        <pre style={{ marginTop: 16, padding: 12, borderRadius: 8, background: "#111", color: "#cfe8ff", overflowX: "auto" }}>
-          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+      <div style={{ marginTop: 16 }}>
+        <h3 style={{ marginBottom: 8 }}>Response</h3>
+        <pre style={{ padding: 12, borderRadius: 12, background: "rgba(0,0,0,0.06)", overflowX: "auto" }}>
+          {resp ? JSON.stringify(resp, null, 2) : "(none yet)"}
         </pre>
-      )}
+      </div>
     </div>
   );
 }
