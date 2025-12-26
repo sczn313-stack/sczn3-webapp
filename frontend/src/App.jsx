@@ -1,108 +1,139 @@
-import express from "express";
-import cors from "cors";
-import multer from "multer";
-import sharp from "sharp";
+import { useEffect, useMemo, useState } from "react";
 
-const app = express();
+export default function App() {
+  // Backend base (can override with VITE_API_BASE in Render later)
+  const API_BASE = useMemo(() => {
+    const raw = (import.meta?.env?.VITE_API_BASE || "").trim();
+    const fallback = "https://sczn3-sec-backend-pipe.onrender.com";
+    const base = raw || fallback;
+    return base.replace(/\/+$/, "");
+  }, []);
 
-// Allow your static site(s) + Hoppscotch + local dev
-app.use(
-  cors({
-    origin: true,
-    credentials: false,
-  })
-);
+  const ENDPOINT = `${API_BASE}/api/sec`;
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "sczn3-sec-backend-pipe", ts: Date.now() });
-});
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resp, setResp] = useState(null);
+  const [error, setError] = useState("");
 
-// IMPORTANT: use memory storage so we can pass buffer to sharp/compute
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
-});
+  useEffect(() => {
+    // manage preview URL cleanly
+    if (!file) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(url);
 
-// ---- SCZN3 defaults (v1.2) ----
-const DEFAULT_DISTANCE_YARDS = 100;
-const DEFAULT_CLICK_MOA = 0.25;
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
 
-// Placeholder compute hook (swap later with real POIB/cluster math)
-function computeSecPayload({ width, height }) {
-  // For now: return a “real-shaped” payload that your frontend can render.
-  // Replace these with actual SCZN3 compute results later.
-  return {
-    distance_yards: DEFAULT_DISTANCE_YARDS,
-    click_moa: DEFAULT_CLICK_MOA,
+  function onPickFile(e) {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setResp(null);
+    setError("");
+  }
 
-    // Placeholder numbers
-    poib_inches: { x: 0.0, y: 0.0 }, // +x = right, +y = up (example convention)
-    adjustment: {
-      windage: { direction: "R", clicks: 0.0, moa: 0.0 },
-      elevation: { direction: "U", clicks: 0.0, moa: 0.0 },
-    },
+  async function onSend() {
+    setResp(null);
+    setError("");
 
-    // UI hooks
-    smart_score: null,
-    percent_change_vs_last: null,
-
-    // Debug info you can remove later
-    debug: {
-      image_width: width,
-      image_height: height,
-      note: "Stub payload. Plug in SCZN3 compute next.",
-    },
-  };
-}
-
-app.post("/api/sec", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        ok: false,
-        error: 'No file uploaded. Use multipart field name: "image".',
-      });
+    if (!file) {
+      setError("Pick an image first.");
+      return;
     }
 
-    // Read image meta
-    const meta = await sharp(req.file.buffer).metadata();
+    setLoading(true);
+    try {
+      const form = new FormData();
+      // IMPORTANT: multipart field name must be exactly "image"
+      form.append("image", file);
 
-    const received = {
-      field: req.file.fieldname,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      bytes: req.file.size,
-    };
+      const r = await fetch(ENDPOINT, {
+        method: "POST",
+        body: form,
+      });
 
-    const image = {
-      width: meta.width || null,
-      height: meta.height || null,
-      format: meta.format || null,
-    };
+      const text = await r.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
 
-    // Build SCZN3 SEC payload
-    const sec = computeSecPayload({
-      width: image.width,
-      height: image.height,
-    });
-
-    return res.json({
-      ok: true,
-      build: "PIPE_v2_SEC_PAYLOAD",
-      received,
-      image,
-      sec,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      ok: false,
-      error: "Server error during /api/sec",
-      details: String(err?.message || err),
-    });
+      if (!r.ok) {
+        setError(`HTTP ${r.status}`);
+      }
+      setResp(data);
+    } catch (err) {
+      setError(err?.message || "Request failed");
+    } finally {
+      setLoading(false);
+    }
   }
-});
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`SCZN3 SEC backend running on port ${PORT}`);
-});
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 18, maxWidth: 980, margin: "0 auto" }}>
+      <h1 style={{ margin: "0 0 8px" }}>SCZN3 SEC — Upload Test</h1>
+
+      <div style={{ marginBottom: 10, opacity: 0.9 }}>
+        <div><b>Endpoint:</b> {ENDPOINT}</div>
+        <div><b>multipart field:</b> image</div>
+      </div>
+
+      <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 320, flex: "1 1 320px" }}>
+          <input type="file" accept="image/*" onChange={onPickFile} />
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={onSend}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid #999",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {loading ? "Sending..." : "Send to SCZN3 SEC backend"}
+            </button>
+          </div>
+
+          {error && (
+            <div style={{ marginTop: 10, color: "#b00020", fontWeight: 600 }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ minWidth: 320, flex: "1 1 420px" }}>
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="preview"
+              style={{ maxWidth: "100%", borderRadius: 10, border: "1px solid #ccc" }}
+            />
+          ) : (
+            <div style={{ padding: 16, border: "1px dashed #777", borderRadius: 10, opacity: 0.8 }}>
+              Pick an image to preview it here.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <h2 style={{ marginTop: 18 }}>Response</h2>
+      <pre style={{ background: "#f4f4f4", padding: 12, borderRadius: 10, overflow: "auto" }}>
+        {resp ? JSON.stringify(resp, null, 2) : "(none yet)"}
+      </pre>
+    </div>
+  );
+}
