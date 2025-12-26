@@ -1,170 +1,252 @@
-// server.js — SCZN3 SEC Backend (PIPE)
-// Always JSON (never HTML error pages)
-// POST /api/sec accepts multipart: field "image" + optional numeric fields
-//
-// Fields (any of these names work):
-// - poibX, poibY  (inches)   [X: Right + / Left -, Y: Up + / Down -]
-// - distanceYards
-// - clickValueMoa
-//
-// Response returns signed clicks + dial text (RIGHT/LEFT, UP/DOWN)
+import React, { useMemo, useState } from "react";
 
-import express from "express";
-import cors from "cors";
-import multer from "multer";
-import sharp from "sharp";
-
-const BUILD_TAG = "PIPE_v3_2025-12-26";
-
-const app = express();
-app.use(cors({ origin: true }));
-
-// Force JSON content-type on everything
-app.use((req, res, next) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  next();
-});
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB
-});
+/**
+ * SCZN3 SEC — Upload Test (frontend)
+ * - Sends multipart/form-data:
+ *   field "image" (file)
+ *   + poibX, poibY (inches)
+ *   + distanceYards
+ *   + clickValueMoa
+ *
+ * Signs:
+ * - poibX: Right +, Left -
+ * - poibY: Up +, Down -
+ *
+ * Expected click math:
+ * 1 MOA @ 100yd = 1.047"
+ * moa = inches / (1.047 * (distanceYards/100))
+ * clicks = moa / clickValueMoa
+ */
 
 function toNum(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
 
-// 1 MOA ≈ 1.047" @ 100 yards
 function moaInchesAt(distanceYards) {
-  return 1.047 * (distanceYards / 100);
+  return 1.047 * (toNum(distanceYards, 100) / 100);
 }
 
-function dialWindageText(signedClicks) {
-  const dir = signedClicks >= 0 ? "RIGHT" : "LEFT";
-  return `${dir} ${Math.abs(signedClicks).toFixed(2)} clicks`;
+function inchesToMoa(inches, distanceYards) {
+  const denom = moaInchesAt(distanceYards);
+  return denom === 0 ? 0 : inches / denom;
 }
 
-function dialElevationText(signedClicks) {
-  const dir = signedClicks >= 0 ? "UP" : "DOWN";
-  return `${dir} ${Math.abs(signedClicks).toFixed(2)} clicks`;
+function clicksFromInches(inches, distanceYards, clickValueMoa) {
+  const moa = inchesToMoa(inches, distanceYards);
+  const cv = toNum(clickValueMoa, 0.25);
+  return cv === 0 ? 0 : moa / cv;
 }
 
-function readFirstDefined(obj, keys) {
-  for (const k of keys) {
-    const v = obj?.[k];
-    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+function dialText(axisName, signedClicks) {
+  // axisName: "windage" or "elevation"
+  const c = toNum(signedClicks, 0);
+  const abs = Math.abs(c).toFixed(2);
+
+  if (axisName === "windage") {
+    if (c > 0) return `RIGHT ${abs} clicks`;
+    if (c < 0) return `LEFT ${abs} clicks`;
+    return `CENTER 0.00 clicks`;
   }
-  return undefined;
+
+  // elevation
+  if (c > 0) return `UP ${abs} clicks`;
+  if (c < 0) return `DOWN ${abs} clicks`;
+  return `CENTER 0.00 clicks`;
 }
 
-app.get("/health", (req, res) => {
-  res.status(200).send(JSON.stringify({ ok: true, service: "sczn3-sec-backend-pipe", build: BUILD_TAG }));
-});
+export default function App() {
+  // Backend base (Render Static Sites get env baked at build time)
+  const API_BASE = useMemo(() => {
+    const raw = (import.meta.env?.VITE_API_BASE || "").trim();
+    const fallback = "https://sczn3-sec-backend-pipe.onrender.com";
+    const base = raw || fallback;
+    return base.replace(/\/+$/, "");
+  }, []);
 
-// Make "/" return JSON (avoids "Cannot GET /" confusion)
-app.get("/", (req, res) => {
-  res.status(200).send(
-    JSON.stringify({
-      ok: true,
-      service: "sczn3-sec-backend-pipe",
-      build: BUILD_TAG,
-      note: 'Use POST /api/sec (multipart: field "image" + optional poib fields).',
-    })
-  );
-});
+  const ENDPOINT = `${API_BASE}/api/sec`;
 
-app.post("/api/sec", upload.single("image"), async (req, res) => {
-  try {
-    const file = req.file || null;
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
 
-    if (!file || !file.buffer) {
-      return res.status(400).send(
-        JSON.stringify({
-          ok: false,
-          error: 'No file uploaded. Use multipart field name "image".',
-          build: BUILD_TAG,
-        })
-      );
+  // Inputs (defaults match your standard)
+  const [poibX, setPoibX] = useState("1.00"); // Right + / Left -
+  const [poibY, setPoibY] = useState("-2.00"); // Up + / Down -
+  const [distanceYards, setDistanceYards] = useState("100");
+  const [clickValueMoa, setClickValueMoa] = useState("0.25");
+
+  const [loading, setLoading] = useState(false);
+  const [resp, setResp] = useState(null);
+  const [error, setError] = useState("");
+
+  // Client-side sanity check (expected clicks)
+  const expectedWindage = useMemo(() => {
+    const x = toNum(poibX, 0);
+    return clicksFromInches(x, distanceYards, clickValueMoa);
+  }, [poibX, distanceYards, clickValueMoa]);
+
+  const expectedElevation = useMemo(() => {
+    const y = toNum(poibY, 0);
+    return clicksFromInches(y, distanceYards, clickValueMoa);
+  }, [poibY, distanceYards, clickValueMoa]);
+
+  function onPickFile(e) {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setResp(null);
+    setError("");
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (f) setPreviewUrl(URL.createObjectURL(f));
+    else setPreviewUrl("");
+  }
+
+  async function onSubmit() {
+    setError("");
+    setResp(null);
+
+    if (!file) {
+      setError("Pick an image first.");
+      return;
     }
 
-    // ---- Read numeric inputs (strings from multipart) ----
-    const rawPoibX = readFirstDefined(req.body, ["poibX", "poibXInches", "poib_x", "x"]);
-    const rawPoibY = readFirstDefined(req.body, ["poibY", "poibYInches", "poib_y", "y"]);
+    const fd = new FormData();
+    // REQUIRED multipart file field name:
+    fd.append("image", file);
 
-    const rawDistance = readFirstDefined(req.body, ["distanceYards", "distance", "yards"]);
-    const rawClick = readFirstDefined(req.body, ["clickValueMoa", "click", "clickValue"]);
+    // Always send these fields with the image (so backend won’t default to 0,0)
+    fd.append("poibX", String(toNum(poibX, 0)));
+    fd.append("poibY", String(toNum(poibY, 0)));
+    fd.append("distanceYards", String(toNum(distanceYards, 100)));
+    fd.append("clickValueMoa", String(toNum(clickValueMoa, 0.25)));
 
-    const distanceYards = toNum(rawDistance, 100);
-    const clickValueMoa = toNum(rawClick, 0.25);
+    // Optional aliases (harmless, helps if backend checks alternates)
+    fd.append("poibXInches", String(toNum(poibX, 0)));
+    fd.append("poibYInches", String(toNum(poibY, 0)));
+    fd.append("distance", String(toNum(distanceYards, 100)));
+    fd.append("clickValue", String(toNum(clickValueMoa, 0.25)));
 
-    const poibX = toNum(rawPoibX, 0); // inches: Right + / Left -
-    const poibY = toNum(rawPoibY, 0); // inches: Up + / Down -
-
-    // ---- Image metadata (optional, but nice for pipeline) ----
-    let meta = {};
+    setLoading(true);
     try {
-      const m = await sharp(file.buffer).metadata();
-      meta = { width: m.width || null, height: m.height || null, format: m.format || null };
-    } catch {
-      meta = {};
+      const r = await fetch(ENDPOINT, { method: "POST", body: fd });
+      const text = await r.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { httpStatus: r.status, raw: text };
+      }
+      setResp(json);
+    } catch (e) {
+      setError(String(e?.message || e));
+    } finally {
+      setLoading(false);
     }
-
-    // ---- Compute clicks (signed) ----
-    const inchesPerMoa = moaInchesAt(distanceYards);
-
-    // signed MOA offset
-    const moaX = inchesPerMoa ? poibX / inchesPerMoa : 0;
-    const moaY = inchesPerMoa ? poibY / inchesPerMoa : 0;
-
-    // signed clicks
-    const windageClicks = clickValueMoa ? moaX / clickValueMoa : 0;
-    const elevationClicks = clickValueMoa ? moaY / clickValueMoa : 0;
-
-    // ---- Response ----
-    return res.status(200).send(
-      JSON.stringify({
-        ok: true,
-        service: "sczn3-sec-backend-pipe",
-        build: BUILD_TAG,
-        received: {
-          field: "image",
-          originalname: file.originalname || null,
-          mimetype: file.mimetype || null,
-          bytes: file.size || null,
-        },
-        image: meta,
-        sec: {
-          distanceYards,
-          clickValueMoa,
-          center: { col: "L", row: 12 },
-          poibInches: { x: poibX, y: poibY },
-          clicksSigned: {
-            windage: Number(windageClicks.toFixed(2)),
-            elevation: Number(elevationClicks.toFixed(2)),
-          },
-          dial: {
-            windage: dialWindageText(windageClicks),
-            elevation: dialElevationText(elevationClicks),
-          },
-          computeStatus: "POIB_TO_CLICKS_OK",
-        },
-      })
-    );
-  } catch (err) {
-    return res.status(500).send(
-      JSON.stringify({
-        ok: false,
-        error: "Server error",
-        message: err?.message || String(err),
-        build: BUILD_TAG,
-      })
-    );
   }
-});
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  // Keep logs minimal; Render still captures this
-  console.log(`SCZN3 PIPE listening on ${PORT} (${BUILD_TAG})`);
-});
+  // Show what the backend *should* say as “dial” text for sanity
+  const dialWindage = useMemo(
+    () => dialText("windage", expectedWindage),
+    [expectedWindage]
+  );
+  const dialElevation = useMemo(
+    () => dialText("elevation", expectedElevation),
+    [expectedElevation]
+  );
+
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 16, maxWidth: 980, margin: "0 auto" }}>
+      <h1 style={{ margin: "8px 0 6px", fontSize: 44, lineHeight: 1.05 }}>SCZN3 SEC — Upload Test</h1>
+
+      <div style={{ marginBottom: 10, fontSize: 16 }}>
+        <div><b>Endpoint:</b> {ENDPOINT}</div>
+        <div><b>multipart field:</b> image</div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }}>
+        <div>
+          <div style={{ marginBottom: 10 }}>
+            <input type="file" accept="image/*" onChange={onPickFile} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <div><b>POIB X (inches)</b> &nbsp;Right + / Left -</div>
+              <input value={poibX} onChange={(e) => setPoibX(e.target.value)} inputMode="decimal" style={{ padding: 10, fontSize: 16 }} />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <div><b>POIB Y (inches)</b> &nbsp;Up + / Down -</div>
+              <input value={poibY} onChange={(e) => setPoibY(e.target.value)} inputMode="decimal" style={{ padding: 10, fontSize: 16 }} />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <div><b>Distance (yards)</b></div>
+              <input value={distanceYards} onChange={(e) => setDistanceYards(e.target.value)} inputMode="numeric" style={{ padding: 10, fontSize: 16 }} />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <div><b>Click Value (MOA)</b></div>
+              <input value={clickValueMoa} onChange={(e) => setClickValueMoa(e.target.value)} inputMode="decimal" style={{ padding: 10, fontSize: 16 }} />
+            </label>
+          </div>
+
+          <div style={{ marginTop: 14, padding: 14, border: "2px solid #111", borderRadius: 10, background: "#f7f7f7", maxWidth: 420 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>
+              Expected clicks (client-side sanity check)
+            </div>
+            <div style={{ fontSize: 18 }}>
+              <div><b>Windage:</b> {expectedWindage.toFixed(2)}</div>
+              <div><b>Elevation:</b> {expectedElevation.toFixed(2)}</div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 14 }}>
+              <div><b>Dial:</b> {dialWindage}</div>
+              <div><b>Dial:</b> {dialElevation}</div>
+            </div>
+          </div>
+
+          <button
+            onClick={onSubmit}
+            disabled={loading}
+            style={{
+              marginTop: 14,
+              padding: "12px 16px",
+              fontSize: 18,
+              borderRadius: 10,
+              border: "2px solid #0b57d0",
+              background: loading ? "#d7e3ff" : "#eaf1ff",
+              color: "#0b57d0",
+              fontWeight: 800,
+              cursor: loading ? "default" : "pointer",
+              width: "100%",
+              maxWidth: 420,
+            }}
+          >
+            {loading ? "Sending..." : "Send to SCZN3 SEC backend"}
+          </button>
+
+          {error ? (
+            <div style={{ marginTop: 10, color: "#b00020", fontWeight: 700 }}>
+              {error}
+            </div>
+          ) : null}
+        </div>
+
+        <div>
+          <div style={{ border: "2px solid #222", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+            {previewUrl ? (
+              <img src={previewUrl} alt="preview" style={{ width: "100%", display: "block" }} />
+            ) : (
+              <div style={{ padding: 18, color: "#555" }}>Pick an image to preview it here.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <h2 style={{ marginTop: 22, fontSize: 34 }}>Response</h2>
+      <pre style={{ padding: 14, borderRadius: 12, background: "#111", color: "#e9e9e9", overflowX: "auto" }}>
+        {resp ? JSON.stringify(resp, null, 2) : "(none yet)"}
+      </pre>
+    </div>
+  );
+}
