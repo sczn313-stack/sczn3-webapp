@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 
 export default function App() {
-  // Backend base (can override with VITE_API_BASE in Render later)
+  // Backend base (can override with VITE_API_BASE on Render)
   const API_BASE = useMemo(() => {
     const raw = (import.meta?.env?.VITE_API_BASE || "").trim();
     const fallback = "https://sczn3-sec-backend-pipe.onrender.com";
@@ -14,9 +14,9 @@ export default function App() {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
 
-  // Inputs to test click math WITHOUT Hoppscotch
-  const [poibXIn, setPoibXIn] = useState("1.00");   // inches (Right + / Left -)
-  const [poibYIn, setPoibYIn] = useState("-2.00");  // inches (Up + / Down -)
+  // Inputs (defaults match your standard)
+  const [poibX, setPoibX] = useState("1.00");     // Right + / Left -
+  const [poibY, setPoibY] = useState("-2.00");    // Up + / Down -
   const [distanceYards, setDistanceYards] = useState("100");
   const [clickValueMoa, setClickValueMoa] = useState("0.25");
 
@@ -24,173 +24,190 @@ export default function App() {
   const [resp, setResp] = useState(null);
   const [error, setError] = useState("");
 
+  function toNum(v, fallback = 0) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function moaAtDistanceInches(distance) {
+    // 1 MOA ≈ 1.047" @ 100 yards
+    return 1.047 * (distance / 100);
+  }
+
+  const expected = useMemo(() => {
+    const x = toNum(poibX, 0);
+    const y = toNum(poibY, 0);
+    const d = toNum(distanceYards, 100);
+    const click = toNum(clickValueMoa, 0.25);
+
+    const inchesPerClick = moaAtDistanceInches(d) * click; // inches per click
+    const windage = inchesPerClick !== 0 ? x / inchesPerClick : 0;
+    const elevation = inchesPerClick !== 0 ? y / inchesPerClick : 0;
+
+    return {
+      windage: Number(windage.toFixed(2)),
+      elevation: Number(elevation.toFixed(2)),
+    };
+  }, [poibX, poibY, distanceYards, clickValueMoa]);
+
   function onPickFile(e) {
     const f = e.target.files?.[0] || null;
     setFile(f);
     setResp(null);
     setError("");
 
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (f) setPreviewUrl(URL.createObjectURL(f));
-    else setPreviewUrl("");
+    if (f) {
+      const url = URL.createObjectURL(f);
+      setPreviewUrl(url);
+    } else {
+      setPreviewUrl("");
+    }
   }
 
-  function toNumString(v, fallback = "0") {
-    const n = Number(v);
-    return Number.isFinite(n) ? String(n) : fallback;
-  }
-
-  async function onSend() {
-    setResp(null);
+  async function send() {
     setError("");
+    setResp(null);
 
     if (!file) {
       setError("Pick an image first.");
       return;
     }
 
-    setLoading(true);
+    // Build form data (THIS is the fix)
+    const fd = new FormData();
+    fd.append("image", file);
+
+    // Send the numeric fields as strings (multer/express will parse them from req.body)
+    fd.append("poibX", String(toNum(poibX, 0)));
+    fd.append("poibY", String(toNum(poibY, 0)));
+    fd.append("distanceYards", String(toNum(distanceYards, 100)));
+    fd.append("clickValueMoa", String(toNum(clickValueMoa, 0.25)));
+
+    // Also include the canonical center (optional, but helpful)
+    fd.append("centerCol", "L");
+    fd.append("centerRow", "12");
+
+    // (Optional compatibility aliases in case backend expects different names)
+    fd.append("poibXInches", String(toNum(poibX, 0)));
+    fd.append("poibYInches", String(toNum(poibY, 0)));
+
     try {
-      const form = new FormData();
+      setLoading(true);
+      const r = await fetch(ENDPOINT, { method: "POST", body: fd });
 
-      // IMPORTANT: backend expects multipart field name exactly "image"
-      form.append("image", file);
-
-      // Extra fields (backend can read these if implemented)
-      form.append("poibXIn", toNumString(poibXIn, "0"));
-      form.append("poibYIn", toNumString(poibYIn, "0"));
-      form.append("distanceYards", toNumString(distanceYards, "100"));
-      form.append("clickValueMoa", toNumString(clickValueMoa, "0.25"));
-
-      const res = await fetch(ENDPOINT, { method: "POST", body: form });
-
-      const text = await res.text();
+      const text = await r.text();
       let data;
       try {
         data = JSON.parse(text);
       } catch {
-        data = { ok: false, httpStatus: res.status, raw: text };
+        data = { ok: false, httpStatus: r.status, raw: text };
       }
 
-      setResp({ httpStatus: res.status, ...data });
-    } catch (e) {
-      setError(String(e?.message || e));
+      // Always show status
+      data.httpStatus = r.status;
+      setResp(data);
+
+      if (!r.ok || data?.ok === false) {
+        setError(data?.error || `Request failed (HTTP ${r.status}).`);
+      }
+    } catch (err) {
+      setError(err?.message || "Network error.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Simple “expected clicks” preview (client-side sanity check)
-  function expectedClicks() {
-    const x = Number(poibXIn);
-    const y = Number(poibYIn);
-    const yards = Number(distanceYards);
-    const click = Number(clickValueMoa);
-
-    if (![x, y, yards, click].every(Number.isFinite) || yards <= 0 || click <= 0) {
-      return null;
-    }
-
-    // MOA inches per 100 yards approximation (good enough for proof test)
-    const moaInchesAtYards = 1.047 * (yards / 100);
-    const moaX = x / moaInchesAtYards;
-    const moaY = y / moaInchesAtYards;
-
-    const windageClicks = moaX / click;
-    const elevationClicks = moaY / click;
-
-    return {
-      windage: Number.isFinite(windageClicks) ? windageClicks.toFixed(2) : "0.00",
-      elevation: Number.isFinite(elevationClicks) ? elevationClicks.toFixed(2) : "0.00",
-    };
-  }
-
-  const exp = expectedClicks();
-
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto", padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h1 style={{ marginBottom: 6 }}>SCZN3 SEC — Upload Test</h1>
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 18, maxWidth: 980, margin: "0 auto" }}>
+      <h1 style={{ margin: "0 0 6px 0", fontSize: 44, letterSpacing: 0.5 }}>SCZN3 SEC — Upload Test</h1>
 
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 16, marginBottom: 8 }}>
         <div><b>Endpoint:</b> {ENDPOINT}</div>
         <div><b>multipart field:</b> image</div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "start" }}>
         <div>
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ margin: "10px 0" }}>
             <input type="file" accept="image/*" onChange={onPickFile} />
+            {file ? <span style={{ marginLeft: 10 }}>{file.name}</span> : null}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <label>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>POIB X (inches) Right + / Left -</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>POIB X (inches) Right + / Left -</div>
               <input
-                value={poibXIn}
-                onChange={(e) => setPoibXIn(e.target.value)}
+                value={poibX}
+                onChange={(e) => setPoibX(e.target.value)}
                 inputMode="decimal"
-                style={{ width: "100%", padding: 8 }}
+                style={{ width: "100%", padding: 10, fontSize: 18, borderRadius: 8, border: "1px solid #ccc" }}
               />
-            </label>
+            </div>
 
-            <label>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>POIB Y (inches) Up + / Down -</div>
+            <div>
+              <div style={{ fontWeight: 700 }}>POIB Y (inches) Up + / Down -</div>
               <input
-                value={poibYIn}
-                onChange={(e) => setPoibYIn(e.target.value)}
+                value={poibY}
+                onChange={(e) => setPoibY(e.target.value)}
                 inputMode="decimal"
-                style={{ width: "100%", padding: 8 }}
+                style={{ width: "100%", padding: 10, fontSize: 18, borderRadius: 8, border: "1px solid #ccc" }}
               />
-            </label>
+            </div>
 
-            <label>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>Distance (yards)</div>
+            <div>
+              <div style={{ fontWeight: 700 }}>Distance (yards)</div>
               <input
                 value={distanceYards}
                 onChange={(e) => setDistanceYards(e.target.value)}
                 inputMode="numeric"
-                style={{ width: "100%", padding: 8 }}
+                style={{ width: "100%", padding: 10, fontSize: 18, borderRadius: 8, border: "1px solid #ccc" }}
               />
-            </label>
+            </div>
 
-            <label>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>Click Value (MOA)</div>
+            <div>
+              <div style={{ fontWeight: 700 }}>Click Value (MOA)</div>
               <input
                 value={clickValueMoa}
                 onChange={(e) => setClickValueMoa(e.target.value)}
                 inputMode="decimal"
-                style={{ width: "100%", padding: 8 }}
+                style={{ width: "100%", padding: 10, fontSize: 18, borderRadius: 8, border: "1px solid #ccc" }}
               />
-            </label>
+            </div>
           </div>
 
-          {exp && (
-            <div style={{ padding: 10, border: "1px solid #333", borderRadius: 8, marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Expected clicks (client-side sanity check)</div>
-              <div>Windage: <b>{exp.windage}</b></div>
-              <div>Elevation: <b>{exp.elevation}</b></div>
+          <div style={{ marginTop: 14, padding: 14, border: "2px solid #111", borderRadius: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 6 }}>
+              Expected clicks (client-side sanity check)
             </div>
-          )}
+            <div style={{ fontSize: 18 }}>
+              <div><b>Windage:</b> {expected.windage}</div>
+              <div><b>Elevation:</b> {expected.elevation}</div>
+            </div>
+          </div>
 
           <button
-            onClick={onSend}
+            onClick={send}
             disabled={loading}
             style={{
+              marginTop: 14,
               width: "100%",
-              padding: 12,
-              fontSize: 16,
-              fontWeight: 700,
+              padding: "14px 16px",
+              fontSize: 20,
+              fontWeight: 800,
+              borderRadius: 10,
+              border: "none",
               cursor: loading ? "not-allowed" : "pointer",
+              background: "#e7e7e7",
             }}
           >
             {loading ? "Sending..." : "Send to SCZN3 SEC backend"}
           </button>
 
-          {error && (
-            <div style={{ marginTop: 10, color: "crimson" }}>
-              <b>Error:</b> {error}
+          {error ? (
+            <div style={{ marginTop: 12, color: "#b00020", fontWeight: 700 }}>
+              {error}
             </div>
-          )}
+          ) : null}
         </div>
 
         <div>
@@ -198,19 +215,28 @@ export default function App() {
             <img
               src={previewUrl}
               alt="preview"
-              style={{ width: "100%", borderRadius: 10, border: "1px solid #333" }}
+              style={{ width: "100%", borderRadius: 12, border: "1px solid #ddd" }}
             />
           ) : (
-            <div style={{ padding: 20, border: "1px dashed #555", borderRadius: 10, opacity: 0.8 }}>
-              Choose a file to preview it here.
+            <div style={{ width: "100%", height: 220, borderRadius: 12, border: "1px dashed #bbb", display: "grid", placeItems: "center", color: "#777" }}>
+              Preview
             </div>
           )}
         </div>
       </div>
 
-      <h2 style={{ marginTop: 20 }}>Response</h2>
-      <pre style={{ background: "#111", padding: 12, borderRadius: 10, overflow: "auto" }}>
-        {resp ? JSON.stringify(resp, null, 2) : "No response yet."}
+      <h2 style={{ marginTop: 24, fontSize: 34 }}>Response</h2>
+
+      <pre style={{
+        background: "#111",
+        color: "#eee",
+        padding: 16,
+        borderRadius: 12,
+        overflowX: "auto",
+        fontSize: 14,
+        lineHeight: 1.35
+      }}>
+        {resp ? JSON.stringify(resp, null, 2) : "(no response yet)"}
       </pre>
     </div>
   );
