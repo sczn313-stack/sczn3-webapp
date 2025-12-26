@@ -1,252 +1,217 @@
 import React, { useMemo, useState } from "react";
 
-/**
- * SCZN3 SEC — Upload Test (frontend)
- * - Sends multipart/form-data:
- *   field "image" (file)
- *   + poibX, poibY (inches)
- *   + distanceYards
- *   + clickValueMoa
- *
- * Signs:
- * - poibX: Right +, Left -
- * - poibY: Up +, Down -
- *
- * Expected click math:
- * 1 MOA @ 100yd = 1.047"
- * moa = inches / (1.047 * (distanceYards/100))
- * clicks = moa / clickValueMoa
- */
-
-function toNum(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function moaInchesAt(distanceYards) {
-  return 1.047 * (toNum(distanceYards, 100) / 100);
-}
-
-function inchesToMoa(inches, distanceYards) {
-  const denom = moaInchesAt(distanceYards);
-  return denom === 0 ? 0 : inches / denom;
-}
-
-function clicksFromInches(inches, distanceYards, clickValueMoa) {
-  const moa = inchesToMoa(inches, distanceYards);
-  const cv = toNum(clickValueMoa, 0.25);
-  return cv === 0 ? 0 : moa / cv;
-}
-
-function dialText(axisName, signedClicks) {
-  // axisName: "windage" or "elevation"
-  const c = toNum(signedClicks, 0);
-  const abs = Math.abs(c).toFixed(2);
-
-  if (axisName === "windage") {
-    if (c > 0) return `RIGHT ${abs} clicks`;
-    if (c < 0) return `LEFT ${abs} clicks`;
-    return `CENTER 0.00 clicks`;
-  }
-
-  // elevation
-  if (c > 0) return `UP ${abs} clicks`;
-  if (c < 0) return `DOWN ${abs} clicks`;
-  return `CENTER 0.00 clicks`;
-}
-
+// SCZN3 SEC — Upload Test (frontend)
+// - Sends multipart/form-data with field name "image"
+// - Sends POIB + distance + click value with the image
+// - Shows client-side expected clicks + backend response
 export default function App() {
-  // Backend base (Render Static Sites get env baked at build time)
+  // Backend base (override via Render env: VITE_API_BASE)
   const API_BASE = useMemo(() => {
-    const raw = (import.meta.env?.VITE_API_BASE || "").trim();
+    const raw = (import.meta?.env?.VITE_API_BASE || "").trim();
     const fallback = "https://sczn3-sec-backend-pipe.onrender.com";
-    const base = raw || fallback;
-    return base.replace(/\/+$/, "");
+    const base = (raw || fallback).replace(/\/+$/, "");
+    return base;
   }, []);
 
   const ENDPOINT = `${API_BASE}/api/sec`;
 
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-
   // Inputs (defaults match your standard)
-  const [poibX, setPoibX] = useState("1.00"); // Right + / Left -
-  const [poibY, setPoibY] = useState("-2.00"); // Up + / Down -
+  const [poibX, setPoibX] = useState("1.00");     // Right + / Left -
+  const [poibY, setPoibY] = useState("-2.00");    // Up + / Down -
   const [distanceYards, setDistanceYards] = useState("100");
   const [clickValueMoa, setClickValueMoa] = useState("0.25");
 
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [resp, setResp] = useState(null);
   const [error, setError] = useState("");
 
-  // Client-side sanity check (expected clicks)
-  const expectedWindage = useMemo(() => {
-    const x = toNum(poibX, 0);
-    return clicksFromInches(x, distanceYards, clickValueMoa);
-  }, [poibX, distanceYards, clickValueMoa]);
-
-  const expectedElevation = useMemo(() => {
-    const y = toNum(poibY, 0);
-    return clicksFromInches(y, distanceYards, clickValueMoa);
-  }, [poibY, distanceYards, clickValueMoa]);
-
-  function onPickFile(e) {
-    const f = e.target.files?.[0] || null;
-    setFile(f);
-    setResp(null);
-    setError("");
-
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (f) setPreviewUrl(URL.createObjectURL(f));
-    else setPreviewUrl("");
+  function toNum(v, fallback = 0) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
   }
 
-  async function onSubmit() {
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  // 1 MOA @ 100 yards = 1.047 inches
+  function moaInchesAt(distanceYardsNum) {
+    return 1.047 * (distanceYardsNum / 100);
+  }
+
+  function clicksSigned(inches, distanceYardsNum, clickMoaNum) {
+    const inchesPerMoa = moaInchesAt(distanceYardsNum);
+    if (!inchesPerMoa || !clickMoaNum) return 0;
+    return inches / (inchesPerMoa * clickMoaNum);
+  }
+
+  function dialText(axis, signedClicks) {
+    const abs = Math.abs(signedClicks);
+    if (axis === "windage") return signedClicks >= 0 ? `RIGHT ${abs.toFixed(2)} clicks` : `LEFT ${abs.toFixed(2)} clicks`;
+    return signedClicks >= 0 ? `UP ${abs.toFixed(2)} clicks` : `DOWN ${abs.toFixed(2)} clicks`;
+  }
+
+  const expected = useMemo(() => {
+    const x = toNum(poibX, 0);
+    const y = toNum(poibY, 0);
+    const d = toNum(distanceYards, 100);
+    const c = toNum(clickValueMoa, 0.25);
+
+    const w = round2(clicksSigned(x, d, c));
+    const e = round2(clicksSigned(y, d, c));
+
+    return {
+      windage: w,
+      elevation: e,
+      dialWindage: dialText("windage", w),
+      dialElevation: dialText("elevation", e),
+    };
+  }, [poibX, poibY, distanceYards, clickValueMoa]);
+
+  async function onSubmit(e) {
+    e.preventDefault();
     setError("");
     setResp(null);
 
     if (!file) {
-      setError("Pick an image first.");
+      setError("Choose an image first.");
       return;
     }
 
     const fd = new FormData();
-    // REQUIRED multipart file field name:
+
+    // REQUIRED: backend expects "image"
     fd.append("image", file);
 
-    // Always send these fields with the image (so backend won’t default to 0,0)
-    fd.append("poibX", String(toNum(poibX, 0)));
-    fd.append("poibY", String(toNum(poibY, 0)));
-    fd.append("distanceYards", String(toNum(distanceYards, 100)));
-    fd.append("clickValueMoa", String(toNum(clickValueMoa, 0.25)));
+    // Primary field names (what backend should read)
+    fd.append("poibX", String(poibX));
+    fd.append("poibY", String(poibY));
+    fd.append("distanceYards", String(distanceYards));
+    fd.append("clickValueMoa", String(clickValueMoa));
 
-    // Optional aliases (harmless, helps if backend checks alternates)
-    fd.append("poibXInches", String(toNum(poibX, 0)));
-    fd.append("poibYInches", String(toNum(poibY, 0)));
-    fd.append("distance", String(toNum(distanceYards, 100)));
-    fd.append("clickValue", String(toNum(clickValueMoa, 0.25)));
+    // Optional aliases (keeps us resilient if backend checks alternate keys)
+    fd.append("x", String(poibX));
+    fd.append("y", String(poibY));
+    fd.append("poibXInches", String(poibX));
+    fd.append("poibYInches", String(poibY));
+    fd.append("distance", String(distanceYards));
+    fd.append("clickValue", String(clickValueMoa));
 
     setLoading(true);
     try {
       const r = await fetch(ENDPOINT, { method: "POST", body: fd });
       const text = await r.text();
-      let json;
+      let json = null;
+
       try {
         json = JSON.parse(text);
       } catch {
+        // If backend ever returns non-JSON, show raw
         json = { httpStatus: r.status, raw: text };
       }
+
       setResp(json);
-    } catch (e) {
-      setError(String(e?.message || e));
+    } catch (err) {
+      setError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
   }
 
-  // Show what the backend *should* say as “dial” text for sanity
-  const dialWindage = useMemo(
-    () => dialText("windage", expectedWindage),
-    [expectedWindage]
-  );
-  const dialElevation = useMemo(
-    () => dialText("elevation", expectedElevation),
-    [expectedElevation]
-  );
+  function onPickFile(f) {
+    setFile(f || null);
+    setResp(null);
+    setError("");
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (f) setPreviewUrl(URL.createObjectURL(f));
+    else setPreviewUrl("");
+  }
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 16, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ margin: "8px 0 6px", fontSize: 44, lineHeight: 1.05 }}>SCZN3 SEC — Upload Test</h1>
+    <div style={{ maxWidth: 980, margin: "0 auto", padding: 18, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+      <h1 style={{ margin: "8px 0 6px" }}>SCZN3 SEC — Upload Test</h1>
 
-      <div style={{ marginBottom: 10, fontSize: 16 }}>
+      <div style={{ marginBottom: 10, lineHeight: 1.35 }}>
         <div><b>Endpoint:</b> {ENDPOINT}</div>
         <div><b>multipart field:</b> image</div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }}>
-        <div>
-          <div style={{ marginBottom: 10 }}>
-            <input type="file" accept="image/*" onChange={onPickFile} />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <label style={{ display: "grid", gap: 6 }}>
-              <div><b>POIB X (inches)</b> &nbsp;Right + / Left -</div>
-              <input value={poibX} onChange={(e) => setPoibX(e.target.value)} inputMode="decimal" style={{ padding: 10, fontSize: 16 }} />
-            </label>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <div><b>POIB Y (inches)</b> &nbsp;Up + / Down -</div>
-              <input value={poibY} onChange={(e) => setPoibY(e.target.value)} inputMode="decimal" style={{ padding: 10, fontSize: 16 }} />
-            </label>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <div><b>Distance (yards)</b></div>
-              <input value={distanceYards} onChange={(e) => setDistanceYards(e.target.value)} inputMode="numeric" style={{ padding: 10, fontSize: 16 }} />
-            </label>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <div><b>Click Value (MOA)</b></div>
-              <input value={clickValueMoa} onChange={(e) => setClickValueMoa(e.target.value)} inputMode="decimal" style={{ padding: 10, fontSize: 16 }} />
-            </label>
-          </div>
-
-          <div style={{ marginTop: 14, padding: 14, border: "2px solid #111", borderRadius: 10, background: "#f7f7f7", maxWidth: 420 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>
-              Expected clicks (client-side sanity check)
-            </div>
-            <div style={{ fontSize: 18 }}>
-              <div><b>Windage:</b> {expectedWindage.toFixed(2)}</div>
-              <div><b>Elevation:</b> {expectedElevation.toFixed(2)}</div>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 14 }}>
-              <div><b>Dial:</b> {dialWindage}</div>
-              <div><b>Dial:</b> {dialElevation}</div>
-            </div>
-          </div>
-
-          <button
-            onClick={onSubmit}
-            disabled={loading}
-            style={{
-              marginTop: 14,
-              padding: "12px 16px",
-              fontSize: 18,
-              borderRadius: 10,
-              border: "2px solid #0b57d0",
-              background: loading ? "#d7e3ff" : "#eaf1ff",
-              color: "#0b57d0",
-              fontWeight: 800,
-              cursor: loading ? "default" : "pointer",
-              width: "100%",
-              maxWidth: 420,
-            }}
-          >
-            {loading ? "Sending..." : "Send to SCZN3 SEC backend"}
-          </button>
-
-          {error ? (
-            <div style={{ marginTop: 10, color: "#b00020", fontWeight: 700 }}>
-              {error}
-            </div>
-          ) : null}
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => onPickFile(e.target.files?.[0])}
+          />
         </div>
 
-        <div>
-          <div style={{ border: "2px solid #222", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label><b>POIB X (inches)</b> Right + / Left -</label>
+            <input value={poibX} onChange={(e) => setPoibX(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          </div>
+
+          <div>
+            <label><b>POIB Y (inches)</b> Up + / Down -</label>
+            <input value={poibY} onChange={(e) => setPoibY(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          </div>
+
+          <div>
+            <label><b>Distance (yards)</b></label>
+            <input value={distanceYards} onChange={(e) => setDistanceYards(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          </div>
+
+          <div>
+            <label><b>Click Value (MOA)</b></label>
+            <input value={clickValueMoa} onChange={(e) => setClickValueMoa(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+          <div style={{ border: "2px solid #111", borderRadius: 10, padding: 14 }}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Expected clicks (client-side sanity check)</div>
+            <div style={{ fontSize: 18 }}><b>Windage:</b> {expected.windage.toFixed(2)}</div>
+            <div style={{ fontSize: 18, marginBottom: 6 }}><b>Elevation:</b> {expected.elevation.toFixed(2)}</div>
+            <div style={{ fontSize: 15 }}><b>Dial:</b> {expected.dialWindage}</div>
+            <div style={{ fontSize: 15 }}><b>Dial:</b> {expected.dialElevation}</div>
+          </div>
+
+          <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 10, minHeight: 220 }}>
             {previewUrl ? (
-              <img src={previewUrl} alt="preview" style={{ width: "100%", display: "block" }} />
+              <img src={previewUrl} alt="preview" style={{ width: "100%", height: "auto", display: "block", borderRadius: 8 }} />
             ) : (
-              <div style={{ padding: 18, color: "#555" }}>Pick an image to preview it here.</div>
+              <div style={{ color: "#666" }}>Preview will appear here.</div>
             )}
           </div>
         </div>
-      </div>
 
-      <h2 style={{ marginTop: 22, fontSize: 34 }}>Response</h2>
-      <pre style={{ padding: 14, borderRadius: 12, background: "#111", color: "#e9e9e9", overflowX: "auto" }}>
-        {resp ? JSON.stringify(resp, null, 2) : "(none yet)"}
-      </pre>
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            padding: "12px 14px",
+            fontSize: 18,
+            borderRadius: 10,
+            border: "2px solid #2b6cb0",
+            background: loading ? "#ddd" : "#fff",
+            cursor: loading ? "not-allowed" : "pointer",
+            fontWeight: 800
+          }}
+        >
+          {loading ? "Sending…" : "Send to SCZN3 SEC backend"}
+        </button>
+
+        {error ? (
+          <div style={{ color: "crimson", fontWeight: 700 }}>{error}</div>
+        ) : null}
+
+        <h2 style={{ marginTop: 10, marginBottom: 8 }}>Response</h2>
+        <pre style={{ background: "#111", color: "#eee", padding: 14, borderRadius: 12, overflowX: "auto", whiteSpace: "pre-wrap" }}>
+{resp ? JSON.stringify(resp, null, 2) : ""}
+        </pre>
+      </form>
     </div>
   );
 }
