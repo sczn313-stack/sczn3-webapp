@@ -1,284 +1,333 @@
 import React, { useMemo, useState } from "react";
 
-/**
- * SCZN3 SEC — Minimal Scope Clicks UI + Congruence Gate
- * - Parses target size (e.g., 8.5x11) and sends LONG side to backend.
- * - Displays minimal scope clicks.
- * - Maps dial direction from POIB sign (not backend sign), so UP/DOWN is consistent.
- * - Emits an on-screen Incongruence Log if UI vs backend disagree.
- */
-
 const DEFAULT_ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
 
-function round2(n) {
-  if (typeof n !== "number" || Number.isNaN(n)) return "";
-  return (Math.round(n * 100) / 100).toFixed(2);
+function toFixed2(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return "0.00";
+  return (Math.round(num * 100) / 100).toFixed(2);
 }
 
-function toNumber(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function abs2(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return "0.00";
+  return toFixed2(Math.abs(num));
 }
 
-function normalizeSizeSpec(raw) {
-  if (!raw) return "";
-  return String(raw)
-    .trim()
-    .toLowerCase()
-    .replaceAll("×", "x")
-    .replaceAll(" ", "");
-}
+function parseTargetSizeSpec(specRaw) {
+  // Accept: "11", "8.5x11", "8.5×11", "8.5 x 11"
+  const spec = String(specRaw || "").trim().toLowerCase().replace("×", "x").replace(/\s+/g, "");
+  if (!spec) return { ok: false, spec: "", long: null, short: null, reason: "EMPTY" };
 
-// Returns { ok, spec, long, short, reason }
-function parseTargetSize(raw) {
-  const spec = normalizeSizeSpec(raw);
-
-  // Accept a simple number like "23" or "11"
+  // pure number = assume it's the long side
   if (/^\d+(\.\d+)?$/.test(spec)) {
-    const n = Number(spec);
-    if (n > 0) return { ok: true, spec, long: n, short: n };
-    return { ok: false, spec, long: null, short: null, reason: "Size must be > 0" };
+    const v = Number(spec);
+    if (!Number.isFinite(v) || v <= 0) return { ok: false, spec, long: null, short: null, reason: "BAD_NUMBER" };
+    return { ok: true, spec, long: v, short: null, reason: null };
   }
 
-  // Accept "8.5x11"
-  const m = spec.match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)$/);
-  if (!m) {
-    return { ok: false, spec, long: null, short: null, reason: 'Use like "8.5x11" or "23"' };
-  }
+  const m = spec.match(/^(\d+(\.\d+)?)(x)(\d+(\.\d+)?)$/);
+  if (!m) return { ok: false, spec, long: null, short: null, reason: "BAD_FORMAT" };
+
   const a = Number(m[1]);
-  const b = Number(m[3]);
-  if (!(a > 0 && b > 0)) {
-    return { ok: false, spec, long: null, short: null, reason: "Both sides must be > 0" };
+  const b = Number(m[4]);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+    return { ok: false, spec, long: null, short: null, reason: "BAD_DIMENSIONS" };
   }
+
   const long = Math.max(a, b);
   const short = Math.min(a, b);
-  return { ok: true, spec, long, short };
+  return { ok: true, spec, long, short, reason: null };
 }
 
-function getDialFromPoib(poibX, poibY) {
-  // If group is RIGHT of bull (x > 0), dial LEFT to bring it left.
-  // If group is LEFT of bull (x < 0), dial RIGHT.
-  let windDir = "CENTER";
-  if (typeof poibX === "number") {
-    if (poibX > 0) windDir = "LEFT";
-    else if (poibX < 0) windDir = "RIGHT";
+function dialFromPoib(poibInches, clicksSigned) {
+  const x = Number(poibInches?.x);
+  const y = Number(poibInches?.y);
+
+  // POIB truth rules (image y+ means down on photo, correction is UP)
+  const wDir = !Number.isFinite(x) || x === 0 ? "CENTER" : x > 0 ? "LEFT" : "RIGHT";
+  const eDir = !Number.isFinite(y) || y === 0 ? "LEVEL" : y > 0 ? "UP" : "DOWN";
+
+  const wAbs = abs2(clicksSigned?.windage);
+  const eAbs = abs2(clicksSigned?.elevation);
+
+  return {
+    windage: `${wDir} ${wAbs} clicks`,
+    elevation: `${eDir} ${eAbs} clicks`,
+    wDir,
+    eDir,
+    wAbs,
+    eAbs,
+  };
+}
+
+function extractDirFromDialString(s) {
+  const t = String(s || "").toUpperCase();
+  if (t.includes("LEFT")) return "LEFT";
+  if (t.includes("RIGHT")) return "RIGHT";
+  if (t.includes("UP")) return "UP";
+  if (t.includes("DOWN")) return "DOWN";
+  if (t.includes("CENTER")) return "CENTER";
+  if (t.includes("LEVEL")) return "LEVEL";
+  return null;
+}
+
+function buildIncongruenceLog({ parsedLong, backendTargetSizeInches, poibInches, backendDial }) {
+  const log = [];
+
+  // 1) target size congruence
+  const pLong = Number(parsedLong);
+  const bSize = Number(backendTargetSizeInches);
+  if (Number.isFinite(pLong) && Number.isFinite(bSize)) {
+    // strict 2-decimal compare (because backend sends 11, 23, etc.)
+    const p2 = Number(toFixed2(pLong));
+    const b2 = Number(toFixed2(bSize));
+    if (p2 !== b2) {
+      log.push({
+        code: "TARGET_SIZE_INCONGRUENT",
+        parsedLong: toFixed2(pLong),
+        backendTargetSizeInches: toFixed2(bSize),
+        fix: "UI should send the long side (11.00 for 8.5x11). Backend should receive the same. If mismatch, block trust.",
+      });
+    }
   }
 
-  // If group is BELOW bull (image y > 0), dial UP.
-  // If group is ABOVE bull (image y < 0), dial DOWN.
-  let elevDir = "LEVEL";
-  if (typeof poibY === "number") {
-    if (poibY > 0) elevDir = "UP";
-    else if (poibY < 0) elevDir = "DOWN";
+  // 2) elevation direction congruence (POIB truth vs backend dial string)
+  const y = Number(poibInches?.y);
+  const expectedElevDir = !Number.isFinite(y) || y === 0 ? "LEVEL" : y > 0 ? "UP" : "DOWN";
+  const backendElevDir = extractDirFromDialString(backendDial?.elevation);
+
+  if (backendElevDir && backendElevDir !== expectedElevDir) {
+    log.push({
+      code: "ELEVATION_DIRECTION_INCONGRUENT",
+      poib: { y: toFixed2(y) },
+      uiDial: expectedElevDir,
+      backendDial: backendDial?.elevation || "",
+      fix: "Backend dial strings must be derived from POIB sign (truth). If backend uses flipped y-axis or clicksSigned sign, it will lie. Fix backend dial generation.",
+    });
   }
 
-  return { windDir, elevDir };
+  // 3) windage direction congruence (POIB truth vs backend dial string)
+  const x = Number(poibInches?.x);
+  const expectedWindDir = !Number.isFinite(x) || x === 0 ? "CENTER" : x > 0 ? "LEFT" : "RIGHT";
+  const backendWindDir = extractDirFromDialString(backendDial?.windage);
+
+  if (backendWindDir && backendWindDir !== expectedWindDir) {
+    log.push({
+      code: "WINDAGE_DIRECTION_INCONGRUENT",
+      poib: { x: toFixed2(x) },
+      uiDial: expectedWindDir,
+      backendDial: backendDial?.windage || "",
+      fix: "Backend windage dial strings must be derived from POIB sign (truth). Fix backend dial generation.",
+    });
+  }
+
+  return log;
 }
 
 export default function App() {
   const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINT);
 
+  const [file, setFile] = useState(null);
+
   const [targetPreset, setTargetPreset] = useState("8.5x11");
-  const [targetSizeText, setTargetSizeText] = useState("8.5x11");
+  const [targetSpec, setTargetSpec] = useState("8.5x11");
 
   const [distanceYards, setDistanceYards] = useState("100");
   const [clickValueMoa, setClickValueMoa] = useState("0.25");
 
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [showRaw, setShowRaw] = useState(true);
 
-  const [status, setStatus] = useState("");
-  const [result, setResult] = useState(null);
-  const [showJson, setShowJson] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [resp, setResp] = useState(null);
+  const [err, setErr] = useState("");
 
-  const [gateLog, setGateLog] = useState(null);
+  const parsed = useMemo(() => parseTargetSizeSpec(targetSpec), [targetSpec]);
 
-  const parsed = useMemo(() => parseTargetSize(targetSizeText), [targetSizeText]);
-
-  function onChooseFile(e) {
-    const f = e.target.files?.[0] || null;
-    setFile(f);
-    setResult(null);
-    setGateLog(null);
-    setStatus("");
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (f) setPreviewUrl(URL.createObjectURL(f));
-    else setPreviewUrl("");
-  }
-
-  function applyPreset(v) {
-    setTargetPreset(v);
-    setTargetSizeText(v);
-  }
+  const previewUrl = useMemo(() => {
+    if (!file) return null;
+    return URL.createObjectURL(file);
+  }, [file]);
 
   async function onSend() {
-    setGateLog(null);
-    setResult(null);
+    setErr("");
+    setResp(null);
 
     if (!file) {
-      setStatus("Choose an image first.");
+      setErr("Choose an image first.");
       return;
     }
 
-    if (!parsed.ok) {
-      setStatus(`Fix Target Size: ${parsed.reason}`);
+    if (!parsed.ok || !Number.isFinite(Number(parsed.long))) {
+      setErr("Target size is invalid. Use 11 or 8.5x11.");
       return;
     }
 
-    const d = toNumber(distanceYards);
-    const cv = toNumber(clickValueMoa);
-    if (d == null || d <= 0) return setStatus("Distance must be a positive number.");
-    if (cv == null || cv <= 0) return setStatus("Click Value must be a positive number.");
-
-    // Congruence Gate: ALWAYS send LONG side for non-square specs.
-    const targetSizeInchesToSend = parsed.long;
-
-    setStatus("Sending…");
-
+    setBusy(true);
     try {
       const form = new FormData();
+
+      // REQUIRED
       form.append("image", file);
-      form.append("distanceYards", String(d));
-      form.append("clickValueMoa", String(cv));
-      form.append("targetSizeInches", String(targetSizeInchesToSend));
 
-      const res = await fetch(endpoint, { method: "POST", body: form });
-      const data = await res.json().catch(() => null);
+      // OPTIONAL fields your backend already accepts
+      form.append("distanceYards", String(distanceYards || "100"));
+      form.append("clickValueMoa", String(clickValueMoa || "0.25"));
 
-      if (!res.ok || !data || data.ok !== true) {
-        setStatus(`Backend error (${res.status}).`);
-        setResult(data || { ok: false, status: res.status });
-        return;
+      // IMPORTANT: always send LONG side in inches (8.5x11 => 11)
+      form.append("targetSizeInches", String(Number(parsed.long)));
+
+      const r = await fetch(endpoint, { method: "POST", body: form });
+
+      // If backend returns non-200, surface readable text
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`Backend error ${r.status}: ${text || r.statusText}`);
       }
 
-      // Gate check: UI intent vs backend echo
-      const backendSize = data?.sec?.targetSizeInches;
-      const backendPoibX = data?.poibInches?.x;
-      const backendPoibY = data?.poibInches?.y;
-
-      const issues = [];
-      if (typeof backendSize === "number") {
-        const diff = Math.abs(backendSize - targetSizeInchesToSend);
-        if (diff > 0.01) {
-          issues.push({
-            code: "TARGET_SIZE_MISMATCH",
-            uiParsed: {
-              spec: parsed.spec,
-              long: Number(round2(parsed.long)),
-              short: Number(round2(parsed.short)),
-              sentToBackend: Number(round2(targetSizeInchesToSend)),
-            },
-            backendEcho: {
-              sec_targetSizeInches: Number(round2(backendSize)),
-            },
-            fix: "Reject result (do not trust clicks). Confirm correct target size + confirm backend is not overriding targetSizeInches.",
-          });
-        }
-      }
-
-      // Direction sanity: compute dial from POIB sign (trusted) and compare backend dial if present
-      const dialFromPoib = getDialFromPoib(backendPoibX, backendPoibY);
-      const backendDialW = data?.dial?.windage || "";
-      const backendDialE = data?.dial?.elevation || "";
-
-      // Light check only (string contains LEFT/RIGHT and UP/DOWN)
-      if (backendDialW) {
-        const hasWind =
-          (dialFromPoib.windDir === "LEFT" && backendDialW.toUpperCase().includes("LEFT")) ||
-          (dialFromPoib.windDir === "RIGHT" && backendDialW.toUpperCase().includes("RIGHT")) ||
-          (dialFromPoib.windDir === "CENTER" && backendDialW.toUpperCase().includes("CENTER"));
-        if (!hasWind) {
-          issues.push({
-            code: "WINDAGE_DIRECTION_INCONGRUENT",
-            poib: { x: Number(round2(backendPoibX)) },
-            uiDial: dialFromPoib.windDir,
-            backendDial: backendDialW,
-            fix: "Use UI dial direction (POIB-based). Backend dial string is inconsistent.",
-          });
-        }
-      }
-
-      if (backendDialE) {
-        const hasElev =
-          (dialFromPoib.elevDir === "UP" && backendDialE.toUpperCase().includes("UP")) ||
-          (dialFromPoib.elevDir === "DOWN" && backendDialE.toUpperCase().includes("DOWN")) ||
-          (dialFromPoib.elevDir === "LEVEL" && backendDialE.toUpperCase().includes("LEVEL"));
-        if (!hasElev) {
-          issues.push({
-            code: "ELEVATION_DIRECTION_INCONGRUENT",
-            poib: { y: Number(round2(backendPoibY)) },
-            uiDial: dialFromPoib.elevDir,
-            backendDial: backendDialE,
-            fix: "Use UI dial direction (POIB-based). Backend dial string is inconsistent (likely y-axis flip).",
-          });
-        }
-      }
-
-      if (issues.length) {
-        setGateLog({
-          title: "Incongruence Log",
-          issues,
-          note: "This result was received, but one or more variables are not congruent. Do not trust the output until fixed.",
-        });
-      }
-
-      // Compute minimal clicks display from backend clicksSigned magnitudes
-      const wSigned = data?.clicksSigned?.windage;
-      const eSigned = data?.clicksSigned?.elevation;
-
-      const wAbs = typeof wSigned === "number" ? Math.abs(wSigned) : null;
-      const eAbs = typeof eSigned === "number" ? Math.abs(eSigned) : null;
-
-      const uiDial = getDialFromPoib(backendPoibX, backendPoibY);
-
-      const minimal = {
-        windageDir: uiDial.windDir,
-        windageClicks: wAbs,
-        elevationDir: uiDial.elevDir,
-        elevationClicks: eAbs,
-      };
-
-      setResult({ ...data, __ui: { parsed, sent: targetSizeInchesToSend, minimal } });
-      setStatus("Done.");
-    } catch (err) {
-      setStatus("Network error while sending.");
-      setResult({ ok: false, error: String(err) });
+      const json = await r.json();
+      setResp(json);
+    } catch (e) {
+      setErr(String(e?.message || e));
+    } finally {
+      setBusy(false);
     }
   }
 
-  const minimal = result?.__ui?.minimal;
+  // derived display
+  const poibInches = resp?.poibInches || null;
+  const clicksSigned = resp?.clicksSigned || null;
+
+  const minimal = useMemo(() => {
+    if (!resp) return null;
+    return dialFromPoib(poibInches, clicksSigned);
+  }, [resp, poibInches, clicksSigned]);
+
+  const incongruenceLog = useMemo(() => {
+    if (!resp) return [];
+    return buildIncongruenceLog({
+      parsedLong: parsed.long,
+      backendTargetSizeInches: resp?.sec?.targetSizeInches,
+      poibInches,
+      backendDial: resp?.dial,
+    });
+  }, [resp, parsed.long, poibInches]);
+
+  const hasIncongruence = incongruenceLog.length > 0;
+
+  const styles = {
+    page: {
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+      padding: 16,
+      maxWidth: 1400,
+      margin: "0 auto",
+    },
+    title: { fontSize: 42, fontWeight: 800, margin: "8px 0 6px" },
+    label: { fontWeight: 700, marginTop: 10 },
+    input: {
+      width: "100%",
+      padding: "10px 12px",
+      border: "2px solid #111",
+      borderRadius: 10,
+      fontSize: 16,
+      boxSizing: "border-box",
+    },
+    row: { display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" },
+    colLeft: { flex: "1 1 420px", minWidth: 360 },
+    colRight: { flex: "1 1 520px", minWidth: 360 },
+    card: {
+      border: "3px solid #111",
+      borderRadius: 14,
+      padding: 14,
+      marginTop: 14,
+    },
+    btn: {
+      width: "100%",
+      padding: "14px 14px",
+      borderRadius: 12,
+      border: "3px solid #1f4ed8",
+      background: busy ? "#e8efff" : "#ffffff",
+      fontSize: 18,
+      fontWeight: 800,
+      cursor: busy ? "not-allowed" : "pointer",
+      marginTop: 14,
+    },
+    okBox: {
+      border: "3px solid #2a8a3a",
+      borderRadius: 14,
+      padding: 14,
+      marginTop: 14,
+    },
+    badBox: {
+      border: "3px solid #b32020",
+      borderRadius: 14,
+      padding: 14,
+      marginTop: 14,
+      background: "#fff6f6",
+    },
+    mono: {
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontSize: 13,
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word",
+    },
+    previewWrap: {
+      border: "3px solid #111",
+      borderRadius: 14,
+      padding: 14,
+      marginTop: 14,
+    },
+    previewImg: {
+      width: "100%",
+      height: "auto",
+      border: "3px solid #111",
+      borderRadius: 10,
+      display: "block",
+      background: "#fff",
+    },
+    small: { fontSize: 13, opacity: 0.8, marginTop: 6 },
+    checkboxRow: { display: "flex", alignItems: "center", gap: 10, marginTop: 10 },
+  };
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", padding: 16 }}>
-      <h1 style={{ margin: "0 0 12px 0" }}>SCZN3 SEC — Upload Test</h1>
+    <div style={styles.page}>
+      <div style={styles.title}>SCZN3 SEC — Upload Test</div>
 
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Endpoint</div>
+      <div style={{ marginTop: 8 }}>
+        <div style={styles.label}>Endpoint</div>
         <input
+          style={styles.input}
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
-          style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          placeholder={DEFAULT_ENDPOINT}
         />
-        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-          POST multipart field: <b>image</b>
-        </div>
+        <div style={styles.small}>POST multipart field: <b>image</b></div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-        {/* LEFT PANEL */}
-        <div style={{ border: "2px solid #111", borderRadius: 14, padding: 14 }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <input type="file" accept="image/*" onChange={onChooseFile} />
-          </div>
+      <div style={styles.row}>
+        {/* LEFT */}
+        <div style={styles.colLeft}>
+          <div style={styles.card}>
+            <div style={styles.label}>Choose file</div>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={{ marginTop: 8 }}
+            />
+            <div style={styles.small}>{file ? file.name : "No file selected."}</div>
 
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Target Size</div>
+            <div style={styles.label}>Target Size</div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <select
+                style={{ ...styles.input, width: 150 }}
                 value={targetPreset}
-                onChange={(e) => applyPreset(e.target.value)}
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #bbb" }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setTargetPreset(v);
+                  setTargetSpec(v);
+                }}
               >
                 <option value="8.5x11">8.5x11</option>
                 <option value="11">11</option>
@@ -286,129 +335,150 @@ export default function App() {
               </select>
 
               <input
-                value={targetSizeText}
-                onChange={(e) => setTargetSizeText(e.target.value)}
-                placeholder='e.g. "8.5x11" or "23"'
-                style={{ flex: 1, padding: 10, borderRadius: 10, border: "1px solid #bbb" }}
+                style={styles.input}
+                value={targetSpec}
+                onChange={(e) => setTargetSpec(e.target.value)}
+                placeholder="8.5x11"
               />
             </div>
 
-            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+            <div style={styles.small}>
+              Parsed:{" "}
               {parsed.ok ? (
-                <>Parsed: spec={parsed.spec} &nbsp; long={round2(parsed.long)} &nbsp; short={round2(parsed.short)}</>
+                <>
+                  spec=<b>{parsed.spec}</b> &nbsp; long=<b>{toFixed2(parsed.long)}</b>
+                  {parsed.short ? <> &nbsp; short=<b>{toFixed2(parsed.short)}</b></> : null}
+                </>
               ) : (
-                <>Parsed: (invalid) — {parsed.reason}</>
+                <>
+                  <b>INVALID</b> ({parsed.reason})
+                </>
               )}
             </div>
-          </div>
 
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Distance (yards)</div>
-              <input
-                value={distanceYards}
-                onChange={(e) => setDistanceYards(e.target.value)}
-                style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #bbb" }}
-              />
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Click Value (MOA)</div>
-              <input
-                value={clickValueMoa}
-                onChange={(e) => setClickValueMoa(e.target.value)}
-                style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #bbb" }}
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={onSend}
-            style={{
-              marginTop: 14,
-              width: "100%",
-              padding: "14px 12px",
-              borderRadius: 12,
-              border: "3px solid #2b78ff",
-              background: "#eaf2ff",
-              fontWeight: 900,
-              fontSize: 18,
-              cursor: "pointer",
-            }}
-          >
-            Send (with Congruence Gate)
-          </button>
-
-          <div style={{ marginTop: 10, fontWeight: 700 }}>Status: <span style={{ fontWeight: 600 }}>{status || "—"}</span></div>
-
-          {/* Minimal Scope Clicks */}
-          {minimal && (
-            <div style={{ marginTop: 12, border: "3px solid #2c9b5f", borderRadius: 12, padding: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 10 }}>Scope Clicks (Minimal)</div>
-
-              <div style={{ fontSize: 16, marginBottom: 6 }}>
-                <b>Windage:</b>{" "}
-                {minimal.windageDir} {minimal.windageClicks == null ? "—" : `${round2(minimal.windageClicks)} clicks`}
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={styles.label}>Distance (yards)</div>
+                <input
+                  style={styles.input}
+                  value={distanceYards}
+                  onChange={(e) => setDistanceYards(e.target.value)}
+                  placeholder="100"
+                />
               </div>
-
-              <div style={{ fontSize: 16, marginBottom: 10 }}>
-                <b>Elevation:</b>{" "}
-                {minimal.elevationDir} {minimal.elevationClicks == null ? "—" : `${round2(minimal.elevationClicks)} clicks`}
-              </div>
-
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
-                clicksSigned: w={round2(result?.clicksSigned?.windage)}, e={round2(result?.clicksSigned?.elevation)} &nbsp; POIB inches: x={round2(result?.poibInches?.x)}, y={round2(result?.poibInches?.y)}
-              </div>
-
-              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>
-                computeStatus: {String(result?.computeStatus || "")} &nbsp; backend sec.targetSizeInches: {round2(result?.sec?.targetSizeInches)}
+              <div style={{ flex: 1 }}>
+                <div style={styles.label}>Click Value (MOA)</div>
+                <input
+                  style={styles.input}
+                  value={clickValueMoa}
+                  onChange={(e) => setClickValueMoa(e.target.value)}
+                  placeholder="0.25"
+                />
               </div>
             </div>
-          )}
 
-          {/* Incongruence Log */}
-          {gateLog && (
-            <div style={{ marginTop: 12, border: "3px solid #c0392b", borderRadius: 12, padding: 12, background: "#fff5f5" }}>
-              <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>{gateLog.title}</div>
-              <div style={{ fontSize: 12, marginBottom: 10 }}>{gateLog.note}</div>
-              {gateLog.issues.map((it, idx) => (
-                <div key={idx} style={{ marginBottom: 10, padding: 10, borderRadius: 10, border: "1px solid #e0a0a0", background: "#ffffff" }}>
-                  <div style={{ fontWeight: 800 }}>{it.code}</div>
-                  <pre style={{ margin: "8px 0 0 0", whiteSpace: "pre-wrap", fontSize: 12 }}>
-                    {JSON.stringify(it, null, 2)}
-                  </pre>
+            <button style={styles.btn} disabled={busy} onClick={onSend}>
+              {busy ? "Sending..." : "Send (with Congruence Gate)"}
+            </button>
+
+            {err ? (
+              <div style={{ ...styles.badBox, marginTop: 14 }}>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Error</div>
+                <div style={styles.mono}>{err}</div>
+              </div>
+            ) : null}
+
+            {resp ? (
+              <>
+                <div style={styles.okBox}>
+                  <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>
+                    Scope Clicks (Minimal)
+                  </div>
+
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>
+                    Windage:{" "}
+                    <span style={{ fontWeight: 900 }}>
+                      {minimal?.windage || "—"}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6 }}>
+                    Elevation:{" "}
+                    <span style={{ fontWeight: 900 }}>
+                      {minimal?.elevation || "—"}
+                    </span>
+                  </div>
+
+                  <div style={{ marginTop: 12, ...styles.mono }}>
+                    clicksSigned: w={toFixed2(clicksSigned?.windage)}, e={toFixed2(clicksSigned?.elevation)}{" "}
+                    POIB inches: x={toFixed2(poibInches?.x)}, y={toFixed2(poibInches?.y)}{"\n"}
+                    computeStatus: {resp?.computeStatus || "—"}{" "}
+                    backend sec.targetSizeInches: {toFixed2(resp?.sec?.targetSizeInches)}
+                  </div>
+
+                  <div style={styles.checkboxRow}>
+                    <input
+                      id="showraw"
+                      type="checkbox"
+                      checked={showRaw}
+                      onChange={(e) => setShowRaw(e.target.checked)}
+                    />
+                    <label htmlFor="showraw" style={{ fontWeight: 800 }}>
+                      Show raw JSON
+                    </label>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
 
-          <div style={{ marginTop: 10 }}>
-            <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="checkbox" checked={showJson} onChange={(e) => setShowJson(e.target.checked)} />
-              <span style={{ fontWeight: 700 }}>Show raw JSON</span>
-            </label>
+                {hasIncongruence ? (
+                  <div style={styles.badBox}>
+                    <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>
+                      Incongruence Log
+                    </div>
+                    <div style={{ fontWeight: 700, marginBottom: 10 }}>
+                      This result was received, but one or more variables are not congruent.
+                      Do not trust the output until fixed.
+                    </div>
+                    {incongruenceLog.map((item, idx) => (
+                      <div key={idx} style={{ ...styles.card, borderColor: "#b32020", marginTop: 10 }}>
+                        <div style={{ fontWeight: 900 }}>{item.code}</div>
+                        <div style={styles.mono}>{JSON.stringify(item, null, 2)}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </div>
         </div>
 
-        {/* RIGHT PANEL */}
-        <div style={{ border: "2px solid #111", borderRadius: 14, padding: 14 }}>
-          <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 10 }}>Preview</div>
+        {/* RIGHT */}
+        <div style={styles.colRight}>
+          <div style={styles.previewWrap}>
+            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Preview</div>
 
-          <div style={{ border: "3px solid #111", borderRadius: 12, padding: 10, minHeight: 260, background: "#fafafa" }}>
-            {previewUrl ? (
-              <img src={previewUrl} alt="preview" style={{ width: "100%", height: "auto", borderRadius: 10 }} />
-            ) : (
-              <div style={{ opacity: 0.7 }}>Choose an image to preview it here.</div>
-            )}
-          </div>
-
-          {showJson && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>Response</div>
-              <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "#111", color: "#eaeaea", padding: 12, borderRadius: 12 }}>
-                {result ? JSON.stringify(result, null, 2) : "{ }"}
-              </pre>
+            <div style={styles.checkboxRow}>
+              <input
+                id="showraw2"
+                type="checkbox"
+                checked={showRaw}
+                onChange={(e) => setShowRaw(e.target.checked)}
+              />
+              <label htmlFor="showraw2" style={{ fontWeight: 800 }}>
+                Show raw JSON
+              </label>
             </div>
-          )}
+
+            {previewUrl ? <img alt="preview" src={previewUrl} style={styles.previewImg} /> : <div style={styles.small}>Choose an image to preview.</div>}
+
+            {showRaw && resp ? (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>Response</div>
+                <div style={{ ...styles.mono, border: "3px solid #111", borderRadius: 12, padding: 12 }}>
+                  {JSON.stringify(resp, null, 2)}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
