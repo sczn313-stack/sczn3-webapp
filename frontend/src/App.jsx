@@ -2,483 +2,508 @@ import React, { useMemo, useState } from "react";
 
 const DEFAULT_ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
 
-function toFixed2(n) {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return "0.00";
-  return (Math.round(num * 100) / 100).toFixed(2);
+// 1 MOA ≈ 1.047 inches at 100 yards
+function inchesPerMoaAtYards(yards) {
+  const y = Number(yards);
+  if (!Number.isFinite(y) || y <= 0) return NaN;
+  return 1.047 * (y / 100);
 }
 
-function abs2(n) {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return "0.00";
-  return toFixed2(Math.abs(num));
+function fmt2(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return x.toFixed(2);
 }
 
-function parseTargetSizeSpec(specRaw) {
-  // Accept: "11", "8.5x11", "8.5×11", "8.5 x 11"
-  const spec = String(specRaw || "").trim().toLowerCase().replace("×", "x").replace(/\s+/g, "");
-  if (!spec) return { ok: false, spec: "", long: null, short: null, reason: "EMPTY" };
+function parseTargetSpec(specRaw) {
+  const raw = String(specRaw ?? "").trim().toLowerCase();
+  if (!raw) return { ok: false, error: "Missing target size." };
 
-  // pure number = assume it's the long side
-  if (/^\d+(\.\d+)?$/.test(spec)) {
-    const v = Number(spec);
-    if (!Number.isFinite(v) || v <= 0) return { ok: false, spec, long: null, short: null, reason: "BAD_NUMBER" };
-    return { ok: true, spec, long: v, short: null, reason: null };
+  // Accept "11" or "23"
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v <= 0) return { ok: false, error: "Bad target size." };
+    return { ok: true, spec: raw, long: v, short: v };
   }
 
-  const m = spec.match(/^(\d+(\.\d+)?)(x)(\d+(\.\d+)?)$/);
-  if (!m) return { ok: false, spec, long: null, short: null, reason: "BAD_FORMAT" };
-
-  const a = Number(m[1]);
-  const b = Number(m[4]);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
-    return { ok: false, spec, long: null, short: null, reason: "BAD_DIMENSIONS" };
-  }
-
-  const long = Math.max(a, b);
-  const short = Math.min(a, b);
-  return { ok: true, spec, long, short, reason: null };
-}
-
-function dialFromPoib(poibInches, clicksSigned) {
-  const x = Number(poibInches?.x);
-  const y = Number(poibInches?.y);
-
-  // POIB truth rules (image y+ means down on photo, correction is UP)
-  const wDir = !Number.isFinite(x) || x === 0 ? "CENTER" : x > 0 ? "LEFT" : "RIGHT";
-  const eDir = !Number.isFinite(y) || y === 0 ? "LEVEL" : y > 0 ? "UP" : "DOWN";
-
-  const wAbs = abs2(clicksSigned?.windage);
-  const eAbs = abs2(clicksSigned?.elevation);
-
-  return {
-    windage: `${wDir} ${wAbs} clicks`,
-    elevation: `${eDir} ${eAbs} clicks`,
-    wDir,
-    eDir,
-    wAbs,
-    eAbs,
-  };
-}
-
-function extractDirFromDialString(s) {
-  const t = String(s || "").toUpperCase();
-  if (t.includes("LEFT")) return "LEFT";
-  if (t.includes("RIGHT")) return "RIGHT";
-  if (t.includes("UP")) return "UP";
-  if (t.includes("DOWN")) return "DOWN";
-  if (t.includes("CENTER")) return "CENTER";
-  if (t.includes("LEVEL")) return "LEVEL";
-  return null;
-}
-
-function buildIncongruenceLog({ parsedLong, backendTargetSizeInches, poibInches, backendDial }) {
-  const log = [];
-
-  // 1) target size congruence
-  const pLong = Number(parsedLong);
-  const bSize = Number(backendTargetSizeInches);
-  if (Number.isFinite(pLong) && Number.isFinite(bSize)) {
-    // strict 2-decimal compare (because backend sends 11, 23, etc.)
-    const p2 = Number(toFixed2(pLong));
-    const b2 = Number(toFixed2(bSize));
-    if (p2 !== b2) {
-      log.push({
-        code: "TARGET_SIZE_INCONGRUENT",
-        parsedLong: toFixed2(pLong),
-        backendTargetSizeInches: toFixed2(bSize),
-        fix: "UI should send the long side (11.00 for 8.5x11). Backend should receive the same. If mismatch, block trust.",
-      });
+  // Accept "8.5x11" or "8.5 x 11"
+  const m = raw.replace(/\s+/g, "").match(/^(\d+(\.\d+)?)[x×](\d+(\.\d+)?)$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[3]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+      return { ok: false, error: "Bad target size spec." };
     }
+    const long = Math.max(a, b);
+    const short = Math.min(a, b);
+    return { ok: true, spec: `${a}x${b}`, long, short };
   }
 
-  // 2) elevation direction congruence (POIB truth vs backend dial string)
-  const y = Number(poibInches?.y);
-  const expectedElevDir = !Number.isFinite(y) || y === 0 ? "LEVEL" : y > 0 ? "UP" : "DOWN";
-  const backendElevDir = extractDirFromDialString(backendDial?.elevation);
-
-  if (backendElevDir && backendElevDir !== expectedElevDir) {
-    log.push({
-      code: "ELEVATION_DIRECTION_INCONGRUENT",
-      poib: { y: toFixed2(y) },
-      uiDial: expectedElevDir,
-      backendDial: backendDial?.elevation || "",
-      fix: "Backend dial strings must be derived from POIB sign (truth). If backend uses flipped y-axis or clicksSigned sign, it will lie. Fix backend dial generation.",
-    });
+  // Common aliases
+  if (raw === "letter" || raw === "8.5x11" || raw === "8.5×11") {
+    return { ok: true, spec: "8.5x11", long: 11, short: 8.5 };
   }
 
-  // 3) windage direction congruence (POIB truth vs backend dial string)
-  const x = Number(poibInches?.x);
-  const expectedWindDir = !Number.isFinite(x) || x === 0 ? "CENTER" : x > 0 ? "LEFT" : "RIGHT";
-  const backendWindDir = extractDirFromDialString(backendDial?.windage);
+  return { ok: false, error: `Unrecognized target size: "${specRaw}"` };
+}
 
-  if (backendWindDir && backendWindDir !== expectedWindDir) {
-    log.push({
-      code: "WINDAGE_DIRECTION_INCONGRUENT",
-      poib: { x: toFixed2(x) },
-      uiDial: expectedWindDir,
-      backendDial: backendDial?.windage || "",
-      fix: "Backend windage dial strings must be derived from POIB sign (truth). Fix backend dial generation.",
-    });
+function dialFromSignedClicks(axis, signedClicks) {
+  const v = Number(signedClicks);
+  if (!Number.isFinite(v) || Math.abs(v) < 0.000001) {
+    return axis === "windage" ? "CENTER 0.00 clicks" : "LEVEL 0.00 clicks";
   }
+  const abs = Math.abs(v);
+  if (axis === "windage") return v > 0 ? `RIGHT ${fmt2(abs)} clicks` : `LEFT ${fmt2(abs)} clicks`;
+  return v > 0 ? `UP ${fmt2(abs)} clicks` : `DOWN ${fmt2(abs)} clicks`;
+}
 
-  return log;
+function extractDirection(dialStr) {
+  const s = String(dialStr || "").toUpperCase();
+  if (s.includes("LEFT")) return "LEFT";
+  if (s.includes("RIGHT")) return "RIGHT";
+  if (s.includes("UP")) return "UP";
+  if (s.includes("DOWN")) return "DOWN";
+  return null;
 }
 
 export default function App() {
   const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINT);
 
   const [file, setFile] = useState(null);
-
-  const [targetPreset, setTargetPreset] = useState("8.5x11");
-  const [targetSpec, setTargetSpec] = useState("8.5x11");
+  const [previewUrl, setPreviewUrl] = useState("");
 
   const [distanceYards, setDistanceYards] = useState("100");
   const [clickValueMoa, setClickValueMoa] = useState("0.25");
 
+  const [targetPreset, setTargetPreset] = useState("8.5x11");
+  const [targetSpec, setTargetSpec] = useState("8.5x11");
+
+  const [status, setStatus] = useState("");
+  const [rawJson, setRawJson] = useState(null);
   const [showRaw, setShowRaw] = useState(true);
 
-  const [busy, setBusy] = useState(false);
-  const [resp, setResp] = useState(null);
-  const [err, setErr] = useState("");
+  const parsedTarget = useMemo(() => parseTargetSpec(targetSpec), [targetSpec]);
 
-  const parsed = useMemo(() => parseTargetSizeSpec(targetSpec), [targetSpec]);
+  const ipp = useMemo(() => {
+    const d = Number(distanceYards);
+    const c = Number(clickValueMoa);
+    const ipmoa = inchesPerMoaAtYards(d);
+    if (!Number.isFinite(ipmoa) || !Number.isFinite(c) || c <= 0) return NaN;
+    return ipmoa * c; // inches per click
+  }, [distanceYards, clickValueMoa]);
 
-  const previewUrl = useMemo(() => {
-    if (!file) return null;
-    return URL.createObjectURL(file);
-  }, [file]);
+  const computed = useMemo(() => {
+    if (!rawJson) return null;
 
-  async function onSend() {
-    setErr("");
-    setResp(null);
+    // Try the common shapes we’ve seen in your screenshots.
+    const poib = rawJson?.poibInches || rawJson?.sec?.poibInches || rawJson?.result?.poibInches || null;
+    const sec = rawJson?.sec || rawJson?.result?.sec || null;
+    const clicksSignedBackend = rawJson?.clicksSigned || rawJson?.result?.clicksSigned || null;
+    const dialBackend = rawJson?.dial || rawJson?.result?.dial || null;
 
-    if (!file) {
-      setErr("Choose an image first.");
-      return;
-    }
+    const x = poib?.x;
+    const y = poib?.y;
 
-    if (!parsed.ok || !Number.isFinite(Number(parsed.long))) {
-      setErr("Target size is invalid. Use 11 or 8.5x11.");
-      return;
-    }
+    const logs = [];
 
-    setBusy(true);
-    try {
-      const form = new FormData();
-
-      // REQUIRED
-      form.append("image", file);
-
-      // OPTIONAL fields your backend already accepts
-      form.append("distanceYards", String(distanceYards || "100"));
-      form.append("clickValueMoa", String(clickValueMoa || "0.25"));
-
-      // IMPORTANT: always send LONG side in inches (8.5x11 => 11)
-      form.append("targetSizeInches", String(Number(parsed.long)));
-
-      const r = await fetch(endpoint, { method: "POST", body: form });
-
-      // If backend returns non-200, surface readable text
-      if (!r.ok) {
-        const text = await r.text();
-        throw new Error(`Backend error ${r.status}: ${text || r.statusText}`);
+    // --- Congruence Gate: target size ---
+    const backendSize = sec?.targetSizeInches;
+    if (parsedTarget.ok && Number.isFinite(Number(backendSize))) {
+      const uiLong = Number(parsedTarget.long);
+      const be = Number(backendSize);
+      if (Math.abs(uiLong - be) > 0.01) {
+        logs.push({
+          code: "TARGET_SIZE_INCONGRUENT",
+          uiTargetLongInches: uiLong,
+          backendTargetSizeInches: be,
+          fix: "Frontend must send targetSizeInches correctly, and backend must echo it back consistently."
+        });
       }
+    }
 
-      const json = await r.json();
-      setResp(json);
-    } catch (e) {
-      setErr(String(e?.message || e));
-    } finally {
-      setBusy(false);
+    // If we can’t compute clicks (no POIB or bad conversion), stop here.
+    if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y)) || !Number.isFinite(ipp) || ipp <= 0) {
+      return {
+        ok: false,
+        logs,
+        sec,
+        poib,
+        clicksSignedBackend,
+        dialBackend
+      };
+    }
+
+    // --- Minimal scope clicks: ALWAYS derived from POIB ---
+    // IMPORTANT: dial direction is OPPOSITE the POIB offset.
+    // +x means impacts RIGHT -> dial LEFT
+    // +y means impacts BELOW (image coords often +down) -> dial UP
+    // So: signed clicks for dial = -poib / inchesPerClick
+    const windSignedDial = -(Number(x) / ipp);
+    const elevSignedDial = -(Number(y) / ipp);
+
+    const windDial = dialFromSignedClicks("windage", windSignedDial);
+    const elevDial = dialFromSignedClicks("elevation", elevSignedDial);
+
+    // --- Direction congruence checks (optional but helpful) ---
+    const uiWindDir = extractDirection(windDial);
+    const uiElevDir = extractDirection(elevDial);
+
+    const beWindDir = extractDirection(dialBackend?.windage);
+    const beElevDir = extractDirection(dialBackend?.elevation);
+
+    if (beElevDir && uiElevDir && beElevDir !== uiElevDir) {
+      logs.push({
+        code: "ELEVATION_DIRECTION_INCONGRUENT",
+        poibY: Number(y),
+        uiDial: uiElevDir,
+        backendDial: beElevDir,
+        fix: "Ignore backend dial strings; UI should compute dial from POIB consistently (this build does)."
+      });
+    }
+    if (beWindDir && uiWindDir && beWindDir !== uiWindDir) {
+      logs.push({
+        code: "WINDAGE_DIRECTION_INCONGRUENT",
+        poibX: Number(x),
+        uiDial: uiWindDir,
+        backendDial: beWindDir,
+        fix: "Ignore backend dial strings; UI should compute dial from POIB consistently (this build does)."
+      });
+    }
+
+    // If backend provides clicksSigned, check sign agreement (diagnostic only)
+    if (clicksSignedBackend?.elevation != null) {
+      const beE = Number(clicksSignedBackend.elevation);
+      if (Number.isFinite(beE)) {
+        // Backend "signed" may be using image axis; we ONLY flag it so you can see it.
+        const uiE = Number(elevSignedDial);
+        const signMismatch = (beE === 0 && uiE !== 0) || (beE !== 0 && uiE !== 0 && Math.sign(beE) !== Math.sign(uiE));
+        if (signMismatch) {
+          logs.push({
+            code: "ELEVATION_SIGN_MISMATCH",
+            backendClicksSignedElevation: beE,
+            uiSignedElevation: Number(fmt2(uiE)),
+            fix: "Backend likely not applying the Y-axis flip. Keep backend numeric as-is for now; UI dial is authoritative."
+          });
+        }
+      }
+    }
+    if (clicksSignedBackend?.windage != null) {
+      const beW = Number(clicksSignedBackend.windage);
+      if (Number.isFinite(beW)) {
+        const uiW = Number(windSignedDial);
+        const signMismatch = (beW === 0 && uiW !== 0) || (beW !== 0 && uiW !== 0 && Math.sign(beW) !== Math.sign(uiW));
+        if (signMismatch) {
+          logs.push({
+            code: "WINDAGE_SIGN_MISMATCH",
+            backendClicksSignedWindage: beW,
+            uiSignedWindage: Number(fmt2(uiW)),
+            fix: "Backend may define sign differently. UI dial is authoritative."
+          });
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      logs,
+      sec,
+      poib: { x: Number(x), y: Number(y) },
+      inchesPerClick: ipp,
+      signedDial: { windage: windSignedDial, elevation: elevSignedDial },
+      minimal: { windageDial: windDial, elevationDial: elevDial },
+      clicksSignedBackend,
+      dialBackend
+    };
+  }, [rawJson, ipp, parsedTarget.ok, parsedTarget.long]);
+
+  function onPickFile(e) {
+    const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    setFile(f);
+    setRawJson(null);
+    setStatus("");
+    if (f) {
+      const url = URL.createObjectURL(f);
+      setPreviewUrl(url);
+    } else {
+      setPreviewUrl("");
     }
   }
 
-  // derived display
-  const poibInches = resp?.poibInches || null;
-  const clicksSigned = resp?.clicksSigned || null;
+  function onPresetChange(p) {
+    setTargetPreset(p);
+    if (p === "8.5x11") setTargetSpec("8.5x11");
+    if (p === "23") setTargetSpec("23");
+    if (p === "custom") setTargetSpec("");
+  }
 
-  const minimal = useMemo(() => {
-    if (!resp) return null;
-    return dialFromPoib(poibInches, clicksSigned);
-  }, [resp, poibInches, clicksSigned]);
+  async function onSend() {
+    try {
+      setStatus("");
+      setRawJson(null);
 
-  const incongruenceLog = useMemo(() => {
-    if (!resp) return [];
-    return buildIncongruenceLog({
-      parsedLong: parsed.long,
-      backendTargetSizeInches: resp?.sec?.targetSizeInches,
-      poibInches,
-      backendDial: resp?.dial,
-    });
-  }, [resp, parsed.long, poibInches]);
+      if (!endpoint.trim()) {
+        setStatus("Missing endpoint URL.");
+        return;
+      }
+      if (!file) {
+        setStatus("Choose an image first.");
+        return;
+      }
+      if (!parsedTarget.ok) {
+        setStatus(parsedTarget.error);
+        return;
+      }
 
-  const hasIncongruence = incongruenceLog.length > 0;
+      const d = Number(distanceYards);
+      const c = Number(clickValueMoa);
+      if (!Number.isFinite(d) || d <= 0) {
+        setStatus("Distance must be a valid number.");
+        return;
+      }
+      if (!Number.isFinite(c) || c <= 0) {
+        setStatus("Click value must be a valid number.");
+        return;
+      }
 
-  const styles = {
-    page: {
-      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
-      padding: 16,
-      maxWidth: 1400,
-      margin: "0 auto",
-    },
-    title: { fontSize: 42, fontWeight: 800, margin: "8px 0 6px" },
-    label: { fontWeight: 700, marginTop: 10 },
-    input: {
-      width: "100%",
-      padding: "10px 12px",
-      border: "2px solid #111",
-      borderRadius: 10,
-      fontSize: 16,
-      boxSizing: "border-box",
-    },
-    row: { display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" },
-    colLeft: { flex: "1 1 420px", minWidth: 360 },
-    colRight: { flex: "1 1 520px", minWidth: 360 },
-    card: {
-      border: "3px solid #111",
-      borderRadius: 14,
-      padding: 14,
-      marginTop: 14,
-    },
-    btn: {
-      width: "100%",
-      padding: "14px 14px",
-      borderRadius: 12,
-      border: "3px solid #1f4ed8",
-      background: busy ? "#e8efff" : "#ffffff",
-      fontSize: 18,
-      fontWeight: 800,
-      cursor: busy ? "not-allowed" : "pointer",
-      marginTop: 14,
-    },
-    okBox: {
-      border: "3px solid #2a8a3a",
-      borderRadius: 14,
-      padding: 14,
-      marginTop: 14,
-    },
-    badBox: {
-      border: "3px solid #b32020",
-      borderRadius: 14,
-      padding: 14,
-      marginTop: 14,
-      background: "#fff6f6",
-    },
-    mono: {
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      fontSize: 13,
-      whiteSpace: "pre-wrap",
-      wordBreak: "break-word",
-    },
-    previewWrap: {
-      border: "3px solid #111",
-      borderRadius: 14,
-      padding: 14,
-      marginTop: 14,
-    },
-    previewImg: {
-      width: "100%",
-      height: "auto",
-      border: "3px solid #111",
-      borderRadius: 10,
-      display: "block",
-      background: "#fff",
-    },
-    small: { fontSize: 13, opacity: 0.8, marginTop: 6 },
-    checkboxRow: { display: "flex", alignItems: "center", gap: 10, marginTop: 10 },
-  };
+      // Always send the LONG SIDE as targetSizeInches (8.5x11 -> 11)
+      const targetLong = Number(parsedTarget.long);
+
+      const fd = new FormData();
+      fd.append("image", file);
+      fd.append("distanceYards", String(d));
+      fd.append("clickValueMoa", String(c));
+      fd.append("targetSizeInches", String(targetLong));
+
+      // (Extra compatibility fields — harmless if backend ignores)
+      fd.append("targetSize", String(targetLong));
+      fd.append("targetSpec", String(parsedTarget.spec));
+
+      setStatus("Sending…");
+      const res = await fetch(endpoint.trim(), { method: "POST", body: fd });
+      const text = await res.text();
+
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { ok: false, error: "Non-JSON response from backend", httpStatus: res.status, body: text };
+      }
+
+      setRawJson(json);
+
+      if (!res.ok) {
+        setStatus(`Backend error (${res.status}).`);
+        return;
+      }
+
+      setStatus("Done.");
+    } catch (err) {
+      setStatus(`Error: ${err?.message || String(err)}`);
+    }
+  }
+
+  const box = (borderColor) => ({
+    border: `3px solid ${borderColor}`,
+    borderRadius: 12,
+    padding: 14,
+    background: "#fff",
+    boxSizing: "border-box",
+  });
 
   return (
-    <div style={styles.page}>
-      <div style={styles.title}>SCZN3 SEC — Upload Test</div>
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 14, color: "#111" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <h1 style={{ margin: "6px 0 4px", fontSize: 36, letterSpacing: 0.2 }}>SCZN3 SEC — Upload Test</h1>
 
-      <div style={{ marginTop: 8 }}>
-        <div style={styles.label}>Endpoint</div>
-        <input
-          style={styles.input}
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.target.value)}
-          placeholder={DEFAULT_ENDPOINT}
-        />
-        <div style={styles.small}>POST multipart field: <b>image</b></div>
-      </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 14, marginBottom: 6 }}>Endpoint</div>
+          <input
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
+          />
+          <div style={{ marginTop: 6, fontSize: 13 }}>
+            POST multipart field: <b>image</b>
+          </div>
+        </div>
 
-      <div style={styles.row}>
-        {/* LEFT */}
-        <div style={styles.colLeft}>
-          <div style={styles.card}>
-            <div style={styles.label}>Choose file</div>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              style={{ marginTop: 8 }}
-            />
-            <div style={styles.small}>{file ? file.name : "No file selected."}</div>
-
-            <div style={styles.label}>Target Size</div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-              <select
-                style={{ ...styles.input, width: 150 }}
-                value={targetPreset}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setTargetPreset(v);
-                  setTargetSpec(v);
-                }}
-              >
-                <option value="8.5x11">8.5x11</option>
-                <option value="11">11</option>
-                <option value="23">23</option>
-              </select>
-
-              <input
-                style={styles.input}
-                value={targetSpec}
-                onChange={(e) => setTargetSpec(e.target.value)}
-                placeholder="8.5x11"
-              />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          {/* LEFT */}
+          <div style={box("#000")}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+              <input type="file" accept="image/*" onChange={onPickFile} />
+              <div style={{ fontSize: 13, color: "#444" }}>{file ? file.name : "No file selected"}</div>
             </div>
 
-            <div style={styles.small}>
-              Parsed:{" "}
-              {parsed.ok ? (
-                <>
-                  spec=<b>{parsed.spec}</b> &nbsp; long=<b>{toFixed2(parsed.long)}</b>
-                  {parsed.short ? <> &nbsp; short=<b>{toFixed2(parsed.short)}</b></> : null}
-                </>
-              ) : (
-                <>
-                  <b>INVALID</b> ({parsed.reason})
-                </>
-              )}
-            </div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Target Size</div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={styles.label}>Distance (yards)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, alignItems: "center" }}>
+                <select
+                  value={targetPreset}
+                  onChange={(e) => onPresetChange(e.target.value)}
+                  style={{ padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
+                >
+                  <option value="8.5x11">8.5×11</option>
+                  <option value="23">23</option>
+                  <option value="custom">Custom</option>
+                </select>
+
                 <input
-                  style={styles.input}
+                  value={targetSpec}
+                  onChange={(e) => setTargetSpec(e.target.value)}
+                  placeholder='Examples: 8.5x11 or 23'
+                  style={{ padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
+                />
+              </div>
+
+              <div style={{ fontSize: 13, marginTop: 6, color: parsedTarget.ok ? "#333" : "#b00020" }}>
+                {parsedTarget.ok ? (
+                  <>Parsed: spec={parsedTarget.spec} long={fmt2(parsedTarget.long)} short={fmt2(parsedTarget.short)}</>
+                ) : (
+                  parsedTarget.error
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Distance (yards)</div>
+                <input
                   value={distanceYards}
                   onChange={(e) => setDistanceYards(e.target.value)}
-                  placeholder="100"
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={styles.label}>Click Value (MOA)</div>
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Click Value (MOA)</div>
                 <input
-                  style={styles.input}
                   value={clickValueMoa}
                   onChange={(e) => setClickValueMoa(e.target.value)}
-                  placeholder="0.25"
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
                 />
               </div>
             </div>
 
-            <button style={styles.btn} disabled={busy} onClick={onSend}>
-              {busy ? "Sending..." : "Send (with Congruence Gate)"}
+            <button
+              onClick={onSend}
+              style={{
+                width: "100%",
+                padding: 14,
+                borderRadius: 12,
+                border: "3px solid #2b78ff",
+                background: "#eaf2ff",
+                fontWeight: 900,
+                fontSize: 18,
+                cursor: "pointer",
+              }}
+            >
+              Send (with Congruence Gate)
             </button>
 
-            {err ? (
-              <div style={{ ...styles.badBox, marginTop: 14 }}>
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>Error</div>
-                <div style={styles.mono}>{err}</div>
-              </div>
-            ) : null}
+            <div style={{ marginTop: 10, fontSize: 14 }}>
+              <b>Status:</b> {status || "—"}
+            </div>
 
-            {resp ? (
+            {/* RESULTS */}
+            {computed && (
               <>
-                <div style={styles.okBox}>
-                  <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>
-                    Scope Clicks (Minimal)
-                  </div>
+                <div style={{ marginTop: 12, ...box("#22a06b") }}>
+                  <div style={{ fontWeight: 900, fontSize: 22, marginBottom: 8 }}>Scope Clicks (Minimal)</div>
 
-                  <div style={{ fontSize: 18, fontWeight: 800 }}>
-                    Windage:{" "}
-                    <span style={{ fontWeight: 900 }}>
-                      {minimal?.windage || "—"}
-                    </span>
-                  </div>
+                  {computed.ok ? (
+                    <>
+                      <div style={{ fontSize: 18, marginBottom: 6 }}>
+                        <b>Windage:</b> {computed.minimal.windageDial}
+                      </div>
+                      <div style={{ fontSize: 18, marginBottom: 10 }}>
+                        <b>Elevation:</b> {computed.minimal.elevationDial}
+                      </div>
 
-                  <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6 }}>
-                    Elevation:{" "}
-                    <span style={{ fontWeight: 900 }}>
-                      {minimal?.elevation || "—"}
-                    </span>
-                  </div>
+                      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13 }}>
+                        signedDial: w={fmt2(computed.signedDial.windage)}, e={fmt2(computed.signedDial.elevation)}{" "}
+                        | POIB inches: x={fmt2(computed.poib?.x)}, y={fmt2(computed.poib?.y)}{" "}
+                        | computeStatus: {rawJson?.computeStatus || rawJson?.result?.computeStatus || "—"}{" "}
+                        | backend sec.targetSizeInches: {fmt2(computed.sec?.targetSizeInches)}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: "#b00020" }}>
+                      Can’t compute minimal clicks (missing POIB or conversion values).
+                    </div>
+                  )}
 
-                  <div style={{ marginTop: 12, ...styles.mono }}>
-                    clicksSigned: w={toFixed2(clicksSigned?.windage)}, e={toFixed2(clicksSigned?.elevation)}{" "}
-                    POIB inches: x={toFixed2(poibInches?.x)}, y={toFixed2(poibInches?.y)}{"\n"}
-                    computeStatus: {resp?.computeStatus || "—"}{" "}
-                    backend sec.targetSizeInches: {toFixed2(resp?.sec?.targetSizeInches)}
-                  </div>
-
-                  <div style={styles.checkboxRow}>
-                    <input
-                      id="showraw"
-                      type="checkbox"
-                      checked={showRaw}
-                      onChange={(e) => setShowRaw(e.target.checked)}
-                    />
-                    <label htmlFor="showraw" style={{ fontWeight: 800 }}>
+                  <div style={{ marginTop: 10 }}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
                       Show raw JSON
                     </label>
                   </div>
                 </div>
 
-                {hasIncongruence ? (
-                  <div style={styles.badBox}>
-                    <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>
-                      Incongruence Log
+                {computed.logs && computed.logs.length > 0 && (
+                  <div style={{ marginTop: 12, ...box("#b00020") }}>
+                    <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Incongruence Log</div>
+                    <div style={{ fontSize: 13, marginBottom: 10 }}>
+                      This result was received, but one or more variables are not congruent. Do not trust the output until fixed.
                     </div>
-                    <div style={{ fontWeight: 700, marginBottom: 10 }}>
-                      This result was received, but one or more variables are not congruent.
-                      Do not trust the output until fixed.
-                    </div>
-                    {incongruenceLog.map((item, idx) => (
-                      <div key={idx} style={{ ...styles.card, borderColor: "#b32020", marginTop: 10 }}>
-                        <div style={{ fontWeight: 900 }}>{item.code}</div>
-                        <div style={styles.mono}>{JSON.stringify(item, null, 2)}</div>
+
+                    {computed.logs.map((l, idx) => (
+                      <div key={idx} style={{ padding: 10, borderRadius: 10, border: "2px solid #b00020", background: "#fff" }}>
+                        <div style={{ fontWeight: 900, marginBottom: 6 }}>{l.code}</div>
+                        <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12 }}>
+{JSON.stringify(l, null, 2)}
+                        </pre>
                       </div>
                     ))}
                   </div>
-                ) : null}
+                )}
               </>
-            ) : null}
+            )}
+          </div>
+
+          {/* RIGHT */}
+          <div style={box("#000")}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontWeight: 900, fontSize: 22 }}>Preview</div>
+              <div style={{ fontSize: 13, color: "#444" }}>
+                {showRaw ? "Raw JSON: ON" : "Raw JSON: OFF"}
+              </div>
+            </div>
+
+            <div style={{ border: "2px solid #ddd", borderRadius: 12, padding: 10, minHeight: 320 }}>
+              {previewUrl ? (
+                <img src={previewUrl} alt="preview" style={{ width: "100%", height: "auto", borderRadius: 10 }} />
+              ) : (
+                <div style={{ color: "#666" }}>Choose an image to preview.</div>
+              )}
+            </div>
+
+            {showRaw && rawJson && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Response</div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "#111",
+                    color: "#f3f3f3",
+                    overflowX: "auto",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    fontSize: 12,
+                    lineHeight: 1.35,
+                  }}
+                >
+{JSON.stringify(rawJson, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* RIGHT */}
-        <div style={styles.colRight}>
-          <div style={styles.previewWrap}>
-            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Preview</div>
-
-            <div style={styles.checkboxRow}>
-              <input
-                id="showraw2"
-                type="checkbox"
-                checked={showRaw}
-                onChange={(e) => setShowRaw(e.target.checked)}
-              />
-              <label htmlFor="showraw2" style={{ fontWeight: 800 }}>
-                Show raw JSON
-              </label>
-            </div>
-
-            {previewUrl ? <img alt="preview" src={previewUrl} style={styles.previewImg} /> : <div style={styles.small}>Choose an image to preview.</div>}
-
-            {showRaw && resp ? (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>Response</div>
-                <div style={{ ...styles.mono, border: "3px solid #111", borderRadius: 12, padding: 12 }}>
-                  {JSON.stringify(resp, null, 2)}
-                </div>
-              </div>
-            ) : null}
-          </div>
+        <div style={{ marginTop: 14, textAlign: "center", color: "#333", fontStyle: "italic" }}>
+          Faith • Order • Precision
         </div>
       </div>
     </div>
