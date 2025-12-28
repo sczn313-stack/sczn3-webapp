@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+im. port React, { useMemo, useState } from "react";
 
 const SEC_ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
 
