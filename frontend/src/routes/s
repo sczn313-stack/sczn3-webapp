@@ -1,1 +1,146 @@
+// frontend/src/routes/s
+// SCZN3 Frontend Route: Forces true center using normalized image midpoints
+// Fixes bad backend centerPx and ensures correct windage/elevation directions.
 
+export const SEC_ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
+
+type XY = { x: number; y: number };
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function dialFromClicks(clicksSigned: { windage: number; elevation: number }) {
+  const w = Number(clicksSigned.windage);
+  const e = Number(clicksSigned.elevation);
+
+  const windage =
+    w > 0 ? `RIGHT ${round2(Math.abs(w)).toFixed(2)} clicks` :
+    w < 0 ? `LEFT ${round2(Math.abs(w)).toFixed(2)} clicks` :
+    `CENTER 0.00 clicks`;
+
+  const elevation =
+    e > 0 ? `UP ${round2(Math.abs(e)).toFixed(2)} clicks` :
+    e < 0 ? `DOWN ${round2(Math.abs(e)).toFixed(2)} clicks` :
+    `LEVEL 0.00 clicks`;
+
+  return { windage, elevation };
+}
+
+/**
+ * Takes backend JSON and overwrites:
+ * - detect.centerPx (force to normalized midpoint)
+ * - poibInches (recomputed)
+ * - clicksSigned (recomputed)
+ * - dial (recomputed)
+ *
+ * Why: backend currently returns a wrong centerPx (ex: x=281 on width=1125),
+ * which flips windage direction.
+ */
+function patchResultToTrueCenter(json: any) {
+  if (!json || typeof json !== "object") return json;
+
+  const detect = json.detect || {};
+  const normalized = detect.normalized || {};
+  const groupCenterPx = detect.groupCenterPx || {};
+
+  const w = Number(normalized.width);
+  const h = Number(normalized.height);
+
+  const gX = Number(groupCenterPx.x);
+  const gY = Number(groupCenterPx.y);
+
+  const pixelsPerInch = Number(detect.pixelsPerInch);
+
+  const distanceYards = Number(json?.sec?.distanceYards ?? json?.distanceYards ?? 100);
+  const clickValueMoa = Number(json?.sec?.clickValueMoa ?? json?.clickValueMoa ?? 0.25);
+
+  // Only patch if we have enough data
+  const hasAll =
+    Number.isFinite(w) &&
+    Number.isFinite(h) &&
+    Number.isFinite(gX) &&
+    Number.isFinite(gY) &&
+    Number.isFinite(pixelsPerInch) &&
+    pixelsPerInch > 0 &&
+    Number.isFinite(distanceYards) &&
+    distanceYards > 0 &&
+    Number.isFinite(clickValueMoa) &&
+    clickValueMoa > 0;
+
+  if (!hasAll) return json;
+
+  // TRUE center of normalized image
+  const centerPx = { x: w / 2, y: h / 2 };
+
+  // Delta from center (image coords)
+  const dxPx = gX - centerPx.x;
+  const dyPx = gY - centerPx.y;
+
+  // POIB inches: right-positive, up-positive (flip image Y)
+  const poibInches: XY = {
+    x: dxPx / pixelsPerInch,
+    y: -(dyPx / pixelsPerInch),
+  };
+
+  // Correction is opposite of POIB offset
+  const corrInches: XY = { x: -poibInches.x, y: -poibInches.y };
+
+  // 1 MOA ≈ 1.047" at 100 yards
+  const inchesPerMOA = (distanceYards * 1.047) / 100;
+
+  const corrMoa: XY = {
+    x: corrInches.x / inchesPerMOA,
+    y: corrInches.y / inchesPerMOA,
+  };
+
+  const clicksSigned = {
+    windage: corrMoa.x / clickValueMoa,
+    elevation: corrMoa.y / clickValueMoa,
+  };
+
+  const dial = dialFromClicks(clicksSigned);
+
+  // Overwrite / inject patched fields
+  const patched = {
+    ...json,
+    poibInches: { x: round2(poibInches.x), y: round2(poibInches.y) },
+    clicksSigned: {
+      windage: round2(clicksSigned.windage),
+      elevation: round2(clicksSigned.elevation),
+    },
+    dial,
+    detect: {
+      ...detect,
+      centerPx, // force correct center in returned JSON too
+    },
+    patchNote: "FRONTEND_PATCH_TRUE_CENTER_APPLIED",
+  };
+
+  return patched;
+}
+
+export async function postSec(formData: FormData) {
+  const res = await fetch(SEC_ENDPOINT, {
+    method: "POST",
+    body: formData,
+  });
+
+  const text = await res.text();
+
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // backend returned non-json
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  if (!res.ok || json?.ok === false) {
+    const msg = json?.error || json?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  // Apply windage/elevation/center patch
+  return patchResultToTrueCenter(json);
+}
