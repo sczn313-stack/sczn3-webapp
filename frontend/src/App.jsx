@@ -1,365 +1,356 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 
-// SCZN3 SEC — Upload Test (Frontend)
-// This page shows:
-// - Manual POIB toggle (when ON, you type POIB)
-// - When OFF, backend computes POIB from the image
-// IMPORTANT: "Expected clicks" must be CORRECTION (what to dial) = NEGATIVE of POIB offset.
+const ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
+
+// Always show 2 decimals
+function two(n) {
+  const x = Number(n);
+  if (Number.isNaN(x)) return "—";
+  return x.toFixed(2);
+}
+
+// Accepts: "11" OR "8.5x11" OR "8.5×11" (or with spaces)
+// Sends LONG SIDE as targetSizeInches (11 for 8.5x11).
+function parseTargetSizeInches(input) {
+  const s = String(input ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  if (!s) return { value: 23, note: "blank → default 23" };
+
+  // plain number
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const v = Number(s);
+    return { value: v, note: "numeric" };
+  }
+
+  // "8.5x11" or "8.5×11"
+  const parts = s.split(/x|×/);
+  if (parts.length === 2) {
+    const a = Number(parts[0]);
+    const b = Number(parts[1]);
+    if (!Number.isNaN(a) && !Number.isNaN(b) && a > 0 && b > 0) {
+      const v = Math.max(a, b);
+      return { value: v, note: `parsed ${a}×${b} → long side ${v}` };
+    }
+  }
+
+  return { value: 23, note: "unreadable → default 23" };
+}
+
+function dialDir(kind, signedClicks) {
+  const v = Number(signedClicks);
+  if (Number.isNaN(v)) return { label: "—", abs: "—" };
+
+  if (kind === "windage") {
+    if (v > 0) return { label: "RIGHT", abs: Math.abs(v) };
+    if (v < 0) return { label: "LEFT", abs: Math.abs(v) };
+    return { label: "CENTER", abs: 0 };
+  }
+
+  // elevation
+  if (v > 0) return { label: "UP", abs: Math.abs(v) };
+  if (v < 0) return { label: "DOWN", abs: Math.abs(v) };
+  return { label: "LEVEL", abs: 0 };
+}
 
 export default function App() {
-  // ---- Backend base ----
-  const API_BASE = useMemo(() => {
-    const raw = (import.meta?.env?.VITE_API_BASE || "").trim();
-    const fallback = "https://sczn3-sec-backend-pipe.onrender.com";
-    const base = (raw || fallback).trim();
-    return base.replace(/\/+$/, "");
-  }, []);
-
-  const ENDPOINT = `${API_BASE}/api/sec`;
-
-  // ---- UI state ----
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [distanceYards, setDistanceYards] = useState(100);
+  const [clickValueMoa, setClickValueMoa] = useState(0.25);
+
+  // User can type 8.5x11; we’ll convert
+  const [targetSizeText, setTargetSizeText] = useState("8.5x11");
 
   const [manualPoib, setManualPoib] = useState(false);
-  const [poibX, setPoibX] = useState(""); // inches, Right + / Left -
-  const [poibY, setPoibY] = useState(""); // inches, Up + / Down -
+  const [poibX, setPoibX] = useState("");
+  const [poibY, setPoibY] = useState("");
 
-  const [distanceYards, setDistanceYards] = useState("100");
-  const [clickValueMoa, setClickValueMoa] = useState("0.25");
-  const [targetSizeInches, setTargetSizeInches] = useState("23");
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState("");
+  const [rawJson, setRawJson] = useState(null);
+  const [showRaw, setShowRaw] = useState(true);
 
-  const [loading, setLoading] = useState(false);
-  const [resp, setResp] = useState(null);
-  const [error, setError] = useState("");
+  const parsedSize = useMemo(
+    () => parseTargetSizeInches(targetSizeText),
+    [targetSizeText]
+  );
 
-  // ---- Helpers ----
-  function toNum(v, fallback = 0) {
-    const n = Number(String(v ?? "").trim());
-    return Number.isFinite(n) ? n : fallback;
+  function onChooseFile(e) {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setRawJson(null);
+    setStatus("");
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (f) setPreviewUrl(URL.createObjectURL(f));
+    else setPreviewUrl("");
   }
 
-  // 1 MOA ≈ 1.047" @ 100y
-  function inchesPerClick(dYards, moaPerClick) {
-    return 1.047 * (dYards / 100) * moaPerClick;
-  }
-
-  function dialText(axis, clicksSigned) {
-    const abs = Math.abs(clicksSigned);
-    const rounded = Math.round(abs * 100) / 100;
-
-    if (axis === "windage") {
-      if (rounded === 0) return "CENTER (0.00 clicks)";
-      return clicksSigned >= 0 ? `RIGHT ${rounded} clicks` : `LEFT ${rounded} clicks`;
-    }
-    // elevation
-    if (rounded === 0) return "LEVEL (0.00 clicks)";
-    return clicksSigned >= 0 ? `UP ${rounded} clicks` : `DOWN ${rounded} clicks`;
-  }
-
-  // ---- Preview URL ----
-  useEffect(() => {
-    if (!file) {
-      setPreviewUrl("");
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  // ---- Expected clicks (client-side sanity check) ----
-  const expected = useMemo(() => {
-    // If manual POIB is OFF, frontend does not know POIB (backend will compute from image)
-    if (!manualPoib) {
-      return {
-        windage: 0,
-        elevation: 0,
-        dialWindage: "CENTER (0.00 clicks)",
-        dialElevation: "LEVEL (0.00 clicks)",
-        note: "Manual POIB is OFF → expected is 0.00 here because POIB comes from the image on the backend.",
-      };
-    }
-
-    const d = toNum(distanceYards, 100);
-    const cv = toNum(clickValueMoa, 0.25);
-    const x = toNum(poibX, 0);
-    const y = toNum(poibY, 0);
-
-    const ipc = inchesPerClick(d, cv);
-
-    // ⭐ SIGN FIX (CORRECTION = NEGATIVE of POIB)
-    // If POIB is RIGHT (+), correction is LEFT (-).
-    // If POIB is UP (+), correction is DOWN (-).
-    const windage = ipc === 0 ? 0 : (-x / ipc);
-    const elevation = ipc === 0 ? 0 : (-y / ipc);
-
-    const w2 = Math.round(windage * 100) / 100;
-    const e2 = Math.round(elevation * 100) / 100;
-
-    return {
-      windage: w2,
-      elevation: e2,
-      dialWindage: dialText("windage", w2),
-      dialElevation: dialText("elevation", e2),
-      note: "",
-    };
-  }, [manualPoib, poibX, poibY, distanceYards, clickValueMoa]);
-
-  // ---- Submit ----
-  async function onSubmit() {
-    setError("");
-    setResp(null);
+  async function onSend() {
+    setRawJson(null);
 
     if (!file) {
-      setError("Choose an image first.");
+      setStatus("Choose an image file first.");
       return;
     }
 
-    const fd = new FormData();
-    fd.append("image", file);
+    setSending(true);
+    setStatus("Sending…");
 
-    fd.append("distanceYards", String(toNum(distanceYards, 100)));
-    fd.append("clickValueMoa", String(toNum(clickValueMoa, 0.25)));
-    fd.append("targetSizeInches", String(toNum(targetSizeInches, 23)));
-
-    // Only send POIB if manual is ON
-    if (manualPoib) {
-      fd.append("poibX", String(toNum(poibX, 0)));
-      fd.append("poibY", String(toNum(poibY, 0)));
-    }
-
-    setLoading(true);
     try {
-      const r = await fetch(ENDPOINT, { method: "POST", body: fd });
-      const j = await r.json().catch(() => null);
+      const fd = new FormData();
+      fd.append("image", file); // MUST be "image"
+      fd.append("distanceYards", String(distanceYards));
+      fd.append("clickValueMoa", String(clickValueMoa));
+      fd.append("targetSizeInches", String(parsedSize.value));
 
-      if (!r.ok) {
-        setError(j?.error || `Request failed (${r.status})`);
-        setResp(j);
+      if (manualPoib) {
+        fd.append("manualPoib", "true");
+        fd.append("poibX", String(poibX ?? ""));
+        fd.append("poibY", String(poibY ?? ""));
+      } else {
+        fd.append("manualPoib", "false");
+      }
+
+      const res = await fetch(ENDPOINT, { method: "POST", body: fd });
+      const text = await res.text();
+
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { ok: false, parseError: true, raw: text };
+      }
+
+      setRawJson(json);
+
+      if (!res.ok || json?.ok === false) {
+        setStatus(`Backend error (${res.status}). See raw JSON.`);
+        setSending(false);
         return;
       }
 
-      setResp(j);
-    } catch (e) {
-      setError(String(e?.message || e));
+      setStatus("Done.");
+    } catch (err) {
+      setStatus(`Request failed: ${String(err)}`);
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   }
 
-  // ---- Pull nice display values from backend ----
-  const backend = useMemo(() => {
-    const sec = resp?.sec;
-    if (!sec) return null;
+  // IMPORTANT: clicks are returned at TOP LEVEL: json.clicksSigned.windage / elevation
+  const clicksSigned = rawJson?.clicksSigned || rawJson?.sec?.clicksSigned || {};
+  const w = clicksSigned?.windage;
+  const e = clicksSigned?.elevation;
 
-    const clicks = sec?.clicksSigned || {};
-    const dial = sec?.dial || {};
-    const poib = sec?.poibInches || {};
+  const poibInches = rawJson?.poibInches || rawJson?.sec?.poibInches || {};
+  const px = poibInches?.x;
+  const py = poibInches?.y;
 
-    return {
-      windage: clicks?.windage,
-      elevation: clicks?.elevation,
-      dialWindage: dial?.windage,
-      dialElevation: dial?.elevation,
-      poibX: poib?.x,
-      poibY: poib?.y,
-      distance: sec?.distanceYards,
-      click: sec?.clickValueMoa,
-      service: resp?.service,
-      build: resp?.build,
-      computeStatus: sec?.computeStatus,
-    };
-  }, [resp]);
+  const windDial = dialDir("windage", w);
+  const elevDial = dialDir("elevation", e);
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h1 style={{ margin: "0 0 10px 0" }}>SCZN3 SEC — Upload Test</h1>
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 16 }}>
+      <h1 style={{ margin: "0 0 8px 0", fontSize: 36 }}>SCZN3 SEC — Upload Test</h1>
 
-      <div style={{ marginBottom: 10, fontSize: 14 }}>
+      <div style={{ fontSize: 14, marginBottom: 12 }}>
         <div><b>Endpoint:</b> {ENDPOINT}</div>
         <div><b>multipart field:</b> image</div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 520px) 1fr", gap: 16, alignItems: "start" }}>
-        {/* Left controls */}
-        <div style={{ border: "2px solid #111", borderRadius: 10, padding: 14 }}>
-          <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+        {/* LEFT */}
+        <div style={{ border: "2px solid #111", borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>Choose file</div>
+          <input type="file" accept="image/*" onChange={onChooseFile} />
+          <div style={{ fontSize: 13, color: "#555", marginTop: 6 }}>
+            {file ? file.name : "No file selected"}
+          </div>
+
+          <label style={{ display: "block", marginTop: 12, fontWeight: 900 }}>
             <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              type="checkbox"
+              checked={manualPoib}
+              onChange={(e) => setManualPoib(e.target.checked)}
+              style={{ marginRight: 8 }}
             />
-            {file ? <div style={{ marginTop: 6, fontWeight: 700 }}>{file.name}</div> : null}
+            Manual POIB (turn ON only when you want to type POIB)
+          </label>
+
+          <div style={{ fontSize: 13, color: "#555" }}>
+            Manual POIB OFF → backend computes POIB from the image.
           </div>
 
-          <div style={{ border: "2px solid #111", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input
-                type="checkbox"
-                checked={manualPoib}
-                onChange={(e) => setManualPoib(e.target.checked)}
-              />
+          {manualPoib && (
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>Manual POIB (turn ON only when you want to type POIB)</div>
-                <div style={{ fontSize: 13, marginTop: 4 }}>
-                  Manual POIB is <b>{manualPoib ? "ON" : "OFF"}</b> → {manualPoib ? "you type POIB." : "backend will compute POIB from the target image."}
-                </div>
-              </div>
-            </label>
-          </div>
-
-          {manualPoib ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>POIB X (inches) Right + / Left -</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>POIB X (inches)</div>
                 <input
                   value={poibX}
                   onChange={(e) => setPoibX(e.target.value)}
-                  style={{ width: "100%", padding: 10, fontSize: 16, borderRadius: 8, border: "2px solid #111" }}
-                  placeholder="e.g., 1.00"
+                  placeholder='e.g. -1.25'
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #111" }}
                 />
               </div>
               <div>
-                <div style={{ fontWeight: 700 }}>POIB Y (inches) Up + / Down -</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>POIB Y (inches)</div>
                 <input
                   value={poibY}
                   onChange={(e) => setPoibY(e.target.value)}
-                  style={{ width: "100%", padding: 10, fontSize: 16, borderRadius: 8, border: "2px solid #111" }}
-                  placeholder="e.g., -2.00"
+                  placeholder='e.g. 0.75'
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #111" }}
                 />
               </div>
+              <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#555" }}>
+                X: right positive, Y: up positive (only for manual entry).
+              </div>
             </div>
-          ) : null}
+          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             <div>
-              <div style={{ fontWeight: 700 }}>Distance (yards)</div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>Distance (yards)</div>
               <input
+                type="number"
                 value={distanceYards}
-                onChange={(e) => setDistanceYards(e.target.value)}
-                style={{ width: "100%", padding: 10, fontSize: 16, borderRadius: 8, border: "2px solid #111" }}
+                onChange={(e) => setDistanceYards(Number(e.target.value))}
+                style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #111" }}
               />
             </div>
             <div>
-              <div style={{ fontWeight: 700 }}>Click Value (MOA)</div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>Click Value (MOA)</div>
               <input
+                type="number"
+                step="0.01"
                 value={clickValueMoa}
-                onChange={(e) => setClickValueMoa(e.target.value)}
-                style={{ width: "100%", padding: 10, fontSize: 16, borderRadius: 8, border: "2px solid #111" }}
+                onChange={(e) => setClickValueMoa(Number(e.target.value))}
+                style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #111" }}
               />
             </div>
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 700 }}>Target Size (inches)</div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Target Size (inches)</div>
             <input
-              value={targetSizeInches}
-              onChange={(e) => setTargetSizeInches(e.target.value)}
-              style={{ width: "100%", padding: 10, fontSize: 16, borderRadius: 8, border: "2px solid #111" }}
+              value={targetSizeText}
+              onChange={(e) => setTargetSizeText(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #111" }}
             />
-          </div>
-
-          <div style={{ border: "2px solid #111", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>
-              Expected clicks (client-side sanity check)
-            </div>
-            <div style={{ fontSize: 15, lineHeight: 1.5 }}>
-              <div><b>Windage:</b> {Number(expected.windage).toFixed(2)}</div>
-              <div><b>Elevation:</b> {Number(expected.elevation).toFixed(2)}</div>
-              <div><b>Dial:</b> {expected.dialWindage}</div>
-              <div><b>Dial:</b> {expected.dialElevation}</div>
-              {expected.note ? (
-                <div style={{ marginTop: 8, fontSize: 13 }}>
-                  ({expected.note})
-                </div>
-              ) : null}
+            <div style={{ fontSize: 12, color: "#555", marginTop: 6 }}>
+              Accepts: <b>11</b> or <b>8.5x11</b> (or 8.5×11). We send the long side.
+              <div>Sending <code>targetSizeInches</code> = <b>{parsedSize.value}</b> ({parsedSize.note})</div>
             </div>
           </div>
 
           <button
-            onClick={onSubmit}
-            disabled={loading}
+            onClick={onSend}
+            disabled={sending}
             style={{
               width: "100%",
+              marginTop: 14,
               padding: 14,
+              borderRadius: 12,
+              border: "3px solid #1b5cff",
+              background: "#eaf0ff",
               fontSize: 18,
               fontWeight: 900,
-              borderRadius: 10,
-              border: "3px solid #2b6cb0",
-              background: loading ? "#ddd" : "#e6f0ff",
-              cursor: loading ? "not-allowed" : "pointer",
+              cursor: sending ? "not-allowed" : "pointer",
+              opacity: sending ? 0.6 : 1
             }}
           >
-            {loading ? "Sending..." : "Send to SCZN3 SEC backend"}
+            {sending ? "Sending…" : "Send to SCZN3 SEC backend"}
           </button>
 
-          {error ? (
-            <div style={{ marginTop: 12, color: "#b00020", fontWeight: 700 }}>
-              {error}
-            </div>
-          ) : null}
+          {/* BACKEND CONFIRMED BOX */}
+          {rawJson?.ok && (
+            <div style={{ marginTop: 12, border: "3px solid #1aa34a", borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Backend confirmed</div>
 
-          {backend ? (
-            <div style={{ marginTop: 12, border: "3px solid #22c55e", borderRadius: 10, padding: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Backend confirmed</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 15 }}>
+              <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 14, lineHeight: 1.35 }}>
                 <div>
-                  <div><b>Windage (signed):</b> {backend.windage}</div>
-                  <div><b>Dial:</b> {backend.dialWindage}</div>
+                  <b>Windage (signed):</b> {two(w)} &nbsp; | &nbsp;
+                  <b>Dial:</b> {windDial.label} ({two(windDial.abs)} clicks)
                 </div>
                 <div>
-                  <div><b>Elevation (signed):</b> {backend.elevation}</div>
-                  <div><b>Dial:</b> {backend.dialElevation}</div>
+                  <b>Elevation (signed):</b> {two(e)} &nbsp; | &nbsp;
+                  <b>Dial:</b> {elevDial.label} ({two(elevDial.abs)} clicks)
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <b>POIB inches:</b> x={two(px)}, y={two(py)} &nbsp; | &nbsp;
+                  <b>Distance:</b> {two(distanceYards)}y &nbsp; | &nbsp;
+                  <b>Click:</b> {two(clickValueMoa)}
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <b>Service:</b> {rawJson?.service || "—"} &nbsp; | &nbsp;
+                  <b>Build:</b> {rawJson?.build || "—"}
+                </div>
+
+                <div>
+                  <b>computeStatus:</b> {rawJson?.computeStatus || "—"}
+                </div>
+
+                <div>
+                  <b>targetSizeInches sent:</b> {two(parsedSize.value)}
                 </div>
               </div>
-
-              <div style={{ marginTop: 8, fontSize: 14 }}>
-                <div><b>POIB inches:</b> x={backend.poibX}, y={backend.poibY} &nbsp;|&nbsp; <b>Distance:</b> {backend.distance}y &nbsp;|&nbsp; <b>Click:</b> {backend.click} MOA</div>
-                <div><b>Service:</b> {backend.service} &nbsp;&nbsp; <b>Build:</b> {backend.build}</div>
-                <div><b>computeStatus:</b> {backend.computeStatus}</div>
-              </div>
             </div>
-          ) : null}
+          )}
+
+          <div style={{ marginTop: 10, fontSize: 13, color: status.includes("error") ? "#b00020" : "#333" }}>
+            {status}
+          </div>
         </div>
 
-        {/* Right preview + JSON */}
-        <div>
-          <div style={{ border: "2px solid #111", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Preview</div>
-            {previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="preview"
-                style={{ width: "100%", maxWidth: 650, borderRadius: 10, border: "2px solid #111" }}
-              />
-            ) : (
-              <div style={{ opacity: 0.7 }}>Choose an image to preview.</div>
-            )}
-          </div>
+        {/* RIGHT */}
+        <div style={{ border: "2px solid #111", borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 8 }}>Preview</div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <h2 style={{ margin: 0 }}>Response</h2>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="checkbox" checked readOnly />
-              <span style={{ fontWeight: 700 }}>Show raw JSON</span>
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="preview"
+              style={{ width: "100%", height: "auto", border: "2px solid #111", borderRadius: 10 }}
+            />
+          ) : (
+            <div style={{ fontSize: 13, color: "#555" }}>Choose a file to see preview.</div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+            <div style={{ fontWeight: 900, fontSize: 20 }}>Response</div>
+            <label style={{ fontSize: 13, color: "#555", fontWeight: 900 }}>
+              <input
+                type="checkbox"
+                checked={showRaw}
+                onChange={(e) => setShowRaw(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              Show raw JSON
             </label>
           </div>
 
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              borderRadius: 10,
-              border: "2px solid #111",
-              background: "#0b0b0b",
-              color: "#f5f5f5",
-              overflowX: "auto",
-              minHeight: 220,
-            }}
-          >
-            {resp ? JSON.stringify(resp, null, 2) : "{\n  (no response yet)\n}"}
-          </pre>
+          {showRaw && (
+            <pre
+              style={{
+                marginTop: 8,
+                padding: 12,
+                borderRadius: 12,
+                border: "2px solid #111",
+                background: "#0b0b0b",
+                color: "#f1f1f1",
+                overflow: "auto",
+                maxHeight: 420,
+                fontSize: 12
+              }}
+            >
+              {rawJson ? JSON.stringify(rawJson, null, 2) : ""}
+            </pre>
+          )}
         </div>
       </div>
     </div>
