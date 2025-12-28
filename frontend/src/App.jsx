@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 
-const DEFAULT_ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
+const SEC_ENDPOINT_DEFAULT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
 
 // 1 MOA ≈ 1.047 inches at 100 yards
 function inchesPerMoaAtYards(yards) {
@@ -9,501 +9,391 @@ function inchesPerMoaAtYards(yards) {
   return 1.047 * (y / 100);
 }
 
-function fmt2(n) {
+function f2(n) {
   const x = Number(n);
-  if (!Number.isFinite(x)) return "—";
-  return x.toFixed(2);
+  if (!Number.isFinite(x)) return "0.00";
+  return (Math.round(x * 100) / 100).toFixed(2);
 }
 
-function parseTargetSpec(specRaw) {
-  const raw = String(specRaw ?? "").trim().toLowerCase();
-  if (!raw) return { ok: false, error: "Missing target size." };
+function parseTargetSize(raw) {
+  const s = String(raw || "").trim().toLowerCase().replaceAll("×", "x").replace(/\s+/g, "");
+  if (!s) return { ok: false, reason: "Target size required (ex: 8.5x11 or 23)." };
 
-  // Accept "11" or "23"
-  if (/^\d+(\.\d+)?$/.test(raw)) {
-    const v = Number(raw);
-    if (!Number.isFinite(v) || v <= 0) return { ok: false, error: "Bad target size." };
-    return { ok: true, spec: raw, long: v, short: v };
+  // single number like "23"
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const v = Number(s);
+    if (!Number.isFinite(v) || v <= 0) return { ok: false, reason: "Bad target size number." };
+    return { ok: true, spec: `${v}x${v}`, long: v, short: v };
   }
 
-  // Accept "8.5x11" or "8.5 x 11"
-  const m = raw.replace(/\s+/g, "").match(/^(\d+(\.\d+)?)[x×](\d+(\.\d+)?)$/);
-  if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[3]);
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
-      return { ok: false, error: "Bad target size spec." };
-    }
-    const long = Math.max(a, b);
-    const short = Math.min(a, b);
-    return { ok: true, spec: `${a}x${b}`, long, short };
+  const m = s.match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)$/);
+  if (!m) return { ok: false, reason: 'Bad format. Use like "8.5x11" or "23".' };
+
+  const a = Number(m[1]);
+  const b = Number(m[3]);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+    return { ok: false, reason: "Bad dimensions." };
   }
 
-  // Common aliases
-  if (raw === "letter" || raw === "8.5x11" || raw === "8.5×11") {
-    return { ok: true, spec: "8.5x11", long: 11, short: 8.5 };
-  }
-
-  return { ok: false, error: `Unrecognized target size: "${specRaw}"` };
+  const long = Math.max(a, b);
+  const short = Math.min(a, b);
+  return { ok: true, spec: `${a}x${b}`, long, short };
 }
 
-function dialFromSignedClicks(axis, signedClicks) {
-  const v = Number(signedClicks);
-  if (!Number.isFinite(v) || Math.abs(v) < 0.000001) {
-    return axis === "windage" ? "CENTER 0.00 clicks" : "LEVEL 0.00 clicks";
+// iOS photos often store rotation in EXIF. Re-encode upright so x/y don’t silently swap.
+async function normalizeImageFile(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    bitmap = await createImageBitmap(file);
   }
-  const abs = Math.abs(v);
-  if (axis === "windage") return v > 0 ? `RIGHT ${fmt2(abs)} clicks` : `LEFT ${fmt2(abs)} clicks`;
-  return v > 0 ? `UP ${fmt2(abs)} clicks` : `DOWN ${fmt2(abs)} clicks`;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  if (!blob) return { file, meta: { w: bitmap.width, h: bitmap.height } };
+
+  const cleanFile = new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", {
+    type: "image/jpeg",
+    lastModified: Date.now(),
+  });
+
+  return { file: cleanFile, meta: { w: bitmap.width, h: bitmap.height } };
 }
 
-function extractDirection(dialStr) {
-  const s = String(dialStr || "").toUpperCase();
-  if (s.includes("LEFT")) return "LEFT";
-  if (s.includes("RIGHT")) return "RIGHT";
-  if (s.includes("UP")) return "UP";
-  if (s.includes("DOWN")) return "DOWN";
-  return null;
+// POIB truth rules (based on what your screenshots show):
+// - poib.x > 0 means impacts RIGHT of bull => dial LEFT
+// - poib.y > 0 means impacts BELOW bull (image Y grows down) => dial UP
+function dialDirectionFromPoib(poibX, poibY) {
+  const x = Number(poibX);
+  const y = Number(poibY);
+
+  const windDir =
+    !Number.isFinite(x) || x === 0 ? "CENTER" :
+    x > 0 ? "LEFT" : "RIGHT";
+
+  const elevDir =
+    !Number.isFinite(y) || y === 0 ? "LEVEL" :
+    y > 0 ? "UP" : "DOWN";
+
+  return { windDir, elevDir };
+}
+
+function absClicksFromPoib(poibInches, inchesPerClick) {
+  const x = Number(poibInches?.x);
+  const y = Number(poibInches?.y);
+  const ipc = Number(inchesPerClick);
+
+  if (!Number.isFinite(ipc) || ipc <= 0) return { w: null, e: null };
+
+  const w = Number.isFinite(x) ? Math.abs(x) / ipc : null;
+  const e = Number.isFinite(y) ? Math.abs(y) / ipc : null;
+
+  return { w, e };
 }
 
 export default function App() {
-  const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINT);
+  const [endpoint, setEndpoint] = useState(SEC_ENDPOINT_DEFAULT);
 
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
 
-  const [distanceYards, setDistanceYards] = useState("100");
-  const [clickValueMoa, setClickValueMoa] = useState("0.25");
+  const [targetSize, setTargetSize] = useState("8.5x11");
+  const parsedTarget = useMemo(() => parseTargetSize(targetSize), [targetSize]);
 
-  const [targetPreset, setTargetPreset] = useState("8.5x11");
-  const [targetSpec, setTargetSpec] = useState("8.5x11");
+  const [distanceYards, setDistanceYards] = useState(100);
+  const [clickValueMoa, setClickValueMoa] = useState(0.25);
 
   const [status, setStatus] = useState("");
-  const [rawJson, setRawJson] = useState(null);
+  const [resp, setResp] = useState(null);
   const [showRaw, setShowRaw] = useState(true);
 
-  const parsedTarget = useMemo(() => parseTargetSpec(targetSpec), [targetSpec]);
+  const [issues, setIssues] = useState([]);
 
-  const ipp = useMemo(() => {
-    const d = Number(distanceYards);
-    const c = Number(clickValueMoa);
-    const ipmoa = inchesPerMoaAtYards(d);
-    if (!Number.isFinite(ipmoa) || !Number.isFinite(c) || c <= 0) return NaN;
-    return ipmoa * c; // inches per click
+  const inchesPerClick = useMemo(() => {
+    const ipmoa = inchesPerMoaAtYards(distanceYards);
+    const cv = Number(clickValueMoa);
+    if (!Number.isFinite(ipmoa) || !Number.isFinite(cv) || cv <= 0) return NaN;
+    return ipmoa * cv;
   }, [distanceYards, clickValueMoa]);
 
-  const computed = useMemo(() => {
-    if (!rawJson) return null;
-
-    // Try the common shapes we’ve seen in your screenshots.
-    const poib = rawJson?.poibInches || rawJson?.sec?.poibInches || rawJson?.result?.poibInches || null;
-    const sec = rawJson?.sec || rawJson?.result?.sec || null;
-    const clicksSignedBackend = rawJson?.clicksSigned || rawJson?.result?.clicksSigned || null;
-    const dialBackend = rawJson?.dial || rawJson?.result?.dial || null;
-
-    const x = poib?.x;
-    const y = poib?.y;
-
-    const logs = [];
-
-    // --- Congruence Gate: target size ---
-    const backendSize = sec?.targetSizeInches;
-    if (parsedTarget.ok && Number.isFinite(Number(backendSize))) {
-      const uiLong = Number(parsedTarget.long);
-      const be = Number(backendSize);
-      if (Math.abs(uiLong - be) > 0.01) {
-        logs.push({
-          code: "TARGET_SIZE_INCONGRUENT",
-          uiTargetLongInches: uiLong,
-          backendTargetSizeInches: be,
-          fix: "Frontend must send targetSizeInches correctly, and backend must echo it back consistently."
-        });
-      }
-    }
-
-    // If we can’t compute clicks (no POIB or bad conversion), stop here.
-    if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y)) || !Number.isFinite(ipp) || ipp <= 0) {
-      return {
-        ok: false,
-        logs,
-        sec,
-        poib,
-        clicksSignedBackend,
-        dialBackend
-      };
-    }
-
-    // --- Minimal scope clicks: ALWAYS derived from POIB ---
-    // IMPORTANT: dial direction is OPPOSITE the POIB offset.
-    // +x means impacts RIGHT -> dial LEFT
-    // +y means impacts BELOW (image coords often +down) -> dial UP
-    // So: signed clicks for dial = -poib / inchesPerClick
-    const windSignedDial = -(Number(x) / ipp);
-    const elevSignedDial = -(Number(y) / ipp);
-
-    const windDial = dialFromSignedClicks("windage", windSignedDial);
-    const elevDial = dialFromSignedClicks("elevation", elevSignedDial);
-
-    // --- Direction congruence checks (optional but helpful) ---
-    const uiWindDir = extractDirection(windDial);
-    const uiElevDir = extractDirection(elevDial);
-
-    const beWindDir = extractDirection(dialBackend?.windage);
-    const beElevDir = extractDirection(dialBackend?.elevation);
-
-    if (beElevDir && uiElevDir && beElevDir !== uiElevDir) {
-      logs.push({
-        code: "ELEVATION_DIRECTION_INCONGRUENT",
-        poibY: Number(y),
-        uiDial: uiElevDir,
-        backendDial: beElevDir,
-        fix: "Ignore backend dial strings; UI should compute dial from POIB consistently (this build does)."
-      });
-    }
-    if (beWindDir && uiWindDir && beWindDir !== uiWindDir) {
-      logs.push({
-        code: "WINDAGE_DIRECTION_INCONGRUENT",
-        poibX: Number(x),
-        uiDial: uiWindDir,
-        backendDial: beWindDir,
-        fix: "Ignore backend dial strings; UI should compute dial from POIB consistently (this build does)."
-      });
-    }
-
-    // If backend provides clicksSigned, check sign agreement (diagnostic only)
-    if (clicksSignedBackend?.elevation != null) {
-      const beE = Number(clicksSignedBackend.elevation);
-      if (Number.isFinite(beE)) {
-        // Backend "signed" may be using image axis; we ONLY flag it so you can see it.
-        const uiE = Number(elevSignedDial);
-        const signMismatch = (beE === 0 && uiE !== 0) || (beE !== 0 && uiE !== 0 && Math.sign(beE) !== Math.sign(uiE));
-        if (signMismatch) {
-          logs.push({
-            code: "ELEVATION_SIGN_MISMATCH",
-            backendClicksSignedElevation: beE,
-            uiSignedElevation: Number(fmt2(uiE)),
-            fix: "Backend likely not applying the Y-axis flip. Keep backend numeric as-is for now; UI dial is authoritative."
-          });
-        }
-      }
-    }
-    if (clicksSignedBackend?.windage != null) {
-      const beW = Number(clicksSignedBackend.windage);
-      if (Number.isFinite(beW)) {
-        const uiW = Number(windSignedDial);
-        const signMismatch = (beW === 0 && uiW !== 0) || (beW !== 0 && uiW !== 0 && Math.sign(beW) !== Math.sign(uiW));
-        if (signMismatch) {
-          logs.push({
-            code: "WINDAGE_SIGN_MISMATCH",
-            backendClicksSignedWindage: beW,
-            uiSignedWindage: Number(fmt2(uiW)),
-            fix: "Backend may define sign differently. UI dial is authoritative."
-          });
-        }
-      }
-    }
-
-    return {
-      ok: true,
-      logs,
-      sec,
-      poib: { x: Number(x), y: Number(y) },
-      inchesPerClick: ipp,
-      signedDial: { windage: windSignedDial, elevation: elevSignedDial },
-      minimal: { windageDial: windDial, elevationDial: elevDial },
-      clicksSignedBackend,
-      dialBackend
-    };
-  }, [rawJson, ipp, parsedTarget.ok, parsedTarget.long]);
-
-  function onPickFile(e) {
-    const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-    setFile(f);
-    setRawJson(null);
-    setStatus("");
-    if (f) {
-      const url = URL.createObjectURL(f);
-      setPreviewUrl(url);
-    } else {
-      setPreviewUrl("");
-    }
+  function addIssue(code, details) {
+    setIssues((prev) => [{ code, details }, ...prev].slice(0, 20));
   }
 
-  function onPresetChange(p) {
-    setTargetPreset(p);
-    if (p === "8.5x11") setTargetSpec("8.5x11");
-    if (p === "23") setTargetSpec("23");
-    if (p === "custom") setTargetSpec("");
+  function onChooseFile(e) {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setResp(null);
+    setIssues([]);
+    setStatus("");
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (f) setPreviewUrl(URL.createObjectURL(f));
+    else setPreviewUrl("");
   }
 
   async function onSend() {
+    setStatus("");
+    setResp(null);
+    setIssues([]);
+
+    if (!file) {
+      setStatus("Choose an image first.");
+      return;
+    }
+    if (!parsedTarget.ok) {
+      setStatus(parsedTarget.reason);
+      return;
+    }
+    if (!endpoint?.trim()) {
+      setStatus("Endpoint is empty.");
+      return;
+    }
+
     try {
-      setStatus("");
-      setRawJson(null);
+      setStatus("Normalizing image…");
+      const normalized = await normalizeImageFile(file);
 
-      if (!endpoint.trim()) {
-        setStatus("Missing endpoint URL.");
-        return;
-      }
-      if (!file) {
-        setStatus("Choose an image first.");
-        return;
-      }
-      if (!parsedTarget.ok) {
-        setStatus(parsedTarget.error);
-        return;
-      }
+      // Send LONG side inches (8.5x11 => 11.00)
+      const targetSizeInchesToSend = parsedTarget.long;
 
-      const d = Number(distanceYards);
-      const c = Number(clickValueMoa);
-      if (!Number.isFinite(d) || d <= 0) {
-        setStatus("Distance must be a valid number.");
-        return;
-      }
-      if (!Number.isFinite(c) || c <= 0) {
-        setStatus("Click value must be a valid number.");
-        return;
-      }
-
-      // Always send the LONG SIDE as targetSizeInches (8.5x11 -> 11)
-      const targetLong = Number(parsedTarget.long);
-
+      setStatus("Uploading…");
       const fd = new FormData();
-      fd.append("image", file);
-      fd.append("distanceYards", String(d));
-      fd.append("clickValueMoa", String(c));
-      fd.append("targetSizeInches", String(targetLong));
+      fd.append("image", normalized.file);
+      fd.append("distanceYards", String(distanceYards));
+      fd.append("clickValueMoa", String(clickValueMoa));
+      fd.append("targetSizeInches", String(targetSizeInchesToSend));
 
-      // (Extra compatibility fields — harmless if backend ignores)
-      fd.append("targetSize", String(targetLong));
-      fd.append("targetSpec", String(parsedTarget.spec));
+      const r = await fetch(endpoint.trim(), { method: "POST", body: fd });
+      const text = await r.text();
 
-      setStatus("Sending…");
-      const res = await fetch(endpoint.trim(), { method: "POST", body: fd });
-      const text = await res.text();
-
-      let json = null;
+      let json;
       try {
         json = JSON.parse(text);
       } catch {
-        json = { ok: false, error: "Non-JSON response from backend", httpStatus: res.status, body: text };
+        addIssue("BACKEND_NON_JSON", { httpStatus: r.status, text: text?.slice(0, 500) });
+        setStatus("Backend returned non-JSON.");
+        return;
       }
 
-      setRawJson(json);
+      setResp(json);
 
-      if (!res.ok) {
-        setStatus(`Backend error (${res.status}).`);
+      if (!r.ok || json?.ok === false) {
+        addIssue("BACKEND_ERROR", { httpStatus: r.status, backend: json });
+        setStatus("Backend error.");
         return;
+      }
+
+      // Congruence check: backend echo size
+      const echoed = Number(json?.sec?.targetSizeInches);
+      if (Number.isFinite(echoed) && Math.abs(echoed - targetSizeInchesToSend) > 0.01) {
+        addIssue("TARGET_SIZE_MISMATCH", {
+          uiTarget: { spec: parsedTarget.spec, long: f2(parsedTarget.long), short: f2(parsedTarget.short) },
+          sentTargetSizeInches: f2(targetSizeInchesToSend),
+          backendEchoTargetSizeInches: f2(echoed),
+        });
       }
 
       setStatus("Done.");
     } catch (err) {
-      setStatus(`Error: ${err?.message || String(err)}`);
+      addIssue("CLIENT_ERROR", { message: String(err?.message || err) });
+      setStatus("Client error.");
     }
   }
 
-  const box = (borderColor) => ({
-    border: `3px solid ${borderColor}`,
-    borderRadius: 12,
-    padding: 14,
-    background: "#fff",
-    boxSizing: "border-box",
-  });
+  const poib = resp?.poibInches || {};
+  const poibX = Number(poib?.x);
+  const poibY = Number(poib?.y);
+
+  const dirs = dialDirectionFromPoib(poibX, poibY);
+  const absClicks = absClicksFromPoib(poib, inchesPerClick);
+
+  const windageText =
+    absClicks.w == null ? "—" :
+    dirs.windDir === "CENTER" ? `CENTER 0.00 clicks` :
+    `${dirs.windDir} ${f2(absClicks.w)} clicks`;
+
+  const elevationText =
+    absClicks.e == null ? "—" :
+    dirs.elevDir === "LEVEL" ? `LEVEL 0.00 clicks` :
+    `${dirs.elevDir} ${f2(absClicks.e)} clicks`;
+
+  // Optional: detect backend dial flip (for visibility only)
+  const backendDialW = resp?.dial?.windage || "";
+  const backendDialE = resp?.dial?.elevation || "";
+
+  const backendElevHasDown = String(backendDialE).toUpperCase().includes("DOWN");
+  const backendElevHasUp = String(backendDialE).toUpperCase().includes("UP");
+  const backendWindHasLeft = String(backendDialW).toUpperCase().includes("LEFT");
+  const backendWindHasRight = String(backendDialW).toUpperCase().includes("RIGHT");
+
+  const uiElevIsUp = elevationText.toUpperCase().includes("UP");
+  const uiElevIsDown = elevationText.toUpperCase().includes("DOWN");
+  const uiWindIsLeft = windageText.toUpperCase().includes("LEFT");
+  const uiWindIsRight = windageText.toUpperCase().includes("RIGHT");
+
+  const directionMismatch =
+    resp &&
+    (
+      (backendElevHasUp && uiElevIsDown) ||
+      (backendElevHasDown && uiElevIsUp) ||
+      (backendWindHasLeft && uiWindIsRight) ||
+      (backendWindHasRight && uiWindIsLeft)
+    );
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 14, color: "#111" }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <h1 style={{ margin: "6px 0 4px", fontSize: 36, letterSpacing: 0.2 }}>SCZN3 SEC — Upload Test</h1>
+    <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+      <h1 style={{ margin: "0 0 10px 0" }}>SCZN3 SEC — Click Test (Direction Fixed)</h1>
 
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 14, marginBottom: 6 }}>Endpoint</div>
-          <input
-            value={endpoint}
-            onChange={(e) => setEndpoint(e.target.value)}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
-          />
-          <div style={{ marginTop: 6, fontSize: 13 }}>
-            POST multipart field: <b>image</b>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontWeight: 800 }}>Endpoint</div>
+        <input
+          value={endpoint}
+          onChange={(e) => setEndpoint(e.target.value)}
+          style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #bbb" }}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start" }}>
+        {/* LEFT */}
+        <div style={{ border: "2px solid #111", borderRadius: 12, padding: 14 }}>
+          <div style={{ marginBottom: 10 }}>
+            <input type="file" accept="image/*" onChange={onChooseFile} />
           </div>
-        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          {/* LEFT */}
-          <div style={box("#000")}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-              <input type="file" accept="image/*" onChange={onPickFile} />
-              <div style={{ fontSize: 13, color: "#444" }}>{file ? file.name : "No file selected"}</div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontWeight: 900 }}>Target Size</div>
+            <input
+              value={targetSize}
+              onChange={(e) => setTargetSize(e.target.value)}
+              placeholder='8.5x11 or 23'
+              style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #bbb", marginTop: 6 }}
+            />
+            <div style={{ marginTop: 6, fontFamily: "monospace", fontSize: 12 }}>
+              {parsedTarget.ok
+                ? `Parsed: spec=${parsedTarget.spec} long=${f2(parsedTarget.long)} short=${f2(parsedTarget.short)}`
+                : `ERROR: ${parsedTarget.reason}`}
             </div>
+          </div>
 
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Target Size</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 800 }}>Distance (yards)</div>
+              <input
+                value={distanceYards}
+                onChange={(e) => setDistanceYards(Number(e.target.value))}
+                style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #bbb", marginTop: 6 }}
+              />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800 }}>Click Value (MOA)</div>
+              <input
+                value={clickValueMoa}
+                onChange={(e) => setClickValueMoa(Number(e.target.value))}
+                style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #bbb", marginTop: 6 }}
+              />
+            </div>
+          </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, alignItems: "center" }}>
-                <select
-                  value={targetPreset}
-                  onChange={(e) => onPresetChange(e.target.value)}
-                  style={{ padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
-                >
-                  <option value="8.5x11">8.5×11</option>
-                  <option value="23">23</option>
-                  <option value="custom">Custom</option>
-                </select>
+          <button
+            onClick={onSend}
+            style={{
+              width: "100%",
+              padding: 14,
+              fontSize: 18,
+              fontWeight: 900,
+              borderRadius: 12,
+              border: "3px solid #2b78ff",
+              background: "#ffffff",
+              cursor: "pointer",
+            }}
+          >
+            Send
+          </button>
 
-                <input
-                  value={targetSpec}
-                  onChange={(e) => setTargetSpec(e.target.value)}
-                  placeholder='Examples: 8.5x11 or 23'
-                  style={{ padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
-                />
+          <div style={{ marginTop: 10 }}><b>Status:</b> {status || "—"}</div>
+
+          {/* MINIMAL OUTPUT */}
+          {resp && (
+            <div style={{ marginTop: 12, border: "3px solid #22a06b", padding: 12, borderRadius: 12 }}>
+              <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+                Scope Clicks (Minimal) — FIXED
               </div>
 
-              <div style={{ fontSize: 13, marginTop: 6, color: parsedTarget.ok ? "#333" : "#b00020" }}>
-                {parsedTarget.ok ? (
-                  <>Parsed: spec={parsedTarget.spec} long={fmt2(parsedTarget.long)} short={fmt2(parsedTarget.short)}</>
-                ) : (
-                  parsedTarget.error
-                )}
+              <div style={{ fontSize: 18 }}><b>Windage:</b> {windageText}</div>
+              <div style={{ fontSize: 18, marginTop: 6 }}><b>Elevation:</b> {elevationText}</div>
+
+              <div style={{ marginTop: 10, fontFamily: "monospace", fontSize: 12 }}>
+                POIB inches: x={f2(poibX)}, y={f2(poibY)}{"\n"}
+                inchesPerClick: {Number.isFinite(inchesPerClick) ? f2(inchesPerClick) : "—"}{"\n"}
+                backend sec.targetSizeInches: {f2(resp?.sec?.targetSizeInches)}
               </div>
-            </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-              <div>
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Distance (yards)</div>
-                <input
-                  value={distanceYards}
-                  onChange={(e) => setDistanceYards(e.target.value)}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
-                />
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>Click Value (MOA)</div>
-                <input
-                  value={clickValueMoa}
-                  onChange={(e) => setClickValueMoa(e.target.value)}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "2px solid #bbb" }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={onSend}
-              style={{
-                width: "100%",
-                padding: 14,
-                borderRadius: 12,
-                border: "3px solid #2b78ff",
-                background: "#eaf2ff",
-                fontWeight: 900,
-                fontSize: 18,
-                cursor: "pointer",
-              }}
-            >
-              Send (with Congruence Gate)
-            </button>
-
-            <div style={{ marginTop: 10, fontSize: 14 }}>
-              <b>Status:</b> {status || "—"}
-            </div>
-
-            {/* RESULTS */}
-            {computed && (
-              <>
-                <div style={{ marginTop: 12, ...box("#22a06b") }}>
-                  <div style={{ fontWeight: 900, fontSize: 22, marginBottom: 8 }}>Scope Clicks (Minimal)</div>
-
-                  {computed.ok ? (
-                    <>
-                      <div style={{ fontSize: 18, marginBottom: 6 }}>
-                        <b>Windage:</b> {computed.minimal.windageDial}
-                      </div>
-                      <div style={{ fontSize: 18, marginBottom: 10 }}>
-                        <b>Elevation:</b> {computed.minimal.elevationDial}
-                      </div>
-
-                      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13 }}>
-                        signedDial: w={fmt2(computed.signedDial.windage)}, e={fmt2(computed.signedDial.elevation)}{" "}
-                        | POIB inches: x={fmt2(computed.poib?.x)}, y={fmt2(computed.poib?.y)}{" "}
-                        | computeStatus: {rawJson?.computeStatus || rawJson?.result?.computeStatus || "—"}{" "}
-                        | backend sec.targetSizeInches: {fmt2(computed.sec?.targetSizeInches)}
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ color: "#b00020" }}>
-                      Can’t compute minimal clicks (missing POIB or conversion values).
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: 10 }}>
-                    <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
-                      Show raw JSON
-                    </label>
+              {directionMismatch && (
+                <div style={{ marginTop: 10, border: "2px solid #b00020", borderRadius: 10, padding: 10, background: "#fff5f6" }}>
+                  <div style={{ fontWeight: 900 }}>Backend dial text is flipped (ignored)</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
+                    backend dial.windage: {String(backendDialW)}{"\n"}
+                    backend dial.elevation: {String(backendDialE)}
                   </div>
                 </div>
-
-                {computed.logs && computed.logs.length > 0 && (
-                  <div style={{ marginTop: 12, ...box("#b00020") }}>
-                    <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Incongruence Log</div>
-                    <div style={{ fontSize: 13, marginBottom: 10 }}>
-                      This result was received, but one or more variables are not congruent. Do not trust the output until fixed.
-                    </div>
-
-                    {computed.logs.map((l, idx) => (
-                      <div key={idx} style={{ padding: 10, borderRadius: 10, border: "2px solid #b00020", background: "#fff" }}>
-                        <div style={{ fontWeight: 900, marginBottom: 6 }}>{l.code}</div>
-                        <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12 }}>
-{JSON.stringify(l, null, 2)}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* RIGHT */}
-          <div style={box("#000")}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div style={{ fontWeight: 900, fontSize: 22 }}>Preview</div>
-              <div style={{ fontSize: 13, color: "#444" }}>
-                {showRaw ? "Raw JSON: ON" : "Raw JSON: OFF"}
-              </div>
-            </div>
-
-            <div style={{ border: "2px solid #ddd", borderRadius: 12, padding: 10, minHeight: 320 }}>
-              {previewUrl ? (
-                <img src={previewUrl} alt="preview" style={{ width: "100%", height: "auto", borderRadius: 10 }} />
-              ) : (
-                <div style={{ color: "#666" }}>Choose an image to preview.</div>
               )}
-            </div>
 
-            {showRaw && rawJson && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Response</div>
-                <pre
-                  style={{
-                    margin: 0,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "#111",
-                    color: "#f3f3f3",
-                    overflowX: "auto",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                    fontSize: 12,
-                    lineHeight: 1.35,
-                  }}
-                >
-{JSON.stringify(rawJson, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
+                Show raw JSON
+              </label>
+            </div>
+          )}
+
+          {/* INCONGRUENCE LOG */}
+          {issues.length > 0 && (
+            <div style={{ marginTop: 12, border: "3px solid #b00020", padding: 12, borderRadius: 12, background: "#fff5f6" }}>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>Incongruence Log</div>
+              {issues.map((it, idx) => (
+                <div key={idx} style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 900 }}>{it.code}</div>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 12 }}>
+{JSON.stringify(it.details, null, 2)}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div style={{ marginTop: 14, textAlign: "center", color: "#333", fontStyle: "italic" }}>
-          Faith • Order • Precision
+        {/* RIGHT */}
+        <div style={{ border: "2px solid #111", borderRadius: 12, padding: 14 }}>
+          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>Preview</div>
+          <div style={{ border: "2px solid #333", borderRadius: 12, overflow: "hidden" }}>
+            {previewUrl ? (
+              <img src={previewUrl} alt="preview" style={{ width: "100%", display: "block" }} />
+            ) : (
+              <div style={{ padding: 20, color: "#666" }}>Choose an image to preview it.</div>
+            )}
+          </div>
+
+          {showRaw && resp && (
+            <pre
+              style={{
+                marginTop: 12,
+                background: "#111",
+                color: "#fff",
+                padding: 12,
+                borderRadius: 12,
+                overflowX: "auto",
+                fontSize: 12,
+              }}
+            >
+{JSON.stringify(resp, null, 2)}
+            </pre>
+          )}
         </div>
       </div>
     </div>
