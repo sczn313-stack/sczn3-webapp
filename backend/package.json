@@ -1,13 +1,14 @@
 {
-  "name": "sczn3-sec-backend",
+  "name": "sczn3-sec-backend-pipe",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
+  "description": "SCZN3 SEC backend pipe — deterministic direction + congruence-safe output",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "dependencies": {
     "cors": "^2.8.5",
