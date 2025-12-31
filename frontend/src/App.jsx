@@ -1,186 +1,240 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+function safeParseHoles(text) {
+  const t = (text || "").trim();
+  if (!t) return null;
+  try {
+    const v = JSON.parse(t);
+    if (!Array.isArray(v)) return null;
+
+    const holes = [];
+    for (const item of v) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof item.x === "number" &&
+        typeof item.y === "number" &&
+        Number.isFinite(item.x) &&
+        Number.isFinite(item.y)
+      ) {
+        holes.push({ x: item.x, y: item.y });
+      }
+    }
+    return holes.length ? holes : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
+  // URLs
   const [endpoint, setEndpoint] = useState(
     "https://sczn3-sec-backend-pipe-17.onrender.com/api/sec"
   );
 
-  const [file, setFile] = useState(null);
-
+  // Inputs
   const [targetSizeSpec, setTargetSizeSpec] = useState("8.5x11");
   const [distanceYards, setDistanceYards] = useState(100);
   const [clickValueMoa, setClickValueMoa] = useState(0.25);
-  const [deadbandIn, setDeadbandIn] = useState(0.10);
+  const [deadbandIn, setDeadbandIn] = useState(0.1);
+  const [bullX, setBullX] = useState(4.25);
+  const [bullY, setBullY] = useState(5.5);
 
-  // Defaults you locked earlier:
-  const [bullXIn, setBullXIn] = useState(4.25);
-  const [bullYIn, setBullYIn] = useState(5.50);
+  // Image
+  const [file, setFile] = useState(null);
 
+  // Optional advanced holes mode (hidden by default)
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [holesText, setHolesText] = useState("");
+
+  // Output
   const [status, setStatus] = useState("");
-  const [result, setResult] = useState(null);
-  const [showJson, setShowJson] = useState(true);
+  const [respJson, setRespJson] = useState(null);
+  const [showRaw, setShowRaw] = useState(true);
+
+  const parsedHoles = useMemo(() => safeParseHoles(holesText), [holesText]);
+
+  // Parse targetSizeSpec into width/height (inches)
+  function parseSize(spec) {
+    // accepts "8.5x11" or "11x8.5"
+    const m = String(spec || "")
+      .toLowerCase()
+      .replace(/\s/g, "")
+      .match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)$/);
+    if (!m) return null;
+    const a = parseFloat(m[1]);
+    const b = parseFloat(m[3]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+    return { widthIn: a, heightIn: b };
+  }
 
   async function onSend() {
-    setStatus("");
-    setResult(null);
+    setRespJson(null);
 
-    // HARD RULE: this page works ONLY from image upload now.
-    if (!file) {
-      setStatus("Choose an image first.");
+    const size = parseSize(targetSizeSpec);
+    if (!size) {
+      setStatus("Bad Target Size. Use format like 8.5x11");
       return;
     }
 
-    // Safety: endpoint must look like a POST URL
-    if (!endpoint || !endpoint.startsWith("http")) {
-      setStatus("Endpoint is missing or invalid.");
+    // ✅ NEW RULE:
+    // - If image exists: send image (no holes required)
+    // - Else if Advanced is ON and holes JSON exists: send holes
+    // - Else: show a plain message (no popup)
+    const canSendWithImage = !!file;
+    const canSendWithHoles = showAdvanced && Array.isArray(parsedHoles) && parsedHoles.length > 0;
+
+    if (!canSendWithImage && !canSendWithHoles) {
+      setStatus("Choose an image (recommended). Or enable Advanced and paste holes JSON.");
       return;
     }
+
+    setStatus("Sending...");
 
     try {
-      setStatus("Sending…");
+      const form = new FormData();
 
-      const fd = new FormData();
-      fd.append("image", file);
-      fd.append("targetSizeSpec", String(targetSizeSpec));
-      fd.append("distanceYards", String(distanceYards));
-      fd.append("clickValueMoa", String(clickValueMoa));
-      fd.append("deadbandIn", String(deadbandIn));
-      fd.append("bullXIn", String(bullXIn));
-      fd.append("bullYIn", String(bullYIn));
+      // Always include these
+      form.append("targetSizeSpec", `${size.widthIn}x${size.heightIn}`);
+      form.append("targetSizeInches", `${size.widthIn}x${size.heightIn}`); // backward-friendly
+      form.append("distanceYards", String(distanceYards));
+      form.append("clickValueMoa", String(clickValueMoa));
+      form.append("deadbandIn", String(deadbandIn));
+      form.append("bullX", String(bullX));
+      form.append("bullY", String(bullY));
 
-      const res = await fetch(endpoint, { method: "POST", body: fd });
-      const json = await res.json().catch(() => null);
+      if (canSendWithImage) {
+        form.append("image", file);
+      } else if (canSendWithHoles) {
+        form.append("holesJson", JSON.stringify(parsedHoles));
+      }
 
-      if (!res.ok || !json) {
-        setStatus(`Error (${res.status})`);
-        setResult(json || { ok: false, error: { code: "BAD_RESPONSE" } });
+      const r = await fetch(endpoint, { method: "POST", body: form });
+      const data = await r.json().catch(() => null);
+
+      if (!r.ok) {
+        setStatus(`Error (${r.status})`);
+        setRespJson(
+          data || { ok: false, error: { code: "BAD_RESPONSE", message: "Non-JSON response" } }
+        );
         return;
       }
 
-      setResult(json);
-
-      if (json.ok) setStatus("Done.");
-      else setStatus("Can't compute.");
+      setStatus("Done.");
+      setRespJson(data);
     } catch (e) {
-      setStatus("Network/server error.");
-      setResult({ ok: false, error: { code: "NETWORK_ERROR", message: String(e) } });
+      setStatus("Network error.");
+      setRespJson({ ok: false, error: { code: "NETWORK", message: String(e?.message || e) } });
     }
   }
 
-  const clicks = result?.clicksSigned;
-  const scope = result?.scopeClicks;
+  const scopeLine =
+    respJson?.scopeClicks?.windage && respJson?.scopeClicks?.elevation
+      ? `Windage: ${respJson.scopeClicks.windage} | Elevation: ${respJson.scopeClicks.elevation}`
+      : null;
 
   return (
-    <div style={{ maxWidth: 780, margin: "0 auto", padding: 16, fontFamily: "system-ui" }}>
-      <h1 style={{ marginTop: 0 }}>SCZN3 SEC — Upload Test</h1>
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: 16, fontFamily: "system-ui, Arial" }}>
+      <h1 style={{ marginTop: 0 }}>POIB Anchor Test</h1>
 
-      <p style={{ marginTop: 0 }}>
-        Endpoint must be the <b>POST</b> route (example ends in <b>/api/sec</b>)
-      </p>
-
-      <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 14 }}>
-        <label style={{ display: "block", fontWeight: 600 }}>Endpoint</label>
-        <input
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.target.value)}
-          style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
-        />
-
-        <div style={{ marginTop: 12 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Image</label>
+      <div style={{ display: "grid", gap: 12 }}>
+        <label>
+          Endpoint (POST)
           <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            style={{ marginTop: 6 }}
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            style={{ width: "100%", padding: 10, marginTop: 6 }}
           />
-          {file && (
-            <div style={{ marginTop: 6, fontSize: 14 }}>
-              Selected: <b>{file.name}</b>
-            </div>
-          )}
-        </div>
+        </label>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-          <div>
-            <label style={{ display: "block", fontWeight: 600 }}>Target Size</label>
-            <select
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <label>
+            Target Size
+            <input
               value={targetSizeSpec}
               onChange={(e) => setTargetSizeSpec(e.target.value)}
-              style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
-            >
-              <option value="8.5x11">8.5x11</option>
-              <option value="11x8.5">11x8.5</option>
-            </select>
-          </div>
+              style={{ width: "100%", padding: 10, marginTop: 6 }}
+            />
+          </label>
 
-          <div>
-            <label style={{ display: "block", fontWeight: 600 }}>Distance (yards)</label>
+          <label>
+            Distance (yards)
             <input
               type="number"
               value={distanceYards}
               onChange={(e) => setDistanceYards(Number(e.target.value))}
-              style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
+              style={{ width: "100%", padding: 10, marginTop: 6 }}
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: "block", fontWeight: 600 }}>Click Value (MOA)</label>
+          <label>
+            Click Value (MOA)
             <input
               type="number"
               step="0.01"
               value={clickValueMoa}
               onChange={(e) => setClickValueMoa(Number(e.target.value))}
-              style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
+              style={{ width: "100%", padding: 10, marginTop: 6 }}
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: "block", fontWeight: 600 }}>Deadband (inches)</label>
+          <label>
+            Deadband (inches)
             <input
               type="number"
               step="0.01"
               value={deadbandIn}
               onChange={(e) => setDeadbandIn(Number(e.target.value))}
-              style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
+              style={{ width: "100%", padding: 10, marginTop: 6 }}
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: "block", fontWeight: 600 }}>Bull X (inches)</label>
+          <label>
+            Bull X (inches)
             <input
               type="number"
               step="0.01"
-              value={bullXIn}
-              onChange={(e) => setBullXIn(Number(e.target.value))}
-              style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
+              value={bullX}
+              onChange={(e) => setBullX(Number(e.target.value))}
+              style={{ width: "100%", padding: 10, marginTop: 6 }}
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={{ display: "block", fontWeight: 600 }}>Bull Y (inches)</label>
+          <label>
+            Bull Y (inches)
             <input
               type="number"
               step="0.01"
-              value={bullYIn}
-              onChange={(e) => setBullYIn(Number(e.target.value))}
-              style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 6 }}
+              value={bullY}
+              onChange={(e) => setBullY(Number(e.target.value))}
+              style={{ width: "100%", padding: 10, marginTop: 6 }}
             />
-          </div>
+          </label>
         </div>
+
+        <label>
+          Image (recommended)
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            style={{ width: "100%", marginTop: 6 }}
+          />
+          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 6 }}>
+            {file ? `Selected: ${file.name}` : "No image selected."}
+          </div>
+        </label>
 
         <button
           onClick={onSend}
           style={{
-            width: "100%",
-            marginTop: 14,
-            padding: 14,
+            padding: "14px 18px",
             fontSize: 18,
             fontWeight: 700,
             borderRadius: 10,
-            border: "2px solid #2b6cb0",
+            border: "2px solid #1e5eff",
             background: "white",
             cursor: "pointer",
           }}
@@ -188,63 +242,74 @@ export default function App() {
           Send
         </button>
 
-        <div style={{ marginTop: 10, fontWeight: 700 }}>Status: {status || "—"}</div>
-      </div>
+        <div style={{ fontWeight: 700 }}>{status}</div>
 
-      {/* Output */}
-      {result && (
-        <div style={{ marginTop: 14, border: "2px solid #2f855a", borderRadius: 10, padding: 14 }}>
-          <h2 style={{ marginTop: 0 }}>Scope Clicks</h2>
+        {scopeLine ? (
+          <div
+            style={{
+              border: "2px solid #26a269",
+              padding: 12,
+              borderRadius: 10,
+              background: "#f6fffb",
+              fontSize: 18,
+              fontWeight: 800,
+            }}
+          >
+            {scopeLine}
+          </div>
+        ) : null}
 
-          {result.ok && scope ? (
-            <>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                Windage: {scope.windage}
-                <br />
-                Elevation: {scope.elevation}
-              </div>
-              {clicks && (
-                <div style={{ marginTop: 8, fontFamily: "monospace" }}>
-                  clicksSigned: w={round2(clicks.windage)}, e={round2(clicks.elevation)}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
-              CAN’T COMPUTE
-              <div style={{ marginTop: 6, fontWeight: 600 }}>
-                Error: {result?.error?.code || "UNKNOWN"}
-              </div>
-            </div>
-          )}
+        <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
+          Show raw JSON
+        </label>
 
-          <label style={{ display: "block", marginTop: 12 }}>
+        {showRaw && respJson ? (
+          <pre
+            style={{
+              background: "#111",
+              color: "#eee",
+              padding: 12,
+              borderRadius: 10,
+              overflowX: "auto",
+              fontSize: 13,
+              lineHeight: 1.25,
+            }}
+          >
+            {JSON.stringify(respJson, null, 2)}
+          </pre>
+        ) : null}
+
+        {/* Advanced mode (optional) */}
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #ddd" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <input
               type="checkbox"
-              checked={showJson}
-              onChange={(e) => setShowJson(e.target.checked)}
-              style={{ marginRight: 8 }}
+              checked={showAdvanced}
+              onChange={(e) => setShowAdvanced(e.target.checked)}
             />
-            Show raw JSON
+            Advanced: send holes JSON instead of image
           </label>
 
-          {showJson && (
-            <pre
-              style={{
-                marginTop: 10,
-                background: "#111",
-                color: "#eee",
-                padding: 12,
-                borderRadius: 10,
-                overflowX: "auto",
-                fontSize: 13,
-              }}
-            >
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          )}
+          {showAdvanced ? (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 6 }}>
+                Paste holes JSON in inches like: [{"{"}"x":4.00,"y":5.00{"}"}]
+              </div>
+              <textarea
+                value={holesText}
+                onChange={(e) => setHolesText(e.target.value)}
+                placeholder='[{"x":4.00,"y":5.00}]'
+                rows={6}
+                style={{ width: "100%", padding: 10, fontFamily: "ui-monospace, SFMono-Regular" }}
+              />
+              <div style={{ fontSize: 13, opacity: 0.85, marginTop: 6 }}>
+                Parsed holes: {parsedHoles ? parsedHoles.length : 0}
+              </div>
+            </div>
+          ) : null}
         </div>
-      )}
+      </div>
     </div>
   );
 }
