@@ -1,12 +1,379 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SCZN3 Webapp</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SCZN3 SEC — Upload Test</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 18px; }
+    h1 { margin: 0 0 12px; font-size: 42px; letter-spacing: -0.5px; }
+    .row { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+    .panel { border: 2px solid #111; border-radius: 10px; padding: 14px; width: 420px; max-width: 100%; }
+    .preview { border: 2px solid #111; border-radius: 10px; padding: 14px; width: 520px; max-width: 100%; }
+    label { display: block; font-weight: 700; margin: 10px 0 6px; }
+    input[type="text"], input[type="number"] { width: 100%; font-size: 18px; padding: 10px 12px; border: 1px solid #aaa; border-radius: 8px; }
+    input[type="file"] { width: 100%; font-size: 16px; }
+    .small { color: #333; font-size: 16px; line-height: 1.3; }
+    .btn {
+      margin-top: 12px; width: 100%;
+      font-size: 22px; font-weight: 800;
+      padding: 14px 14px; border-radius: 10px;
+      border: 3px solid #2b6cb0; background: #fff; color: #2b6cb0;
+      cursor: pointer;
+    }
+    .btn:active { transform: translateY(1px); }
+    .status { margin-top: 10px; font-size: 18px; font-weight: 800; }
+    .box {
+      margin-top: 12px;
+      border: 3px solid #2f855a; border-radius: 10px;
+      padding: 12px;
+    }
+    .box h3 { margin: 0 0 8px; font-size: 22px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; white-space: pre-wrap; }
+    .warn {
+      margin-top: 12px;
+      border: 3px solid #c53030; border-radius: 10px;
+      padding: 12px;
+    }
+    .warn h3 { margin: 0 0 8px; font-size: 20px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .muted { color: #666; font-weight: 600; }
+    img { max-width: 100%; border-radius: 8px; border: 1px solid #ddd; }
+    .checkboxRow { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <h1>SCZN3 SEC — Upload Test</h1>
+
+  <div class="small">
+    Endpoint must be the POST route. Example:
+    <span class="mono">https://sczn3-sec-backend-pipe-17.onrender.com/api/sec</span>
+  </div>
+
+  <div class="row" style="margin-top: 14px;">
+    <div class="panel">
+      <label for="endpoint">Endpoint</label>
+      <input id="endpoint" type="text" value="https://sczn3-sec-backend-pipe-17.onrender.com/api/sec" />
+
+      <div style="margin-top: 12px;">
+        <input id="file" type="file" accept="image/*" />
+      </div>
+
+      <label for="sizeSpec">Target Size</label>
+      <input id="sizeSpec" type="text" value="8.5x11" />
+
+      <div class="small" style="margin-top: 8px;">
+        <div><span class="muted">Parsed:</span> <span id="parsedLine">spec=8.5x11 long=11.00 short=8.50</span></div>
+        <div><span class="muted">Will SEND:</span> <span id="sendLine" class="mono"></span></div>
+      </div>
+
+      <div class="grid2" style="margin-top: 10px;">
+        <div>
+          <label for="distanceYards">Distance (yards)</label>
+          <input id="distanceYards" type="number" value="100" step="1" min="1" />
+        </div>
+        <div>
+          <label for="clickValueMoa">Click Value (MOA)</label>
+          <input id="clickValueMoa" type="number" value="0.25" step="0.01" min="0.01" />
+        </div>
+      </div>
+
+      <button id="sendBtn" class="btn">Send (with Congruence Gate)</button>
+
+      <div class="status" id="status">Status: Idle.</div>
+
+      <div id="clicksBox" class="box" style="display:none;">
+        <h3>Scope Clicks (Minimal)</h3>
+        <div style="font-size:18px; font-weight:800;">
+          Windage: <span id="windageText">—</span><br/>
+          Elevation: <span id="elevationText">—</span>
+        </div>
+        <div class="small" style="margin-top:8px;">
+          <span class="muted">clicksSigned:</span>
+          <span id="clicksSignedLine" class="mono"></span>
+        </div>
+      </div>
+
+      <div id="congruenceBox" class="warn" style="display:none;">
+        <h3>Incongruence Log</h3>
+        <div class="small" style="font-weight:800; margin-bottom:8px;">
+          Do not trust output until these are fixed.
+        </div>
+        <div id="congruenceList" class="mono"></div>
+      </div>
+
+      <div class="checkboxRow">
+        <input id="showJson" type="checkbox" checked />
+        <label for="showJson" style="margin:0;">Show raw JSON</label>
+      </div>
+    </div>
+
+    <div class="preview">
+      <h3 style="margin:0 0 10px;">Preview</h3>
+      <img id="imgPreview" alt="Preview will appear here" />
+      <div id="jsonOut" class="mono" style="margin-top:12px; display:block;"></div>
+    </div>
+  </div>
+
+<script>
+  function normalizeSpec(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    return s
+      .toLowerCase()
+      .replace(/×/g, "x")
+      .replace(/\s+/g, "")
+      .replace(/inches|inch|in|\./g, "")
+      .replace(/,/g, "x");
+  }
+
+  function parseTargetSize(specRaw) {
+    const specNorm = normalizeSpec(specRaw);
+
+    // Accept forms like: 8.5x11, 11x8.5, 8.5 x 11, 8.5,11
+    const m = specNorm.match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)$/);
+    if (!m) return null;
+
+    const a = Number(m[1]);
+    const b = Number(m[3]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+
+    const long = Math.max(a, b);
+    const short = Math.min(a, b);
+
+    // We send both numeric dims too.
+    // Keep the literal spec as "shortxlong" for consistency.
+    const specToSend = short + "x" + long;
+
+    return {
+      specNorm,
+      specToSend,
+      widthIn: short,
+      heightIn: long,
+      long,
+      short
+    };
+  }
+
+  function ensureApiSec(url) {
+    const u = String(url || "").trim();
+    if (!u) return "";
+    // If user pastes base service URL, force /api/sec
+    if (u.endsWith("/api/sec")) return u;
+    if (u.endsWith("/")) return u + "api/sec";
+    // If they pasted "...onrender.com" or "...onrender.com/api"
+    if (u.endsWith("/api")) return u + "/sec";
+    // Otherwise append
+    return u + "/api/sec";
+  }
+
+  function fmt2(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "NaN";
+    return (Math.round(x * 100) / 100).toFixed(2);
+  }
+
+  const elEndpoint = document.getElementById("endpoint");
+  const elFile = document.getElementById("file");
+  const elSizeSpec = document.getElementById("sizeSpec");
+  const elParsedLine = document.getElementById("parsedLine");
+  const elSendLine = document.getElementById("sendLine");
+  const elDistance = document.getElementById("distanceYards");
+  const elClick = document.getElementById("clickValueMoa");
+  const elBtn = document.getElementById("sendBtn");
+  const elStatus = document.getElementById("status");
+
+  const elImg = document.getElementById("imgPreview");
+  const elJsonOut = document.getElementById("jsonOut");
+  const elShowJson = document.getElementById("showJson");
+
+  const elClicksBox = document.getElementById("clicksBox");
+  const elWindageText = document.getElementById("windageText");
+  const elElevationText = document.getElementById("elevationText");
+  const elClicksSignedLine = document.getElementById("clicksSignedLine");
+
+  const elCongruenceBox = document.getElementById("congruenceBox");
+  const elCongruenceList = document.getElementById("congruenceList");
+
+  let lastPreviewUrl = null;
+
+  function updateParsed() {
+    const p = parseTargetSize(elSizeSpec.value);
+    if (!p) {
+      elParsedLine.textContent = "spec=(invalid) long=— short=—";
+      elSendLine.textContent = "targetSizeSpec=(invalid)";
+      return;
+    }
+    elParsedLine.textContent =
+      "spec=" + p.specToSend + " long=" + fmt2(p.long) + " short=" + fmt2(p.short);
+
+    // This is the exact payload we will send (no more accidental "11")
+    elSendLine.textContent =
+      'targetSizeSpec="' + p.specToSend + '", widthIn=' + p.widthIn + ", heightIn=" + p.heightIn;
+  }
+
+  elSizeSpec.addEventListener("input", updateParsed);
+  updateParsed();
+
+  elShowJson.addEventListener("change", () => {
+    elJsonOut.style.display = elShowJson.checked ? "block" : "none";
+  });
+
+  elFile.addEventListener("change", () => {
+    const f = elFile.files && elFile.files[0];
+    if (!f) return;
+    if (lastPreviewUrl) URL.revokeObjectURL(lastPreviewUrl);
+    lastPreviewUrl = URL.createObjectURL(f);
+    elImg.src = lastPreviewUrl;
+  });
+
+  function resetOutputs() {
+    elClicksBox.style.display = "none";
+    elCongruenceBox.style.display = "none";
+    elCongruenceList.textContent = "";
+    elWindageText.textContent = "—";
+    elElevationText.textContent = "—";
+    elClicksSignedLine.textContent = "";
+    elJsonOut.textContent = "";
+  }
+
+  function addIncongruence(code, fix) {
+    const line = code + "\n  fix: " + fix + "\n\n";
+    elCongruenceList.textContent += line;
+  }
+
+  function showIncongruenceIfAny(hasAny) {
+    elCongruenceBox.style.display = hasAny ? "block" : "none";
+  }
+
+  elBtn.addEventListener("click", async () => {
+    resetOutputs();
+
+    const endpoint = ensureApiSec(elEndpoint.value);
+    elEndpoint.value = endpoint;
+
+    const file = elFile.files && elFile.files[0];
+    if (!file) {
+      elStatus.textContent = "Status: Pick an image file first.";
+      return;
+    }
+
+    const parsed = parseTargetSize(elSizeSpec.value);
+    if (!parsed) {
+      elStatus.textContent = "Status: Target Size must be like 8.5x11.";
+      return;
+    }
+
+    const distanceYards = Number(elDistance.value);
+    const clickValueMoa = Number(elClick.value);
+    if (!Number.isFinite(distanceYards) || distanceYards <= 0) {
+      elStatus.textContent = "Status: Distance must be a positive number.";
+      return;
+    }
+    if (!Number.isFinite(clickValueMoa) || clickValueMoa <= 0) {
+      elStatus.textContent = "Status: Click value must be a positive number.";
+      return;
+    }
+
+    elStatus.textContent = "Status: Sending...";
+
+    const fd = new FormData();
+    fd.append("image", file);
+    fd.append("distanceYards", String(distanceYards));
+    fd.append("clickValueMoa", String(clickValueMoa));
+
+    // The key fix: ALWAYS send the literal spec string (e.g., "8.5x11")
+    // plus explicit numeric dimensions.
+    fd.append("targetSizeSpec", parsed.specToSend);
+    fd.append("widthIn", String(parsed.widthIn));
+    fd.append("heightIn", String(parsed.heightIn));
+
+    let data;
+    try {
+      const res = await fetch(endpoint, { method: "POST", body: fd });
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        elStatus.textContent = "Status: Network/parse error: Response was not JSON.";
+        elJsonOut.textContent = text;
+        return;
+      }
+    } catch (e) {
+      elStatus.textContent = "Status: Network/parse error: Load failed.";
+      return;
+    }
+
+    elStatus.textContent = "Status: Done.";
+    elJsonOut.textContent = JSON.stringify(data, null, 2);
+
+    // Congruence Gate: verify backend echoed what we sent + returned clicksSigned
+    let bad = false;
+
+    // 1) Backend must not reject target spec
+    if (data && data.error && data.error.code === "BAD_TARGET_SPEC") {
+      bad = true;
+      addIncongruence(
+        "BAD_TARGET_SPEC",
+        'Backend rejected target size. It must accept targetSizeSpec="' + parsed.specToSend + '" or widthIn+heightIn.'
+      );
+    }
+
+    // 2) Backend must echo sec.targetSizeSpec OR widthIn/heightIn correctly
+    const sec = data && data.sec ? data.sec : null;
+
+    if (!sec) {
+      bad = true;
+      addIncongruence(
+        "BACKEND_MISSING_SEC",
+        "Backend response must include a 'sec' object echoing received inputs."
+      );
+    } else {
+      const echoedSpec = typeof sec.targetSizeSpec === "string" ? normalizeSpec(sec.targetSizeSpec) : "";
+      const expectedSpec = normalizeSpec(parsed.specToSend);
+
+      const echoedW = Number(sec.widthIn);
+      const echoedH = Number(sec.heightIn);
+
+      const specOk = echoedSpec && (echoedSpec === expectedSpec);
+      const dimsOk = Number.isFinite(echoedW) && Number.isFinite(echoedH) && echoedW > 0 && echoedH > 0;
+
+      if (!specOk && !dimsOk) {
+        bad = true;
+        addIncongruence(
+          "BACKEND_MISSING_TARGET_SIZE",
+          "Backend must echo sec.targetSizeSpec (string) OR sec.widthIn/sec.heightIn (numbers)."
+        );
+      }
+    }
+
+    // 3) clicksSigned must exist (numbers)
+    const cs = data && data.clicksSigned ? data.clicksSigned : null;
+    const w = cs ? Number(cs.windage) : NaN;
+    const e = cs ? Number(cs.elevation) : NaN;
+
+    if (!Number.isFinite(w) || !Number.isFinite(e)) {
+      bad = true;
+      addIncongruence(
+        "MISSING_CLICKS_SIGNED",
+        "Backend must return clicksSigned.windage and clicksSigned.elevation as numbers."
+      );
+    }
+
+    showIncongruenceIfAny(bad);
+
+    // Show minimal clicks if present
+    if (Number.isFinite(w) && Number.isFinite(e)) {
+      elClicksBox.style.display = "block";
+      const windDir = w >= 0 ? "RIGHT" : "LEFT";
+      const elevDir = e >= 0 ? "UP" : "DOWN";
+      elWindageText.textContent = windDir + " " + fmt2(Math.abs(w)) + " clicks";
+      elElevationText.textContent = elevDir + " " + fmt2(Math.abs(e)) + " clicks";
+      elClicksSignedLine.textContent = "w=" + fmt2(w) + ", e=" + fmt2(e);
+    }
+  });
+</script>
+
+</body>
 </html>
