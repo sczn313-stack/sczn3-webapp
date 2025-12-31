@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+const BUILD_STAMP = "NO_DEMO_V4_2025-12-31_16-17";import React, { useMemo, useState } from "react";
 
 function round2(n) {
   return Math.round(n * 100) / 100;
