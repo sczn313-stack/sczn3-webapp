@@ -1,330 +1,312 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 
-const round2 = (n) => Math.round(n * 100) / 100;
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
 
-function parseSize(spec) {
-  const m = String(spec || "")
-    .toLowerCase()
-    .replace(/\s/g, "")
-    .match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)$/);
-  if (!m) return null;
-  const w = parseFloat(m[1]);
-  const h = parseFloat(m[3]);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  return { widthIn: w, heightIn: h };
+function safeParseHoles(text) {
+  const t = (text || "").trim();
+  if (!t) return null;
+
+  try {
+    const v = JSON.parse(t);
+    if (!Array.isArray(v)) return null;
+
+    const holes = [];
+    for (const item of v) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof item.x === "number" &&
+        typeof item.y === "number" &&
+        Number.isFinite(item.x) &&
+        Number.isFinite(item.y)
+      ) {
+        holes.push({ x: item.x, y: item.y });
+      }
+    }
+
+    return holes.length ? holes : null;
+  } catch {
+    return null;
+  }
 }
 
 export default function App() {
-  // Endpoint
   const [endpoint, setEndpoint] = useState(
     "https://sczn3-sec-backend-pipe-17.onrender.com/api/sec"
   );
 
-  // Inputs
   const [targetSizeSpec, setTargetSizeSpec] = useState("8.5x11");
   const [distanceYards, setDistanceYards] = useState(100);
   const [clickValueMoa, setClickValueMoa] = useState(0.25);
-  const [deadbandIn, setDeadbandIn] = useState(0.1);
+  const [deadbandIn, setDeadbandIn] = useState(0.10);
+
   const [bullX, setBullX] = useState(4.25);
-  const [bullY, setBullY] = useState(5.5);
+  const [bullY, setBullY] = useState(5.50);
 
-  // Image + tap-to-mark holes
   const [file, setFile] = useState(null);
-  const [imgUrl, setImgUrl] = useState("");
-  const imgRef = useRef(null);
+  const [holesText, setHolesText] = useState("");
 
-  // Holes in inches (X right+, Y down+)
-  const [holes, setHoles] = useState([]);
-
-  // Output
   const [status, setStatus] = useState("");
-  const [respJson, setRespJson] = useState(null);
+  const [result, setResult] = useState(null);
   const [showRaw, setShowRaw] = useState(true);
 
-  const size = useMemo(() => parseSize(targetSizeSpec), [targetSizeSpec]);
+  const holes = useMemo(() => safeParseHoles(holesText), [holesText]);
 
-  function clearAll() {
-    setHoles([]);
-    setRespJson(null);
-    setStatus("");
-  }
+  const usingImage = !!file;
+  const usingHoles = !!holes;
 
-  function onPickFile(f) {
+  function onPickFile(e) {
+    const f = e.target.files && e.target.files[0];
     setFile(f || null);
-    setHoles([]);
-    setRespJson(null);
-    setStatus("");
-    if (imgUrl) URL.revokeObjectURL(imgUrl);
-    setImgUrl(f ? URL.createObjectURL(f) : "");
-  }
 
-  function onImageTap(e) {
-    if (!imgRef.current || !size) return;
+    // IMPORTANT: if user picks a new image, clear old holes JSON
+    // so you don't keep getting "same output" from old demo/holes.
+    setHolesText("");
+    setResult(null);
 
-    const rect = imgRef.current.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-    const xPx = clientX - rect.left;
-    const yPx = clientY - rect.top;
-
-    const xPxClamped = Math.max(0, Math.min(rect.width, xPx));
-    const yPxClamped = Math.max(0, Math.min(rect.height, yPx));
-
-    const xIn = (xPxClamped / rect.width) * size.widthIn;
-    const yIn = (yPxClamped / rect.height) * size.heightIn;
-
-    setHoles((prev) => [...prev, { x: round2(xIn), y: round2(yIn) }]);
-  }
-
-  function undoLast() {
-    setHoles((prev) => prev.slice(0, -1));
+    if (f) setStatus("Ready. Using uploaded image.");
+    else setStatus("");
   }
 
   async function onSend() {
-    setRespJson(null);
+    setStatus("");
+    setResult(null);
 
-    if (!size) {
-      setStatus("Bad Target Size. Use format like 8.5x11");
-      return;
-    }
-    if (!imgUrl) {
-      setStatus("Choose an image first.");
-      return;
-    }
-    if (holes.length < 3) {
-      setStatus("Tap at least 3 bullet holes on the image, then Send.");
+    const ep = (endpoint || "").trim();
+    if (!ep) {
+      setStatus("Missing Endpoint URL.");
       return;
     }
 
-    setStatus("Sending...");
+    // DO NOT BLOCK with a popup.
+    // Only stop if we have neither holes nor an uploaded image.
+    if (!usingImage && !usingHoles) {
+      setStatus("Upload an image (recommended) or paste Holes JSON (optional).");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append("targetSizeSpec", targetSizeSpec);
+    fd.append("distanceYards", String(distanceYards));
+    fd.append("clickValueMoa", String(clickValueMoa));
+    fd.append("deadbandIn", String(deadbandIn));
+    fd.append("bullX", String(bullX));
+    fd.append("bullY", String(bullY));
+
+    if (usingHoles) {
+      fd.append("holesJson", JSON.stringify(holes));
+    }
+
+    if (usingImage) {
+      fd.append("image", file);
+    }
 
     try {
-      const form = new FormData();
+      setStatus("Sending…");
 
-      form.append("targetSizeSpec", `${size.widthIn}x${size.heightIn}`);
-      form.append("distanceYards", String(distanceYards));
-      form.append("clickValueMoa", String(clickValueMoa));
-      form.append("deadbandIn", String(deadbandIn));
-      form.append("bullX", String(bullX));
-      form.append("bullY", String(bullY));
+      const resp = await fetch(ep, {
+        method: "POST",
+        body: fd,
+      });
 
-      // NO paste box, NO demo holes: we send only what you tapped
-      form.append("holesJson", JSON.stringify(holes));
+      const data = await resp.json().catch(() => null);
 
-      // image optional on backend, but we send it anyway for future
-      if (file) form.append("image", file);
-
-      const r = await fetch(endpoint, { method: "POST", body: form });
-      const data = await r.json().catch(() => null);
-
-      if (!r.ok) {
-        setStatus(`Error (${r.status})`);
-        setRespJson(data || { ok: false, error: { code: "BAD_RESPONSE" } });
+      if (!resp.ok) {
+        const msg =
+          (data && data.error && (data.error.message || data.error.code)) ||
+          `HTTP ${resp.status}`;
+        setStatus(`Error: ${msg}`);
+        setResult(data || { ok: false, error: { message: msg } });
         return;
       }
 
       setStatus("Done.");
-      setRespJson(data);
+      setResult(data);
     } catch (err) {
-      setStatus("Network error.");
-      setRespJson({
-        ok: false,
-        error: { code: "NETWORK", message: String(err?.message || err) },
-      });
+      setStatus(`Network error: ${err?.message || String(err)}`);
     }
   }
 
-  const scopeLine =
-    respJson?.scopeClicks?.windage && respJson?.scopeClicks?.elevation
-      ? `Windage: ${respJson.scopeClicks.windage} | Elevation: ${respJson.scopeClicks.elevation}`
-      : null;
+  const scopeClicksText = useMemo(() => {
+    if (!result) return null;
+    // Support either "scopeClicks" string fields or clicksSigned numeric
+    if (result.scopeClicks && (result.scopeClicks.windage || result.scopeClicks.elevation)) {
+      return {
+        windage: result.scopeClicks.windage || "",
+        elevation: result.scopeClicks.elevation || "",
+      };
+    }
+    if (result.clicksSigned) {
+      const w = Number(result.clicksSigned.windage);
+      const e = Number(result.clicksSigned.elevation);
+      const wDir = w >= 0 ? "RIGHT" : "LEFT";
+      const eDir = e >= 0 ? "UP" : "DOWN";
+      return {
+        windage: `${wDir} ${round2(Math.abs(w))} clicks`,
+        elevation: `${eDir} ${round2(Math.abs(e))} clicks`,
+      };
+    }
+    return null;
+  }, [result]);
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: 16, fontFamily: "system-ui, Arial" }}>
-      <h1 style={{ marginTop: 0 }}>POIB Anchor Test</h1>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+      <h1 style={{ fontSize: 44, margin: "8px 0 8px" }}>SCZN3 SEC — Upload Test</h1>
 
-      <label>
-        Endpoint (POST)
+      <p style={{ marginTop: 0, opacity: 0.85 }}>
+        Endpoint must be the POST route. Example: <code>https://sczn3-sec-backend-pipe-17.onrender.com/api/sec</code>
+      </p>
+
+      <div style={{ border: "2px solid #ddd", borderRadius: 12, padding: 16 }}>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Endpoint</label>
         <input
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
-          style={{ width: "100%", padding: 10, marginTop: 6 }}
+          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+          placeholder="https://.../api/sec"
         />
-      </label>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-        <label>
-          Target Size
-          <input
-            value={targetSizeSpec}
-            onChange={(e) => setTargetSizeSpec(e.target.value)}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          />
-        </label>
+        <div style={{ height: 14 }} />
 
-        <label>
-          Distance (yards)
-          <input
-            type="number"
-            value={distanceYards}
-            onChange={(e) => setDistanceYards(Number(e.target.value))}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          />
-        </label>
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Target Size</label>
+        <input
+          value={targetSizeSpec}
+          onChange={(e) => setTargetSizeSpec(e.target.value)}
+          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+          placeholder='e.g. "8.5x11"'
+        />
 
-        <label>
-          Click Value (MOA)
-          <input
-            type="number"
-            step="0.01"
-            value={clickValueMoa}
-            onChange={(e) => setClickValueMoa(Number(e.target.value))}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          />
-        </label>
+        <div style={{ height: 14 }} />
 
-        <label>
-          Deadband (inches)
-          <input
-            type="number"
-            step="0.01"
-            value={deadbandIn}
-            onChange={(e) => setDeadbandIn(Number(e.target.value))}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          />
-        </label>
-
-        <label>
-          Bull X (inches)
-          <input
-            type="number"
-            step="0.01"
-            value={bullX}
-            onChange={(e) => setBullX(Number(e.target.value))}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          />
-        </label>
-
-        <label>
-          Bull Y (inches)
-          <input
-            type="number"
-            step="0.01"
-            value={bullY}
-            onChange={(e) => setBullY(Number(e.target.value))}
-            style={{ width: "100%", padding: 10, marginTop: 6 }}
-          />
-        </label>
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <label>
-          Image
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => onPickFile(e.target.files?.[0] || null)}
-            style={{ width: "100%", marginTop: 6 }}
-          />
-        </label>
-
-        {imgUrl ? (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>
-              Tap each bullet hole (adds a point). Min 3.
-            </div>
-
-            <div
-              style={{
-                border: "2px solid #ddd",
-                borderRadius: 10,
-                overflow: "hidden",
-                touchAction: "manipulation",
-              }}
-              onClick={onImageTap}
-              onTouchStart={onImageTap}
-            >
-              <img ref={imgRef} src={imgUrl} alt="target" style={{ width: "100%", display: "block" }} />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <button onClick={undoLast} disabled={!holes.length} style={{ padding: "10px 12px" }}>
-                Undo Last
-              </button>
-              <button onClick={clearAll} style={{ padding: "10px 12px" }}>
-                Clear
-              </button>
-              <div style={{ marginLeft: "auto", fontWeight: 900, paddingTop: 10 }}>
-                Holes: {holes.length}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 10, fontFamily: "ui-monospace, SFMono-Regular", fontSize: 13 }}>
-              {holes.length ? JSON.stringify(holes) : "Tap holes to add points..."}
-            </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Distance (yards)</label>
+            <input
+              type="number"
+              value={distanceYards}
+              onChange={(e) => setDistanceYards(Number(e.target.value))}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+            />
           </div>
-        ) : (
-          <div style={{ marginTop: 10, fontWeight: 800 }}>Choose an image first.</div>
-        )}
+
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Click Value (MOA)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={clickValueMoa}
+              onChange={(e) => setClickValueMoa(Number(e.target.value))}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Deadband (inches)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={deadbandIn}
+              onChange={(e) => setDeadbandIn(Number(e.target.value))}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+            />
+          </div>
+
+          <div />
+        </div>
+
+        <div style={{ height: 14 }} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Bull X (inches)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={bullX}
+              onChange={(e) => setBullX(Number(e.target.value))}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Bull Y (inches)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={bullY}
+              onChange={(e) => setBullY(Number(e.target.value))}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 16 }}
+            />
+          </div>
+        </div>
+
+        <div style={{ height: 14 }} />
+
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Image (recommended)</label>
+        <input type="file" accept="image/*" onChange={onPickFile} />
+
+        <div style={{ height: 14 }} />
+
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Holes JSON (optional)</label>
+        <textarea
+          value={holesText}
+          onChange={(e) => setHolesText(e.target.value)}
+          style={{ width: "100%", height: 110, padding: 12, borderRadius: 10, border: "1px solid #ccc", fontSize: 14 }}
+          placeholder='Optional. Example: [{"x":3.9,"y":4.8},{"x":4.0,"y":4.7}]'
+        />
+
+        <div style={{ height: 14 }} />
+
+        <button
+          onClick={onSend}
+          style={{
+            width: "100%",
+            padding: "16px 14px",
+            borderRadius: 12,
+            border: "2px solid #1d4ed8",
+            background: "white",
+            fontSize: 22,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Send
+        </button>
+
+        <div style={{ marginTop: 10, fontWeight: 700 }}>
+          {status ? <span>Status: {status}</span> : <span>Status: Ready.</span>}
+        </div>
       </div>
 
-      <button
-        onClick={onSend}
-        style={{
-          width: "100%",
-          marginTop: 14,
-          padding: "14px 18px",
-          fontSize: 18,
-          fontWeight: 900,
-          borderRadius: 10,
-          border: "2px solid #1e5eff",
-          background: "white",
-          cursor: "pointer",
-        }}
-      >
-        Send
-      </button>
+      {scopeClicksText && (
+        <div style={{ marginTop: 14, border: "3px solid #16a34a", borderRadius: 12, padding: 16 }}>
+          <div style={{ fontSize: 22, fontWeight: 900 }}>Scope Clicks (Minimal)</div>
+          <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800 }}>
+            Windage: {scopeClicksText.windage}
+            <br />
+            Elevation: {scopeClicksText.elevation}
+          </div>
 
-      <div style={{ marginTop: 10, fontWeight: 900 }}>{status}</div>
+          <div style={{ marginTop: 10 }}>
+            <label style={{ fontWeight: 700 }}>
+              <input
+                type="checkbox"
+                checked={showRaw}
+                onChange={(e) => setShowRaw(e.target.checked)}
+                style={{ marginRight: 8 }}
+              />
+              Show raw JSON
+            </label>
+          </div>
 
-      {scopeLine ? (
-        <div
-          style={{
-            border: "2px solid #26a269",
-            padding: 12,
-            borderRadius: 10,
-            background: "#f6fffb",
-            fontSize: 18,
-            fontWeight: 900,
-            marginTop: 10,
-          }}
-        >
-          {scopeLine}
+          {showRaw && result && (
+            <pre style={{ marginTop: 10, background: "#111", color: "#fff", padding: 12, borderRadius: 10, overflowX: "auto" }}>
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          )}
         </div>
-      ) : null}
-
-      <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
-        <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
-        Show raw JSON
-      </label>
-
-      {showRaw && respJson ? (
-        <pre
-          style={{
-            background: "#111",
-            color: "#eee",
-            padding: 12,
-            borderRadius: 10,
-            overflowX: "auto",
-            fontSize: 13,
-            lineHeight: 1.25,
-            marginTop: 8,
-          }}
-        >
-          {JSON.stringify(respJson, null, 2)}
-        </pre>
-      ) : null}
+      )}
     </div>
   );
 }
