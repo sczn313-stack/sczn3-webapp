@@ -1,318 +1,478 @@
 import React, { useMemo, useState } from "react";
 
-const DEFAULT_ENDPOINT = "https://sczn3-sec-backend-pipe.onrender.com/api/sec";
+type Hole = { x: number; y: number };
 
-function round2(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round(x * 100) / 100;
-}
-function fmt2(n) {
-  return round2(n).toFixed(2);
+type ApiResult = any;
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
 }
 
-function parseLongSideInches(raw) {
-  const s = String(raw || "").trim().toLowerCase().replaceAll("×", "x");
-  if (!s) return { ok: false, reason: "EMPTY" };
+function normalizePostEndpoint(raw: string) {
+  const s = (raw || "").trim().replace(/\/+$/, "");
+  if (!s) return "";
+  // If user already typed /api/sec, keep it. Otherwise append it.
+  if (s.endsWith("/api/sec")) return s;
+  return `${s}/api/sec`;
+}
 
-  // number like "11" or "23"
-  if (/^\d+(\.\d+)?$/.test(s)) {
-    const n = Number(s);
-    if (!Number.isFinite(n) || n <= 0) return { ok: false, reason: "BAD_NUMBER" };
-    return { ok: true, spec: s, long: n, short: null };
+function safeParseHoles(text: string): Hole[] | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+  try {
+    const v = JSON.parse(t);
+    if (!Array.isArray(v)) return null;
+    const holes: Hole[] = v
+      .map((p: any) => ({ x: Number(p?.x), y: Number(p?.y) }))
+      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    return holes.length ? holes : null;
+  } catch {
+    return null;
   }
+}
 
-  // "8.5x11"
-  const m = s.replaceAll(" ", "").match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)$/);
-  if (!m) return { ok: false, reason: "BAD_FORMAT" };
-
-  const a = Number(m[1]);
-  const b = Number(m[3]);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
-    return { ok: false, reason: "BAD_DIMS" };
+function demoHoles(which: "UL" | "UR" | "LL" | "LR"): Hole[] {
+  // Bull defaults are (4.25, 5.50). These demo holes are placed in each quadrant relative to that bull.
+  // Coordinates are in INCHES.
+  switch (which) {
+    case "UL":
+      return [
+        { x: 3.95, y: 4.80 },
+        { x: 3.88, y: 4.78 },
+        { x: 4.02, y: 4.86 },
+        { x: 3.90, y: 4.85 },
+      ];
+    case "UR":
+      return [
+        { x: 4.55, y: 4.85 },
+        { x: 4.62, y: 4.78 },
+        { x: 4.58, y: 4.92 },
+        { x: 4.70, y: 4.83 },
+      ];
+    case "LL":
+      return [
+        { x: 3.95, y: 5.85 },
+        { x: 3.88, y: 5.78 },
+        { x: 4.02, y: 5.92 },
+        { x: 3.90, y: 5.88 },
+      ];
+    case "LR":
+      return [
+        { x: 4.55, y: 5.85 },
+        { x: 4.62, y: 5.78 },
+        { x: 4.58, y: 5.92 },
+        { x: 4.70, y: 5.83 },
+      ];
   }
-
-  return { ok: true, spec: `${a}x${b}`, long: Math.max(a, b), short: Math.min(a, b) };
-}
-
-function dialFromSignedClicks(clicksSigned) {
-  const w = Number(clicksSigned?.windage ?? 0);
-  const e = Number(clicksSigned?.elevation ?? 0);
-
-  const windDir = w > 0 ? "RIGHT" : w < 0 ? "LEFT" : "CENTER";
-  const elevDir = e > 0 ? "UP" : e < 0 ? "DOWN" : "LEVEL";
-
-  return {
-    windDir,
-    elevDir,
-    windAbs: Math.abs(w),
-    elevAbs: Math.abs(e),
-    windText: windDir === "CENTER" ? "CENTER 0.00 clicks" : `${windDir} ${fmt2(Math.abs(w))} clicks`,
-    elevText: elevDir === "LEVEL" ? "LEVEL 0.00 clicks" : `${elevDir} ${fmt2(Math.abs(e))} clicks`,
-  };
-}
-
-function approxEqual(a, b, tol = 0.02) {
-  const x = Number(a);
-  const y = Number(b);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  return Math.abs(x - y) <= tol;
 }
 
 export default function App() {
-  const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINT);
+  // Defaults (your SCZN3 defaults)
+  const [endpointBase, setEndpointBase] = useState<string>(
+    "https://sczn3-sec-backend-pipe-17.onrender.com"
+  );
+  const postUrl = useMemo(() => normalizePostEndpoint(endpointBase), [endpointBase]);
 
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [targetSizeSpec, setTargetSizeSpec] = useState<string>("8.5x11");
+  const [distanceYards, setDistanceYards] = useState<number>(100);
+  const [clickValueMoa, setClickValueMoa] = useState<number>(0.25);
+  const [deadbandIn, setDeadbandIn] = useState<number>(0.1);
 
-  const [targetPreset, setTargetPreset] = useState("8.5x11");
-  const [targetSpecRaw, setTargetSpecRaw] = useState("8.5x11");
+  const [bullX, setBullX] = useState<number>(4.25);
+  const [bullY, setBullY] = useState<number>(5.5);
 
-  const [distanceYards, setDistanceYards] = useState(100);
-  const [clickValueMoa, setClickValueMoa] = useState(0.25);
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
-  const [status, setStatus] = useState("");
-  const [resp, setResp] = useState(null);
-  const [showRaw, setShowRaw] = useState(true);
+  // Optional advanced override only (NOT required)
+  const [holesText, setHolesText] = useState<string>("");
 
-  const [incongruences, setIncongruences] = useState([]);
+  const [status, setStatus] = useState<string>("Ready.");
+  const [result, setResult] = useState<ApiResult | null>(null);
 
-  const parsedTarget = useMemo(() => parseLongSideInches(targetSpecRaw), [targetSpecRaw]);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [showRawJson, setShowRawJson] = useState<boolean>(true);
 
-  const expectedLongSide = parsedTarget.ok ? parsedTarget.long : null;
-
-  const uiDial = useMemo(() => {
-    if (!resp?.clicksSigned) return null;
-    return dialFromSignedClicks(resp.clicksSigned);
-  }, [resp]);
-
-  function onChooseFile(e) {
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
-    setFile(f);
-    setResp(null);
-    setIncongruences([]);
-    setStatus("");
-
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (f) setPreviewUrl(URL.createObjectURL(f));
-    else setPreviewUrl("");
+    setImageFile(f);
+    // Important: if you change target/image, clear prior result so you don't think it's "same output"
+    setResult(null);
+    setStatus("Ready.");
   }
 
-  function onPresetChange(v) {
-    setTargetPreset(v);
-    setTargetSpecRaw(v);
-    setResp(null);
-    setIncongruences([]);
-    setStatus("");
+  function loadDemo(which: "UL" | "UR" | "LL" | "LR") {
+    const holes = demoHoles(which);
+    setHolesText(JSON.stringify(holes, null, 2));
+    setShowAdvanced(true);
+    setResult(null);
+    setStatus(`Demo holes loaded (${which}).`);
   }
 
-  async function onSend() {
-    setResp(null);
-    setIncongruences([]);
-    setStatus("");
+  async function handleSend() {
+    setResult(null);
 
-    if (!file) {
-      setStatus("Choose an image first.");
+    if (!postUrl) {
+      setStatus("Missing endpoint.");
       return;
     }
 
-    if (!parsedTarget.ok) {
-      setStatus("Target size is invalid. Use 8.5x11 or a number like 23.");
-      return;
-    }
+    const holes = safeParseHoles(holesText);
 
-    const dist = Number(distanceYards);
-    const click = Number(clickValueMoa);
-
-    if (!Number.isFinite(dist) || dist <= 0) {
-      setStatus("Distance must be > 0.");
-      return;
-    }
-    if (!Number.isFinite(click) || click <= 0) {
-      setStatus("Click value must be > 0.");
+    // ✅ NO POPUP. Only block if BOTH are missing.
+    if (!imageFile && !holes) {
+      setStatus("Pick an image OR press Demo Holes. (Holes JSON is optional.)");
       return;
     }
 
     setStatus("Sending...");
 
     try {
-      const fd = new FormData();
-      fd.append("image", file);
-      fd.append("distanceYards", String(dist));
-      fd.append("clickValueMoa", String(click));
-      // IMPORTANT: always send LONG SIDE inches only (ex: 11 for 8.5x11)
-      fd.append("targetSizeInches", String(parsedTarget.long));
+      let res: Response;
 
-      const r = await fetch(endpoint, { method: "POST", body: fd });
-      const json = await r.json().catch(() => null);
+      // ✅ Preferred path: Image upload (no Holes JSON required)
+      if (imageFile) {
+        const fd = new FormData();
+        fd.append("image", imageFile);
 
-      if (!r.ok || !json) {
-        setStatus("Backend error.");
-        setResp(json || { ok: false, error: { code: "BAD_RESPONSE" } });
+        // send all params as strings (safe for FormData)
+        fd.append("targetSizeSpec", String(targetSizeSpec || ""));
+        fd.append("distanceYards", String(distanceYards));
+        fd.append("clickValueMoa", String(clickValueMoa));
+        fd.append("deadbandIn", String(deadbandIn));
+        fd.append("bullX", String(bullX));
+        fd.append("bullY", String(bullY));
+
+        // optional override: if holes JSON exists, include it too
+        if (holes) fd.append("holesJson", JSON.stringify(holes));
+
+        res = await fetch(postUrl, {
+          method: "POST",
+          body: fd,
+          cache: "no-store",
+          headers: {
+            // helps avoid any weird caching/proxy behavior
+            "X-Request-ID": String(Date.now()),
+          },
+        });
+      } else {
+        // Fallback path: holes-only JSON request
+        const payload = {
+          targetSizeSpec,
+          distanceYards,
+          clickValueMoa,
+          deadbandIn,
+          bull: { x: bullX, y: bullY },
+          holes,
+        };
+
+        res = await fetch(postUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": String(Date.now()),
+          },
+          cache: "no-store",
+          body: JSON.stringify(payload),
+        });
+      }
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setStatus(`Error ${res.status}`);
+        setResult(json);
         return;
       }
 
-      setResp(json);
       setStatus("Done.");
-
-      // Congruence gate
-      const issues = [];
-
-      const backendTarget = Number(json?.sec?.targetSizeInches);
-      if (Number.isFinite(backendTarget) && !approxEqual(backendTarget, parsedTarget.long, 0.02)) {
-        issues.push({
-          code: "TARGET_SIZE_INCONGRUENT",
-          expectedLongSide: parsedTarget.long,
-          backendTargetSizeInches: backendTarget,
-          fix: "Frontend must send long-side inches only; backend must echo the same value."
-        });
-      }
-
-      // Direction congruence (UI must trust clicksSigned, not backend dial strings)
-      const bDialW = String(json?.dial?.windage || "");
-      const bDialE = String(json?.dial?.elevation || "");
-      const ui = dialFromSignedClicks(json?.clicksSigned);
-
-      if (bDialW && !bDialW.toUpperCase().includes(ui.windDir)) {
-        issues.push({
-          code: "WINDAGE_DIRECTION_INCONGRUENT",
-          clicksSignedWindage: json?.clicksSigned?.windage,
-          uiDial: ui.windText,
-          backendDial: bDialW,
-          fix: "Ignore backend dial strings. UI direction must be derived from clicksSigned only."
-        });
-      }
-
-      if (bDialE && !bDialE.toUpperCase().includes(ui.elevDir)) {
-        issues.push({
-          code: "ELEVATION_DIRECTION_INCONGRUENT",
-          clicksSignedElevation: json?.clicksSigned?.elevation,
-          uiDial: ui.elevText,
-          backendDial: bDialE,
-          fix: "Ignore backend dial strings. UI direction must be derived from clicksSigned only."
-        });
-      }
-
-      setIncongruences(issues);
-    } catch (e) {
+      setResult(json);
+    } catch (e: any) {
       setStatus("Network error.");
-      setResp({ ok: false, error: { code: "NETWORK", message: String(e?.message || e) } });
+      setResult({ ok: false, error: String(e?.message || e) });
     }
   }
 
+  // Pretty output
+  const windageText =
+    result?.scopeClicks?.windage ??
+    (typeof result?.clicksSigned?.windage === "number"
+      ? `${result.clicksSigned.windage >= 0 ? "RIGHT" : "LEFT"} ${Math.abs(
+          round2(result.clicksSigned.windage)
+        )} clicks`
+      : "");
+
+  const elevationText =
+    result?.scopeClicks?.elevation ??
+    (typeof result?.clicksSigned?.elevation === "number"
+      ? `${result.clicksSigned.elevation >= 0 ? "UP" : "DOWN"} ${Math.abs(
+          round2(result.clicksSigned.elevation)
+        )} clicks`
+      : "");
+
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 18 }}>
-      <div style={{ fontSize: 40, fontWeight: 900, marginBottom: 10 }}>SCZN3 SEC — Upload Test</div>
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: 16, fontFamily: "system-ui, Arial" }}>
+      <h1 style={{ margin: "8px 0 14px 0" }}>SCZN3 SEC — Upload Test</h1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-        <div style={{ border: "2px solid #111", borderRadius: 12, padding: 14 }}>
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Endpoint</div>
-          <input
-            value={endpoint}
-            onChange={(e) => setEndpoint(e.target.value)}
-            style={{ width: "100%", padding: 10, border: "2px solid #111", borderRadius: 10 }}
-          />
-          <div style={{ marginTop: 8, opacity: 0.7, fontSize: 13 }}>
-            POST multipart field: <b>image</b>
-          </div>
+      <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }}>
+        <div style={{ fontSize: 14, marginBottom: 8 }}>
+          Endpoint must be the POST route. Example: <code>{postUrl || "https://.../api/sec"}</code>
+        </div>
 
-          <div style={{ height: 14 }} />
+        <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Endpoint</label>
+        <input
+          value={endpointBase}
+          onChange={(e) => setEndpointBase(e.target.value)}
+          style={{
+            width: "100%",
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #bbb",
+            marginBottom: 12,
+          }}
+          placeholder="https://sczn3-sec-backend-pipe-17.onrender.com"
+        />
 
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Choose file</div>
-          <input type="file" accept="image/*" onChange={onChooseFile} />
-          {file ? (
-            <div style={{ marginTop: 8, fontSize: 13, opacity: 0.85 }}>{file.name}</div>
-          ) : null}
-
-          <div style={{ height: 16 }} />
-
-          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>Target Size</div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10 }}>
-            <select
-              value={targetPreset}
-              onChange={(e) => onPresetChange(e.target.value)}
-              style={{ padding: 10, border: "2px solid #111", borderRadius: 10 }}
-            >
-              <option value="8.5x11">8.5x11</option>
-              <option value="23">23</option>
-            </select>
-
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>Target Size</label>
             <input
-              value={targetSpecRaw}
-              onChange={(e) => setTargetSpecRaw(e.target.value)}
-              placeholder="8.5x11 or 23"
-              style={{ padding: 10, border: "2px solid #111", borderRadius: 10 }}
+              value={targetSizeSpec}
+              onChange={(e) => setTargetSizeSpec(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+              placeholder="8.5x11"
             />
           </div>
 
-          <div style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }}>
-            {parsedTarget.ok ? (
-              <span>
-                Parsed: spec={parsedTarget.spec}{" "}
-                {parsedTarget.short ? (
-                  <>
-                    long={fmt2(parsedTarget.long)} short={fmt2(parsedTarget.short)}
-                  </>
-                ) : (
-                  <>long={fmt2(parsedTarget.long)}</>
-                )}
-              </span>
-            ) : (
-              <span>Target size required (8.5x11 or 23)</span>
-            )}
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+              Distance (yards)
+            </label>
+            <input
+              value={distanceYards}
+              onChange={(e) => setDistanceYards(Number(e.target.value))}
+              type="number"
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+            />
           </div>
 
-          <div style={{ height: 16 }} />
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>Distance (yards)</div>
-              <input
-                value={distanceYards}
-                onChange={(e) => setDistanceYards(e.target.value)}
-                style={{ width: "100%", padding: 10, border: "2px solid #111", borderRadius: 10 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>Click Value (MOA)</div>
-              <input
-                value={clickValueMoa}
-                onChange={(e) => setClickValueMoa(e.target.value)}
-                style={{ width: "100%", padding: 10, border: "2px solid #111", borderRadius: 10 }}
-              />
-            </div>
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+              Click Value (MOA)
+            </label>
+            <input
+              value={clickValueMoa}
+              onChange={(e) => setClickValueMoa(Number(e.target.value))}
+              type="number"
+              step="0.01"
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+            />
           </div>
 
-          <div style={{ height: 14 }} />
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+              Deadband (inches)
+            </label>
+            <input
+              value={deadbandIn}
+              onChange={(e) => setDeadbandIn(Number(e.target.value))}
+              type="number"
+              step="0.01"
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+            />
+          </div>
 
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+              Bull X (inches)
+            </label>
+            <input
+              value={bullX}
+              onChange={(e) => setBullX(Number(e.target.value))}
+              type="number"
+              step="0.01"
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+              Bull Y (inches)
+            </label>
+            <input
+              value={bullY}
+              onChange={(e) => setBullY(Number(e.target.value))}
+              type="number"
+              step="0.01"
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+            />
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+            Image (optional — but recommended)
+          </label>
+          <input type="file" accept="image/*" onChange={onPickFile} />
+          {imageFile ? (
+            <div style={{ marginTop: 6, fontSize: 13 }}>
+              Selected: <b>{imageFile.name}</b>
+            </div>
+          ) : (
+            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
+              No image selected.
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
           <button
-            onClick={onSend}
+            onClick={() => loadDemo("UL")}
             style={{
-              width: "100%",
               padding: 14,
-              fontSize: 20,
-              fontWeight: 900,
-              border: "3px solid #1a56ff",
-              borderRadius: 12,
-              background: "#eaf0ff",
+              borderRadius: 10,
+              border: "2px solid #2b6cb0",
+              background: "white",
+              fontSize: 18,
+              fontWeight: 800,
               cursor: "pointer",
             }}
           >
-            Send (with Congruence Gate)
+            Load Demo Holes (UL)
           </button>
 
-          <div style={{ marginTop: 10, fontWeight: 800 }}>Status: <span style={{ fontWeight: 600 }}>{status || "—"}</span></div>
+          <button
+            onClick={handleSend}
+            style={{
+              padding: 14,
+              borderRadius: 10,
+              border: "2px solid #2b6cb0",
+              background: "white",
+              fontSize: 18,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Send
+          </button>
+        </div>
 
-          {resp?.ok && uiDial ? (
-            <div style={{ marginTop: 14, border: "3px solid #1c8b3a", borderRadius: 12, padding: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 22, marginBottom: 8 }}>Scope Clicks (Minimal)</div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                Windage: {uiDial.windDir} {fmt2(uiDial.windAbs)} clicks
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>
-                Elevation: {uiDial.elevDir} {fmt2(uiDial.elevAbs)} clicks
-              </div>
+        <div style={{ marginTop: 10, fontWeight: 700 }}>Status: {status}</div>
 
-              <div style={{ marginTop: 10, fontSize: 13, opacity: 0.8 }}>
-                clicksSigned: w={fmt2
+        {/* Output box */}
+        {result && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 10,
+              border: "2px solid #2f855a",
+              background: "#f0fff4",
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 6 }}>Scope Clicks</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>
+              Windage: {windageText || "(none)"}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>
+              Elevation: {elevationText || "(none)"}
+            </div>
+
+            <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center" }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={showRawJson}
+                  onChange={(e) => setShowRawJson(e.target.checked)}
+                />
+                Show raw JSON
+              </label>
+
+              <button
+                onClick={() => setShowAdvanced((v) => !v)}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #999",
+                  background: "white",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                {showAdvanced ? "Hide Advanced" : "Show Advanced"}
+              </button>
+            </div>
+
+            {showRawJson && (
+              <pre
+                style={{
+                  marginTop: 10,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: "#111",
+                  color: "#fff",
+                  overflowX: "auto",
+                  fontSize: 12,
+                }}
+              >
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
+
+        {/* Advanced: holes JSON override (optional) */}
+        {showAdvanced && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: "1px solid #ddd" }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Advanced (optional)</div>
+            <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 8 }}>
+              Holes JSON is <b>NOT required</b>. Only use this if you want to override detection.
+              Format: <code>[{"{"}"x":1.23,"y":4.56{"}"}]</code>
+            </div>
+            <textarea
+              value={holesText}
+              onChange={(e) => setHolesText(e.target.value)}
+              rows={10}
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #bbb" }}
+              placeholder='[{"x":3.94,"y":4.80}]'
+            />
+
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => loadDemo("UR")}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #999" }}
+              >
+                Demo UR
+              </button>
+              <button
+                onClick={() => loadDemo("LL")}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #999" }}
+              >
+                Demo LL
+              </button>
+              <button
+                onClick={() => loadDemo("LR")}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #999" }}
+              >
+                Demo LR
+              </button>
+              <button
+                onClick={() => {
+                  setHolesText("");
+                  setStatus("Advanced holes cleared.");
+                }}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #999" }}
+              >
+                Clear Holes JSON
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 13, opacity: 0.8 }}>
+        Tip: If you change targets/images and still see “same output,” it’s usually because you’re
+        still using the same demo holes. Clear Holes JSON or upload a new image and hit Send.
+      </div>
+    </div>
+  );
+}
