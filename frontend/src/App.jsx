@@ -1,118 +1,102 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
+
+const APP_BUILD = "NO_DEMO_NO_POPUP__2026-01-01";
 
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-const TARGETS = {
-  "8.5x11": { widthIn: 8.5, heightIn: 11.0 },
-};
+function safeParseHoles(text) {
+  const t = (text || "").trim();
+  if (!t) return null;
+  try {
+    const v = JSON.parse(t);
+    if (!Array.isArray(v)) return null;
+    const holes = [];
+    for (const item of v) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof item.x === "number" &&
+        typeof item.y === "number" &&
+        Number.isFinite(item.x) &&
+        Number.isFinite(item.y)
+      ) {
+        holes.push({ x: item.x, y: item.y });
+      }
+    }
+    return holes.length ? holes : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
-  const imgRef = useRef(null);
-
-  const [targetSizeSpec, setTargetSizeSpec] = useState("8.5x11");
+  const [targetSize, setTargetSize] = useState("8.5x11");
   const [distanceYards, setDistanceYards] = useState(100);
   const [clickValueMoa, setClickValueMoa] = useState(0.25);
-  const [deadbandIn, setDeadbandIn] = useState(0.1);
-
+  const [deadbandInches, setDeadbandInches] = useState(0.1);
   const [bullX, setBullX] = useState(4.25);
   const [bullY, setBullY] = useState(5.5);
 
-  // IMPORTANT: default to your live backend
-  const [endpoint, setEndpoint] = useState(
-    "https://sczn3-sec-backend-pipe-17.onrender.com/api/sec"
-  );
+  // Default backend endpoint (PIPE)
+  const [endpoint, setEndpoint] = useState("https://sczn3-sec-backend-pipe-17.onrender.com/api/sec");
 
-  const [file, setFile] = useState(null);
-  const [imgUrl, setImgUrl] = useState("");
+  const [holesJson, setHolesJson] = useState("");
+  const [imageFile, setImageFile] = useState(null);
 
-  const [holes, setHoles] = useState([]); // [{x,y}] IN INCHES
-  const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
-  const [err, setErr] = useState("");
+  const [errorText, setErrorText] = useState("");
+  const [showRaw, setShowRaw] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const target = useMemo(() => TARGETS[targetSizeSpec], [targetSizeSpec]);
+  const parsedHoles = useMemo(() => safeParseHoles(holesJson), [holesJson]);
 
-  function clearAll() {
-    setHoles([]);
+  async function onSend() {
+    setErrorText("");
     setResult(null);
-    setErr("");
-  }
-
-  function onPickFile(e) {
-    const f = e.target.files?.[0] || null;
-    setFile(f);
-    setResult(null);
-    setErr("");
-    setHoles([]); // critical: new target must start fresh
-    if (f) setImgUrl(URL.createObjectURL(f));
-    else setImgUrl("");
-  }
-
-  function addHoleFromTap(evt) {
-    if (!imgRef.current) return;
-    if (!target) return;
-
-    const rect = imgRef.current.getBoundingClientRect();
-
-    // Works for mouse + touch
-    const clientX = evt.touches?.[0]?.clientX ?? evt.clientX;
-    const clientY = evt.touches?.[0]?.clientY ?? evt.clientY;
-
-    const pxX = clientX - rect.left;
-    const pxY = clientY - rect.top;
-
-    const fracX = Math.min(1, Math.max(0, pxX / rect.width));
-    const fracY = Math.min(1, Math.max(0, pxY / rect.height));
-
-    const xIn = round2(fracX * target.widthIn);
-    const yIn = round2(fracY * target.heightIn); // yAxisUsed = "down" (top=0)
-
-    setHoles((prev) => [...prev, { x: xIn, y: yIn }]);
-    setResult(null);
-    setErr("");
-  }
-
-  function undoHole() {
-    setHoles((prev) => prev.slice(0, -1));
-    setResult(null);
-    setErr("");
-  }
-
-  async function send() {
-    setErr("");
-    setResult(null);
-
-    if (!holes || holes.length < 3) {
-      setErr("Tap the image to add at least 3 holes (no JSON paste needed).");
-      return;
-    }
-
-    const payload = {
-      targetSizeSpec,
-      distanceYards: Number(distanceYards),
-      clickValueMoa: Number(clickValueMoa),
-      deadbandIn: Number(deadbandIn),
-      bull: { x: Number(bullX), y: Number(bullY) },
-      holesInches: holes.map((h) => ({ x: Number(h.x), y: Number(h.y) })),
-    };
+    setSending(true);
 
     try {
-      setSending(true);
-      const r = await fetch(endpoint, {
+      const payload = {
+        targetSize,
+        distanceYards: Number(distanceYards),
+        clickValueMoa: Number(clickValueMoa),
+        deadbandInches: Number(deadbandInches),
+        bullX: Number(bullX),
+        bullY: Number(bullY),
+      };
+
+      // If holes JSON is valid, include it. If not, we STILL send (no popup).
+      if (parsedHoles) payload.holes = parsedHoles;
+
+      // Image not used yet (backend is POIB/holes-only for now), but we keep the chooser.
+      // This keeps UI ready for later without blocking the workflow today.
+      if (imageFile) payload.imageName = imageFile.name;
+
+      const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
         body: JSON.stringify(payload),
       });
 
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || data?.ok === false) {
-        throw new Error(data?.error || `Request failed (${r.status})`);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const msg =
+          (data && (data.message || data.error)) ||
+          `Request failed (${res.status})`;
+        setErrorText(String(msg));
+        setResult(data);
+        return;
       }
+
       setResult(data);
     } catch (e) {
-      setErr(String(e?.message || e));
+      setErrorText(e && e.message ? e.message : "Network error");
     } finally {
       setSending(false);
     }
@@ -122,142 +106,169 @@ export default function App() {
   const elevationLabel = result?.scopeClicks?.elevation || "";
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: 14, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h2 style={{ margin: "6px 0 14px" }}>POIB Anchor Test</h2>
+    <div style={{ maxWidth: 920, margin: "0 auto", padding: 14, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+      <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 10 }}>
+        Build: <b>{APP_BUILD}</b>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Target Size</div>
-          <select value={targetSizeSpec} onChange={(e) => setTargetSizeSpec(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 16 }}>
+          <select value={targetSize} onChange={(e) => setTargetSize(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 16 }}>
             <option value="8.5x11">8.5x11</option>
+            <option value="23x23">23x23</option>
           </select>
         </div>
+
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Distance (yards)</div>
-          <input value={distanceYards} onChange={(e) => setDistanceYards(e.target.value)} inputMode="numeric" style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          <input
+            type="number"
+            value={distanceYards}
+            onChange={(e) => setDistanceYards(e.target.value)}
+            style={{ width: "100%", padding: 10, fontSize: 16 }}
+          />
         </div>
 
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Click Value (MOA)</div>
-          <input value={clickValueMoa} onChange={(e) => setClickValueMoa(e.target.value)} inputMode="decimal" style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          <input
+            type="number"
+            step="0.01"
+            value={clickValueMoa}
+            onChange={(e) => setClickValueMoa(e.target.value)}
+            style={{ width: "100%", padding: 10, fontSize: 16 }}
+          />
         </div>
+
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Deadband (inches)</div>
-          <input value={deadbandIn} onChange={(e) => setDeadbandIn(e.target.value)} inputMode="decimal" style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          <input
+            type="number"
+            step="0.01"
+            value={deadbandInches}
+            onChange={(e) => setDeadbandInches(e.target.value)}
+            style={{ width: "100%", padding: 10, fontSize: 16 }}
+          />
         </div>
 
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Bull X (inches)</div>
-          <input value={bullX} onChange={(e) => setBullX(e.target.value)} inputMode="decimal" style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          <input
+            type="number"
+            step="0.01"
+            value={bullX}
+            onChange={(e) => setBullX(e.target.value)}
+            style={{ width: "100%", padding: 10, fontSize: 16 }}
+          />
         </div>
+
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Bull Y (inches)</div>
-          <input value={bullY} onChange={(e) => setBullY(e.target.value)} inputMode="decimal" style={{ width: "100%", padding: 10, fontSize: 16 }} />
+          <input
+            type="number"
+            step="0.01"
+            value={bullY}
+            onChange={(e) => setBullY(e.target.value)}
+            style={{ width: "100%", padding: 10, fontSize: 16 }}
+          />
         </div>
       </div>
-
-      <div style={{ marginTop: 14 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Backend endpoint</div>
-        <input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} style={{ width: "100%", padding: 10, fontSize: 14 }} />
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Image (tap to add holes)</div>
-        <input type="file" accept="image/*" onChange={onPickFile} />
-      </div>
-
-      {imgUrl ? (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 6 }}>
-            Tap on the image to mark each bullet hole. (Y is DOWN from the top.)
-          </div>
-
-          <div
-            style={{
-              border: "2px solid #111",
-              borderRadius: 10,
-              overflow: "hidden",
-              width: "100%",
-              maxWidth: 520,
-              touchAction: "none",
-            }}
-          >
-            <img
-              ref={imgRef}
-              src={imgUrl}
-              alt="target"
-              style={{ width: "100%", display: "block" }}
-              onClick={addHoleFromTap}
-              onTouchStart={addHoleFromTap}
-            />
-          </div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={undoHole} disabled={holes.length === 0} style={{ padding: "10px 14px", fontSize: 16 }}>
-              Undo last
-            </button>
-            <button onClick={() => { setHoles([]); setResult(null); setErr(""); }} style={{ padding: "10px 14px", fontSize: 16 }}>
-              Clear holes
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
-          Pick an image first, then tap to mark holes.
-        </div>
-      )}
 
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Holes captured (inches)</div>
-        <pre style={{ background: "#f3f3f3", padding: 10, borderRadius: 10, maxHeight: 180, overflow: "auto", fontSize: 13 }}>
-{JSON.stringify(holes, null, 2)}
-        </pre>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Backend Endpoint</div>
+        <input
+          value={endpoint}
+          onChange={(e) => setEndpoint(e.target.value)}
+          style={{ width: "100%", padding: 10, fontSize: 14 }}
+        />
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+          Example: https://sczn3-sec-backend-pipe-17.onrender.com/api/sec
+        </div>
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        <button
-          onClick={send}
-          disabled={sending}
-          style={{
-            width: "100%",
-            padding: "14px 12px",
-            fontSize: 20,
-            fontWeight: 800,
-            borderRadius: 12,
-          }}
-        >
-          {sending ? "Sending..." : "Send"}
-        </button>
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Image (optional for now)</div>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setImageFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+        />
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+          Image is not used by backend yet (holes/POIB only). It will not block Send.
+        </div>
       </div>
 
-      {err ? (
-        <div style={{ marginTop: 12, padding: 12, border: "2px solid #b00020", borderRadius: 10, color: "#b00020", fontWeight: 700 }}>
-          {err}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Holes JSON (in inches)</div>
+        <textarea
+          value={holesJson}
+          onChange={(e) => setHolesJson(e.target.value)}
+          rows={8}
+          placeholder='Example: [{"x":3.82,"y":4.88},{"x":3.93,"y":4.85}]'
+          style={{ width: "100%", padding: 10, fontSize: 14 }}
+        />
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+          No popups. If this is empty/invalid, Send will still run and you’ll see the backend message.
+        </div>
+      </div>
+
+      <button
+        onClick={onSend}
+        disabled={sending}
+        style={{
+          width: "100%",
+          marginTop: 12,
+          padding: 14,
+          fontSize: 18,
+          fontWeight: 800,
+          borderRadius: 12,
+          border: "2px solid #1e5aa8",
+          background: sending ? "#d9e7ff" : "#ffffff",
+        }}
+      >
+        {sending ? "Sending..." : "Send"}
+      </button>
+
+      {errorText ? (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "2px solid #c22", background: "#fff5f5" }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Error</div>
+          <div>{errorText}</div>
         </div>
       ) : null}
 
       {result ? (
-        <div style={{ marginTop: 14, padding: 12, border: "3px solid #0a7a2f", borderRadius: 12 }}>
-          <div style={{ fontSize: 22, fontWeight: 900 }}>
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "2px solid #1a7f37", background: "#f1fff6" }}>
+          <div style={{ fontSize: 18, fontWeight: 900 }}>
             Windage: {windageLabel} | Elevation: {elevationLabel}
           </div>
 
-          <div style={{ marginTop: 6, opacity: 0.9 }}>
+          <div style={{ opacity: 0.85, marginTop: 6 }}>
             clicksSigned: w={round2(result?.clicksSigned?.windage ?? 0)}, e={round2(result?.clicksSigned?.elevation ?? 0)}
           </div>
 
-          <details style={{ marginTop: 10 }}>
-            <summary style={{ fontWeight: 900, cursor: "pointer" }}>Show raw JSON</summary>
-            <pre style={{ marginTop: 10, background: "#111", color: "#eee", padding: 12, borderRadius: 10, overflowX: "auto", fontSize: 12 }}>
-{JSON.stringify(result, null, 2)}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
+            <span style={{ fontWeight: 800 }}>Show raw JSON</span>
+          </label>
+
+          {showRaw ? (
+            <pre
+              style={{
+                marginTop: 10,
+                background: "#111",
+                color: "#eee",
+                padding: 12,
+                borderRadius: 10,
+                overflowX: "auto",
+                fontSize: 12,
+              }}
+            >
+              {JSON.stringify(result, null, 2)}
             </pre>
-          </details>
+          ) : null}
         </div>
       ) : null}
-
-      <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
-        Build: NO_JSON_POPUP_TAP_HOLES_V1
-      </div>
     </div>
   );
 }
