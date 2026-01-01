@@ -1,315 +1,334 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-function round2(n) {
-  return Math.round((Number(n) || 0) * 100) / 100;
+const APP_BUILD = "FRONT_NO_POPUP_V1_2026-01-01";
+const STORAGE_KEY_ENDPOINT = "sczn3_backend_endpoint";
+
+function num(v) {
+  const n = typeof v === "string" ? Number(v.trim()) : Number(v);
+  return Number.isFinite(n) ? n : NaN;
 }
 
-function parseSize(sizeStr) {
-  // expects "8.5x11"
-  const s = String(sizeStr || "").toLowerCase().trim();
-  const m = s.match(/^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)$/);
-  if (!m) return { widthIn: 8.5, heightIn: 11 };
-  return { widthIn: Number(m[1]), heightIn: Number(m[2]) };
+function normalizeEndpoint(raw) {
+  const s = (raw || "").trim();
+  if (!s) return "";
+  // If user pastes full compute endpoint, keep it.
+  if (s.includes("/api/sec")) return s.replace(/\/+$/, "");
+  // Otherwise append /api/sec
+  return s.replace(/\/+$/, "") + "/api/sec";
 }
 
-function safeParseHoles(text) {
+function prettyJson(obj) {
+  return JSON.stringify(obj, null, 2);
+}
+
+// Accepts:
+// - array: [{x,y}, ...]
+// - object: { holes: [...] }
+// - object: { poib: {x,y} }  (allowed, but holes is preferred)
+function parseHolesJson(text) {
   const t = (text || "").trim();
-  if (!t) return null;
+  if (!t) return { ok: false, error: "Paste holes JSON first." };
 
+  let parsed;
   try {
-    const v = JSON.parse(t);
-
-    // allow either: [ {x,y}, ... ] OR { holes:[...], ... }
-    if (Array.isArray(v)) {
-      return { holes: v };
-    }
-    if (v && typeof v === "object") {
-      if (Array.isArray(v.holes)) return v;
-      // if user pasted a single point as {x,y} treat as poib
-      if (typeof v.x === "number" && typeof v.y === "number") return { poib: v };
-    }
-    return null;
+    parsed = JSON.parse(t);
   } catch {
-    return null;
+    return { ok: false, error: "Invalid JSON. Fix formatting and try again." };
   }
+
+  if (Array.isArray(parsed)) {
+    return { ok: true, holes: parsed };
+  }
+
+  if (parsed && typeof parsed === "object") {
+    if (Array.isArray(parsed.holes)) {
+      return { ok: true, holes: parsed.holes };
+    }
+    if (parsed.poib && typeof parsed.poib === "object") {
+      const x = num(parsed.poib.x);
+      const y = num(parsed.poib.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return { ok: false, error: "poib must include numeric x and y." };
+      }
+      return { ok: true, poib: { x, y } };
+    }
+  }
+
+  return {
+    ok: false,
+    error: "JSON must be an array of holes, or an object with holes[] (or poib{}).",
+  };
 }
 
 export default function App() {
-  const [endpoint, setEndpoint] = useState(
-    "https://sczn3-sec-backend-pipe-17.onrender.com/api/sec"
+  const [endpointInput, setEndpointInput] = useState(
+    () =>
+      localStorage.getItem(STORAGE_KEY_ENDPOINT) ||
+      "https://sczn3-sec-backend-pipe-17.onrender.com/api/sec"
   );
 
+  const endpoint = useMemo(() => normalizeEndpoint(endpointInput), [endpointInput]);
+
   const [targetSize, setTargetSize] = useState("8.5x11");
-  const [distanceYards, setDistanceYards] = useState(100);
-  const [clickValueMoa, setClickValueMoa] = useState(0.25);
-  const [deadbandInches, setDeadbandInches] = useState(0.1);
-  const [bullX, setBullX] = useState(4.25);
-  const [bullY, setBullY] = useState(5.5);
+  const [distanceYards, setDistanceYards] = useState("100");
+  const [clickValueMoa, setClickValueMoa] = useState("0.25");
+  const [deadbandInches, setDeadbandInches] = useState("0.10");
+  const [bullX, setBullX] = useState("4.25");
+  const [bullY, setBullY] = useState("5.50");
 
-  const [holesJsonText, setHolesJsonText] = useState("");
-  const [imageFile, setImageFile] = useState(null);
-
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [holesText, setHolesText] = useState("");
+  const [statusMsg, setStatusMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [result, setResult] = useState(null);
 
-  const buildStamp = "FRONTEND_NO_DEMO_NO_POPUP_V1";
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_ENDPOINT, endpointInput);
+  }, [endpointInput]);
 
-  const parsed = useMemo(() => safeParseHoles(holesJsonText), [holesJsonText]);
-
-  const canSend = useMemo(() => {
-    // require at least holes JSON or an image file
-    const hasJson = !!parsed;
-    const hasImg = !!imageFile;
-    return hasJson || hasImg;
-  }, [parsed, imageFile]);
+  function loadDemoHolesUL() {
+    // UL relative to bull (x lower, y lower) with Y axis DOWN convention
+    const demo = [
+      { x: 3.90, y: 4.80 },
+      { x: 3.95, y: 4.78 },
+      { x: 3.92, y: 4.85 },
+    ];
+    setHolesText(prettyJson({ holes: demo }));
+    setErrorMsg("");
+    setStatusMsg("Demo holes loaded.");
+    setResult(null);
+  }
 
   async function onSend() {
-    setError("");
+    setErrorMsg("");
+    setStatusMsg("");
     setResult(null);
 
-    if (!canSend) {
-      setError("Add holes JSON (or choose an image) before sending.");
+    const dist = num(distanceYards);
+    const click = num(clickValueMoa);
+    const dead = num(deadbandInches);
+    const bx = num(bullX);
+    const by = num(bullY);
+
+    if (!endpoint) {
+      setErrorMsg("Backend endpoint is empty.");
+      return;
+    }
+    if (!Number.isFinite(dist) || dist <= 0) {
+      setErrorMsg("Distance (yards) must be a positive number.");
+      return;
+    }
+    if (!Number.isFinite(click) || click <= 0) {
+      setErrorMsg("Click Value (MOA) must be a positive number (example: 0.25).");
+      return;
+    }
+    if (!Number.isFinite(dead) || dead < 0) {
+      setErrorMsg("Deadband (inches) must be 0 or greater.");
+      return;
+    }
+    if (!Number.isFinite(bx) || !Number.isFinite(by)) {
+      setErrorMsg("Bull X and Bull Y must be numbers.");
       return;
     }
 
-    const basePayload = {
-      targetSize,
-      distanceYards: Number(distanceYards),
-      clickValueMoa: Number(clickValueMoa),
-      deadbandInches: Number(deadbandInches),
-      bullX: Number(bullX),
-      bullY: Number(bullY),
-      buildClient: buildStamp,
-    };
-
-    let payload = { ...basePayload };
-
-    if (parsed) {
-      // merge parsed object (either {holes:[...]} or {poib:{x,y}})
-      payload = { ...payload, ...parsed };
+    const parsed = parseHolesJson(holesText);
+    if (!parsed.ok) {
+      setErrorMsg(parsed.error);
+      return;
     }
 
+    const payload = {
+      targetSize,
+      distanceYards: dist,
+      clickValueMoa: click,
+      deadbandInches: dead,
+      bullX: bx,
+      bullY: by,
+      ...(parsed.holes ? { holes: parsed.holes } : {}),
+      ...(parsed.poib ? { poib: parsed.poib } : {}),
+    };
+
+    setStatusMsg("Sending to backend...");
     try {
-      setLoading(true);
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      let res;
-      if (imageFile) {
-        // multipart (backend supports it)
-        const fd = new FormData();
-        fd.append("payload", JSON.stringify(payload));
-        fd.append("image", imageFile);
+      const data = await r.json().catch(() => null);
 
-        res = await fetch(endpoint, {
-          method: "POST",
-          body: fd,
-        });
-      } else {
-        // JSON only
-        res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+      if (!r.ok) {
+        setErrorMsg(
+          (data && (data.message || data.error)) ||
+            `Request failed (${r.status}).`
+        );
+        setStatusMsg("");
+        return;
       }
 
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok || !data || data.ok === false) {
-        const msg =
-          (data && (data.message || data.error)) ||
-          `Request failed (${res.status})`;
-        setError(msg);
-        setResult(data);
+      if (!data || data.ok !== true) {
+        setErrorMsg((data && (data.message || data.error)) || "Backend returned an error.");
+        setStatusMsg("");
         return;
       }
 
       setResult(data);
+      setStatusMsg("Done.");
     } catch (e) {
-      setError(e && e.message ? e.message : "Network error");
-    } finally {
-      setLoading(false);
+      setErrorMsg(e && e.message ? e.message : "Network error.");
+      setStatusMsg("");
     }
   }
 
-  const windageLabel =
-    result && result.scopeClicks ? result.scopeClicks.windage : "";
-  const elevationLabel =
-    result && result.scopeClicks ? result.scopeClicks.elevation : "";
+  const windageLabel = result?.scopeClicks?.windage || "";
+  const elevationLabel = result?.scopeClicks?.elevation || "";
+  const wSigned = result?.clicksSigned?.windage ?? 0;
+  const eSigned = result?.clicksSigned?.elevation ?? 0;
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto", padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>
-        POIB Anchor Test
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <h2 style={{ margin: 0 }}>POIB Anchor Test</h2>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>BUILD: {APP_BUILD}</div>
       </div>
 
-      <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
-        Build: {buildStamp}
-      </div>
-
-      <div style={{ border: "2px solid #111", padding: 12, borderRadius: 10 }}>
-        <div style={{ fontWeight: 800, marginBottom: 6 }}>Backend Endpoint</div>
+      <div style={{ marginTop: 12, border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Backend Endpoint</div>
         <input
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.target.value)}
-          style={{
-            width: "100%",
-            padding: 10,
-            borderRadius: 8,
-            border: "1px solid #999",
-            fontSize: 14,
-          }}
+          value={endpointInput}
+          onChange={(e) => setEndpointInput(e.target.value)}
+          style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc", fontSize: 14 }}
+          placeholder="https://sczn3-sec-backend-pipe-17.onrender.com/api/sec"
         />
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Target Size</div>
-            <select
-              value={targetSize}
-              onChange={(e) => setTargetSize(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #999", fontSize: 14 }}
-            >
-              <option value="8.5x11">8.5x11</option>
-              <option value="23x23">23x23</option>
-              <option value="12x18">12x18</option>
-            </select>
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Distance (yards)</div>
-            <input
-              type="number"
-              value={distanceYards}
-              onChange={(e) => setDistanceYards(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #999", fontSize: 14 }}
-            />
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Click Value (MOA)</div>
-            <input
-              type="number"
-              step="0.01"
-              value={clickValueMoa}
-              onChange={(e) => setClickValueMoa(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #999", fontSize: 14 }}
-            />
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Deadband (inches)</div>
-            <input
-              type="number"
-              step="0.01"
-              value={deadbandInches}
-              onChange={(e) => setDeadbandInches(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #999", fontSize: 14 }}
-            />
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Bull X (inches)</div>
-            <input
-              type="number"
-              step="0.01"
-              value={bullX}
-              onChange={(e) => setBullX(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #999", fontSize: 14 }}
-            />
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Bull Y (inches)</div>
-            <input
-              type="number"
-              step="0.01"
-              value={bullY}
-              onChange={(e) => setBullY(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #999", fontSize: 14 }}
-            />
-          </div>
+        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+          Using: <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{endpoint}</span>
         </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Image (optional for now)</div>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setImageFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
-          />
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Holes JSON (in inches)</div>
-          <textarea
-            value={holesJsonText}
-            onChange={(e) => setHolesJsonText(e.target.value)}
-            placeholder='Example: [{"x":3.9,"y":4.8},{"x":3.95,"y":4.75}]'
-            style={{
-              width: "100%",
-              minHeight: 140,
-              padding: 10,
-              borderRadius: 8,
-              border: "1px solid #999",
-              fontSize: 14,
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            }}
-          />
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-            Tip: Paste holes as an array of {"{x,y}"} points (inches). No demo button. No popups.
-          </div>
-        </div>
-
-        {error ? (
-          <div style={{ marginTop: 12, padding: 10, borderRadius: 8, border: "1px solid #900", color: "#900" }}>
-            {error}
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-          <button
-            onClick={onSend}
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: 14,
-              borderRadius: 10,
-              border: "2px solid #0b5",
-              fontSize: 18,
-              fontWeight: 800,
-              cursor: loading ? "not-allowed" : "pointer",
-              background: loading ? "#eee" : "#fff",
-            }}
-          >
-            {loading ? "Sending..." : "Send"}
-          </button>
-        </div>
-
-        {result ? (
-          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, border: "2px solid #0b5" }}>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>
-              Windage: {windageLabel} | Elevation: {elevationLabel}
-            </div>
-
-            <details style={{ marginTop: 10 }}>
-              <summary style={{ fontWeight: 900, cursor: "pointer" }}>Show raw JSON</summary>
-              <pre
-                style={{
-                  marginTop: 10,
-                  background: "#111",
-                  color: "#eee",
-                  padding: 12,
-                  borderRadius: 10,
-                  overflowX: "auto",
-                  fontSize: 12,
-                }}
-              >
-                {JSON.stringify(result, null, 2)}
-              </pre>
-            </details>
-          </div>
-        ) : null}
       </div>
+
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Target Size</div>
+          <select
+            value={targetSize}
+            onChange={(e) => setTargetSize(e.target.value)}
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          >
+            <option value="8.5x11">8.5x11</option>
+            <option value="23x23">23x23</option>
+            <option value="12x18">12x18</option>
+          </select>
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Distance (yards)</div>
+          <input
+            value={distanceYards}
+            onChange={(e) => setDistanceYards(e.target.value)}
+            inputMode="decimal"
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Click Value (MOA)</div>
+          <input
+            value={clickValueMoa}
+            onChange={(e) => setClickValueMoa(e.target.value)}
+            inputMode="decimal"
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Deadband (inches)</div>
+          <input
+            value={deadbandInches}
+            onChange={(e) => setDeadbandInches(e.target.value)}
+            inputMode="decimal"
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Bull X (inches)</div>
+          <input
+            value={bullX}
+            onChange={(e) => setBullX(e.target.value)}
+            inputMode="decimal"
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Bull Y (inches)</div>
+          <input
+            value={bullY}
+            onChange={(e) => setBullY(e.target.value)}
+            inputMode="decimal"
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Holes JSON (in inches)</div>
+        <textarea
+          value={holesText}
+          onChange={(e) => setHolesText(e.target.value)}
+          placeholder='Example: { "holes": [ { "x": 3.90, "y": 4.80 } ] }'
+          style={{ width: "100%", minHeight: 180, padding: 10, borderRadius: 10, border: "1px solid #ccc", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13 }}
+        />
+        <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>
+          Tip: You can test without detection by using Demo Holes.
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <button
+          onClick={loadDemoHolesUL}
+          style={{ padding: 14, borderRadius: 12, border: "2px solid #1e66ff", background: "white", fontSize: 18, fontWeight: 700 }}
+        >
+          Load Demo Holes (UL)
+        </button>
+
+        <button
+          onClick={onSend}
+          style={{ padding: 14, borderRadius: 12, border: "2px solid #1e66ff", background: "white", fontSize: 18, fontWeight: 700 }}
+        >
+          Send
+        </button>
+      </div>
+
+      {errorMsg ? (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: "1px solid #d33", background: "#fff5f5" }}>
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>Error</div>
+          <div>{errorMsg}</div>
+        </div>
+      ) : null}
+
+      {statusMsg ? (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: "1px solid #ddd", background: "#fafafa" }}>
+          {statusMsg}
+        </div>
+      ) : null}
+
+      {result ? (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: "2px solid #2a8a2a", background: "white" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>
+            Windage: {windageLabel} | Elevation: {elevationLabel}
+          </div>
+          <div style={{ marginTop: 8, opacity: 0.85 }}>
+            clicksSigned: w={wSigned} , e={eSigned}
+          </div>
+
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ fontWeight: 800, cursor: "pointer" }}>Show raw JSON</summary>
+            <pre style={{ marginTop: 10, background: "#111", color: "#eee", padding: 12, borderRadius: 10, overflowX: "auto", fontSize: 12 }}>
+              {prettyJson(result)}
+            </pre>
+          </details>
+        </div>
+      ) : null}
     </div>
   );
 }
