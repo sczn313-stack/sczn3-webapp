@@ -1,130 +1,270 @@
-'use strict';
+// backend_new/server.js
+// SCZN3 backend_new — CALC + ANALYZE
+// - /api/calc: bull - POIB (direction locked), 2-decimal outputs
+// - /api/analyze: upload image, estimate POIB offset (inches) relative to bull
 
-const express = require('express');
-const cors = require('cors');
+const express = require("express");
+const cors = require("cors");
+const multer = require("multer");
+const Jimp = require("jimp");
 
 const app = express();
 
-/**
- * CORS
- * - If you set FRONTEND_ORIGIN on Render (recommended), we'll lock to it.
- * - Otherwise we allow all origins.
- */
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
-app.use(
-  cors({
-    origin: FRONTEND_ORIGIN === '*' ? true : FRONTEND_ORIGIN,
-  })
-);
+app.use(cors({ origin: true, methods: ["GET", "POST", "OPTIONS"] }));
+app.use(express.json({ limit: "1mb" }));
 
-app.use(express.json({ limit: '1mb' }));
+// ----- Upload (memory) -----
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
-// -------------------- Helpers --------------------
+// ----- Helpers -----
+function toNum(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function round2(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  return Math.round(n * 100) / 100;
 }
 
-function dirFromSignedDelta(delta, posLabel, negLabel) {
-  if (delta > 0) return posLabel;
-  if (delta < 0) return negLabel;
-  return 'NONE';
+function dirLR(dx) {
+  if (dx > 0) return "RIGHT";
+  if (dx < 0) return "LEFT";
+  return "NONE";
 }
 
-/**
- * True MOA inches per MOA at distance:
- * - True: 1.047" at 100y
- * - Shooter MOA: 1.000" at 100y
- */
-function inchesPerMoa(distanceYards, trueMoaOn) {
-  const base = trueMoaOn ? 1.047 : 1.0;
-  return base * (distanceYards / 100.0);
+function dirUD(dy) {
+  if (dy > 0) return "UP";
+  if (dy < 0) return "DOWN";
+  return "NONE";
 }
 
-// -------------------- Routes --------------------
-// Fix "Cannot GET /"
-app.get('/', (req, res) => {
-  res.type('text').send(
-`SCZN3 backend_new is running.
+function inchesPerMOA(distanceYards, trueMoaOn) {
+  const baseAt100 = trueMoaOn ? 1.047 : 1.0;
+  return baseAt100 * (distanceYards / 100);
+}
 
-Endpoints:
-GET  /health
-POST /api/calc
+// Detect a "dark centroid" inside the central region (crude POIB estimate).
+// Returns { cx, cy, scoreCount } in PIXELS.
+function estimateDarkCentroid(image) {
+  const { width, height, data } = image.bitmap;
 
-POST /api/calc JSON body example:
-{
-  "distanceYards": 50,
-  "clickValueMoa": 0.25,
-  "trueMoa": true,
-  "bull": {"x": 0, "y": 0},
-  "poib": {"x": -1, "y": 1}
-}`
+  // ignore outer margins (text/border) — focus on central 80%
+  const x0 = Math.floor(width * 0.10);
+  const x1 = Math.floor(width * 0.90);
+  const y0 = Math.floor(height * 0.10);
+  const y1 = Math.floor(height * 0.90);
+
+  // sample step for speed (bigger step = faster, less accurate)
+  const step = Math.max(2, Math.floor(Math.min(width, height) / 500));
+
+  let sumW = 0;
+  let sumX = 0;
+  let sumY = 0;
+  let count = 0;
+
+  for (let y = y0; y < y1; y += step) {
+    for (let x = x0; x < x1; x += step) {
+      const idx = (width * y + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+
+      // simple luminance
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b);
+
+      // Treat very dark pixels as candidate "holes"
+      // Lower threshold = fewer pixels, higher threshold = more noise
+      if (lum < 60) {
+        // weight darker pixels more
+        const w = (60 - lum);
+        sumW += w;
+        sumX += x * w;
+        sumY += y * w;
+        count++;
+      }
+    }
+  }
+
+  if (sumW <= 0 || count < 30) {
+    // fallback: center of image
+    return { cx: width / 2, cy: height / 2, scoreCount: count };
+    }
+  return { cx: sumX / sumW, cy: sumY / sumW, scoreCount: count };
+}
+
+// ----- Routes -----
+app.get("/", (req, res) => {
+  res.type("text/plain").send(
+    [
+      "SCZN3 backend_new is running.",
+      "",
+      "Endpoints:",
+      "GET  /health",
+      "POST /api/calc",
+      "POST /api/analyze (multipart form-data: image)",
+      "",
+    ].join("\n")
   );
 });
 
-app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'sczn3-backend-new' });
+app.get("/health", (req, res) => {
+  res.json({ ok: true, service: "sczn3-backend-new" });
 });
 
 /**
- * Calculates clicks to move POIB -> Bull using rule: bull - POIB
- * X: Right + ; Y: Up +
+ * POST /api/calc
+ * Accepts:
+ * {
+ *   distanceYards: 100,
+ *   clickValue: 0.25 OR clickValueMoa: 0.25,
+ *   trueMoa: true,
+ *   bull: {x,y},
+ *   poib: {x,y}
+ * }
+ *
+ * Rule: correction = bull - POIB
  */
-app.post('/api/calc', (req, res) => {
+app.post("/api/calc", (req, res) => {
   try {
-    const distanceYards = Number(req.body?.distanceYards ?? 100);
-    const clickValueMoa = Number(req.body?.clickValueMoa ?? 0.25);
-    const trueMoa = Boolean(req.body?.trueMoa ?? true);
+    const distanceYards = toNum(req.body?.distanceYards, 100);
 
-    const bullX = Number(req.body?.bull?.x ?? 0);
-    const bullY = Number(req.body?.bull?.y ?? 0);
-    const poibX = Number(req.body?.poib?.x ?? 0);
-    const poibY = Number(req.body?.poib?.y ?? 0);
+    let clickValue = toNum(req.body?.clickValue, NaN);
+    if (!Number.isFinite(clickValue)) clickValue = toNum(req.body?.clickValueMoa, NaN);
+    if (!Number.isFinite(clickValue)) clickValue = 0.25;
 
-    // Core rule: correction = bull - POIB
-    const dx = bullX - poibX; // + = RIGHT
-    const dy = bullY - poibY; // + = UP
+    const trueMoa = Boolean(req.body?.trueMoa);
 
-    const ipm = inchesPerMoa(distanceYards, trueMoa);
+    const bull = req.body?.bull || {};
+    const poib = req.body?.poib || {};
 
-    const windageDir = dirFromSignedDelta(dx, 'RIGHT', 'LEFT');
-    const elevDir = dirFromSignedDelta(dy, 'UP', 'DOWN');
+    const bullX = toNum(bull.x, 0);
+    const bullY = toNum(bull.y, 0);
+    const poibX = toNum(poib.x, 0);
+    const poibY = toNum(poib.y, 0);
 
-    const windageMoa = round2(Math.abs(dx) / ipm);
-    const elevMoa = round2(Math.abs(dy) / ipm);
+    // correction = bull − POIB
+    const dxIn = bullX - poibX;
+    const dyIn = bullY - poibY;
 
-    const windageClicks = round2(windageMoa / clickValueMoa);
-    const elevClicks = round2(elevMoa / clickValueMoa);
+    const ipm = inchesPerMOA(distanceYards, trueMoa);
+
+    const windDir = dirLR(dxIn);
+    const elevDir = dirUD(dyIn);
+
+    const windMoa = ipm === 0 ? 0 : Math.abs(dxIn) / ipm;
+    const elevMoa = ipm === 0 ? 0 : Math.abs(dyIn) / ipm;
+
+    const windClicks = clickValue === 0 ? 0 : windMoa / clickValue;
+    const elevClicks = clickValue === 0 ? 0 : elevMoa / clickValue;
 
     res.json({
-      inputs: {
-        distanceYards,
-        clickValueMoa,
+      settings: {
+        distanceYards: round2(distanceYards),
+        clickValueMoa: round2(clickValue),
         trueMoa,
+        inchesPerMoa: round2(ipm),
+      },
+      inputs: {
         bull: { x: round2(bullX), y: round2(bullY) },
         poib: { x: round2(poibX), y: round2(poibY) },
       },
-      deltas: {
-        dx: round2(dx),
-        dy: round2(dy),
+      delta: {
+        dxIn: round2(dxIn),
+        dyIn: round2(dyIn),
       },
       windage: {
-        direction: windageDir,
-        moa: windageMoa,
-        clicks: windageClicks,
+        direction: windDir,
+        moa: round2(windMoa),
+        clicks: round2(windClicks),
       },
       elevation: {
         direction: elevDir,
-        moa: elevMoa,
-        clicks: elevClicks,
+        moa: round2(elevMoa),
+        clicks: round2(elevClicks),
       },
     });
-  } catch (e) {
-    res.status(400).json({ ok: false, error: String(e?.message ?? e) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
-// -------------------- Start --------------------
-const PORT = process.env.PORT || 10000;
+/**
+ * POST /api/analyze
+ * multipart/form-data with field "image"
+ *
+ * Returns:
+ * - bull assumed at center of page => offsets are relative to bull
+ * - poib offsets in inches (Right +, Up +)
+ *
+ * NOTE: This is a FIRST PASS heuristic. It finds a dark centroid in the image.
+ */
+app.post("/api/analyze", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ ok: false, error: "No image uploaded" });
+    }
+
+    const img = await Jimp.read(req.file.buffer);
+
+    // Normalize a bit
+    img.resize(1200, Jimp.AUTO); // stable size for consistent sampling
+    img.contrast(0.2);
+
+    // Estimate POIB pixel centroid
+    const { cx, cy, scoreCount } = estimateDarkCentroid(img);
+
+    const w = img.bitmap.width;
+    const h = img.bitmap.height;
+
+    // Bull pixel assumed at image center (0,0 origin for bull in inches)
+    const bullPxX = w / 2;
+    const bullPxY = h / 2;
+
+    // Estimate pixels-per-inch based on paper assumption:
+    // - If portrait: width ~ 8.5", height ~ 11"
+    // - If landscape: width ~ 11", height ~ 8.5"
+    const portrait = h >= w;
+    const paperW = portrait ? 8.5 : 11;
+    const paperH = portrait ? 11 : 8.5;
+
+    const ppiX = w / paperW;
+    const ppiY = h / paperH;
+
+    // Pixel deltas: +X right, +Y down in images
+    const dpx = cx - bullPxX;
+    const dpy = cy - bullPxY;
+
+    // Convert to inches with SCZN3 sign convention:
+    // X: Right +  => + inches
+    // Y: Up +     => image up is negative pixels, so invert
+    const poibX_in = dpx / ppiX;
+    const poibY_in = -(dpy / ppiY);
+
+    // We return bull at (0,0) and POIB offsets relative to bull
+    res.json({
+      ok: true,
+      note: "Heuristic POIB (dark centroid) relative to bull(center).",
+      debug: {
+        resizedW: w,
+        resizedH: h,
+        samples: scoreCount,
+        portrait,
+        ppiX: round2(ppiX),
+        ppiY: round2(ppiY),
+      },
+      bull: { x: 0.0, y: 0.0 },
+      poib: { x: round2(poibX_in), y: round2(poibY_in) },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
+// ----- Start -----
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`SCZN3 backend_new listening on port ${PORT}`);
 });
