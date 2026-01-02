@@ -1,18 +1,22 @@
 // frontend_new/api.js
-export async function calc({ yards, clickValue, trueMoa, bullX, bullY, poibX, poibY }) {
-  // Put your backend URL here after it's live, example:
-  // const BASE = "https://sczn3-webapp-213.onrender.com";
-  const BASE = "";
+export const API_BASE = "https://sczn3-webapp-213.onrender.com";
 
-  const res = await fetch(`${BASE}/api/calc`, {
+export async function health() {
+  const res = await fetch(`${API_BASE}/health`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json().catch(() => ({ ok: true }));
+}
+
+export async function calc(payload) {
+  const res = await fetch(`${API_BASE}/api/calc`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ yards, clickValue, trueMoa, bullX, bullY, poibX, poibY })
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+    const txt = await res.text().catch(() => "");
+    throw new Error(`API error ${res.status}: ${txt}`);
   }
 
   return res.json();
