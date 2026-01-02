@@ -1,156 +1,101 @@
 // frontend_new/app.js
-import { analyzeImage } from "./api.js";
+// Rule: correction = bull - POIB
+// ΔX > 0 => RIGHT, ΔX < 0 => LEFT
+// ΔY > 0 => UP,    ΔY < 0 => DOWN
+// Two decimals everywhere.
 
-const $ = (id) => document.getElementById(id);
-
-function toNum(v, fallback = 0) {
+function toNum(v) {
   const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function to2(n) {
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
 }
 
 function fmt2(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "0.00";
-  return x.toFixed(2);
+  return to2(n).toFixed(2);
 }
 
-function inchPerMoa(distanceYds, trueMoaOn) {
-  // True MOA = 1.047" at 100y
-  // Shooter MOA = 1.00" at 100y
-  const base = trueMoaOn ? 1.047 : 1.0;
-  return base * (distanceYds / 100);
+function calcAxis(deltaIn, distanceYards, clickValueMOA, trueMoaOn) {
+  const absIn = Math.abs(deltaIn);
+
+  const moaAt100 = trueMoaOn ? 1.047 : 1.0; // inches per MOA at 100y
+  const inchesPerMOA = moaAt100 * (distanceYards / 100);
+
+  const moa = inchesPerMOA === 0 ? 0 : absIn / inchesPerMOA;
+  const clicks = clickValueMOA === 0 ? 0 : moa / clickValueMOA;
+
+  return { moa: to2(moa), clicks: to2(clicks) };
 }
 
-function dirLR(dx) {
+function dirX(dx) {
   if (dx > 0) return "RIGHT";
   if (dx < 0) return "LEFT";
   return "NONE";
 }
 
-function dirUD(dy) {
+function dirY(dy) {
   if (dy > 0) return "UP";
   if (dy < 0) return "DOWN";
   return "NONE";
 }
 
-function renderResult({ dx, dy, moaX, moaY, clicksX, clicksY }) {
-  const windDir = dirLR(dx);
-  const elevDir = dirUD(dy);
-
-  const absClicksX = Math.abs(clicksX);
-  const absClicksY = Math.abs(clicksY);
-  const absMoaX = Math.abs(moaX);
-  const absMoaY = Math.abs(moaY);
-
-  const result = `
-    <div class="resultRow">
-      <div class="k">Windage</div>
-      <div class="v">${windDir} • ${fmt2(absClicksX)} clicks • ${fmt2(absMoaX)} MOA</div>
-    </div>
-
-    <div class="resultRow">
-      <div class="k">Elevation</div>
-      <div class="v">${elevDir} • ${fmt2(absClicksY)} clicks • ${fmt2(absMoaY)} MOA</div>
-    </div>
-
-    <div class="small">
-      ΔX (in): ${fmt2(dx)} • ΔY (in): ${fmt2(dy)}
-    </div>
-  `;
-
-  $("result").innerHTML = result;
+function getEl(id) {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`Missing element #${id}`);
+  return el;
 }
 
-function calculate() {
-  const distance = toNum($("distance").value, 100);
-  const clickValue = toNum($("clickValue").value, 0.25);
-  const trueMoaOn = ($("trueMoa").value || "on").toLowerCase() === "on";
+function calcAndRender() {
+  const distanceYards = toNum(getEl("distanceYards").value);
+  const clickValue = toNum(getEl("clickValue").value);
+  const trueMoaOn = getEl("trueMoa").value === "on";
 
-  const bullX = toNum($("bullX").value, 0);
-  const bullY = toNum($("bullY").value, 0);
+  const bullX = toNum(getEl("bullX").value);
+  const bullY = toNum(getEl("bullY").value);
+  const poibX = toNum(getEl("poibX").value);
+  const poibY = toNum(getEl("poibY").value);
 
-  const poibX = toNum($("poibX").value, 0);
-  const poibY = toNum($("poibY").value, 0);
-
-  // Rule: correction = bull − POIB
+  // correction = bull - POIB
   const dx = bullX - poibX;
   const dy = bullY - poibY;
 
-  const ipm = inchPerMoa(distance, trueMoaOn);
+  const wind = calcAxis(dx, distanceYards, clickValue, trueMoaOn);
+  const elev = calcAxis(dy, distanceYards, clickValue, trueMoaOn);
 
-  const moaX = ipm === 0 ? 0 : dx / ipm;
-  const moaY = ipm === 0 ? 0 : dy / ipm;
+  const windText =
+    `${dirX(dx)} • ${fmt2(wind.clicks)} clicks • ${fmt2(wind.moa)} MOA`;
+  const elevText =
+    `${dirY(dy)} • ${fmt2(elev.clicks)} clicks • ${fmt2(elev.moa)} MOA`;
 
-  const clicksX = clickValue === 0 ? 0 : moaX / clickValue;
-  const clicksY = clickValue === 0 ? 0 : moaY / clickValue;
-
-  renderResult({ dx, dy, moaX, moaY, clicksX, clicksY });
-}
-
-function setStatus(msg) {
-  const el = $("analyzeStatus");
-  if (el) el.value = msg;
-}
-
-function applyAnalyzePayload(data) {
-  // Flexible mapping: accept a few common shapes.
-  const bx =
-    data?.bullX ?? data?.bull?.x ?? data?.bull?.X ?? data?.bull?.[0] ?? null;
-  const by =
-    data?.bullY ?? data?.bull?.y ?? data?.bull?.Y ?? data?.bull?.[1] ?? null;
-
-  const px =
-    data?.poibX ?? data?.poib?.x ?? data?.poib?.X ?? data?.poib?.[0] ?? null;
-  const py =
-    data?.poibY ?? data?.poib?.y ?? data?.poib?.Y ?? data?.poib?.[1] ?? null;
-
-  if (bx !== null) $("bullX").value = fmt2(toNum(bx, 0));
-  if (by !== null) $("bullY").value = fmt2(toNum(by, 0));
-  if (px !== null) $("poibX").value = fmt2(toNum(px, 0));
-  if (py !== null) $("poibY").value = fmt2(toNum(py, 0));
-
-  // Optional: if backend returns distance/clickValue/trueMoa
-  if (data?.distanceYds != null) $("distance").value = String(toNum(data.distanceYds, 100));
-  if (data?.clickValue != null) $("clickValue").value = String(toNum(data.clickValue, 0.25));
-  if (data?.trueMoa != null) $("trueMoa").value = String(data.trueMoa).toLowerCase() === "on" ? "on" : "off";
-}
-
-async function onAnalyze() {
-  const fileInput = $("imageFile");
-  const file = fileInput?.files?.[0];
-
-  if (!file) {
-    setStatus("Select an image first");
-    return;
-  }
-
-  setStatus("Uploading / analyzing...");
-
-  try {
-    const data = await analyzeImage(file);
-
-    // If backend returns recognizable fields, populate inputs
-    applyAnalyzePayload(data);
-
-    // Always re-calc after apply
-    calculate();
-
-    setStatus("Analyze OK");
-  } catch (err) {
-    const msg = err?.message ? String(err.message) : "Analyze failed";
-    setStatus(msg);
-  }
+  getEl("windageText").textContent = windText;
+  getEl("elevationText").textContent = elevText;
+  getEl("dxText").textContent = fmt2(dx);
+  getEl("dyText").textContent = fmt2(dy);
 }
 
 function wire() {
-  const calcBtn = $("calcBtn");
-  if (calcBtn) calcBtn.addEventListener("click", calculate);
+  const btn = getEl("calcBtn");
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    calcAndRender();
+  });
 
-  const analyzeBtn = $("analyzeBtn");
-  if (analyzeBtn) analyzeBtn.addEventListener("click", onAnalyze);
+  // Auto-calc when values change
+  ["distanceYards", "clickValue", "trueMoa", "bullX", "bullY", "poibX", "poibY"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", calcAndRender);
+    el.addEventListener("input", () => {
+      // keep it responsive but not spammy
+      window.clearTimeout(el.__t);
+      el.__t = window.setTimeout(calcAndRender, 80);
+    });
+  });
 
-  // Auto-calc once on load
-  calculate();
+  // First render
+  calcAndRender();
 }
 
-wire();
+document.addEventListener("DOMContentLoaded", wire);
