@@ -1,110 +1,76 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SCZN3 — Frontend New</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="wrap">
-      <h1>Frontend — New</h1>
-      <p class="sub">
-        Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only.
-        Two decimals.
-      </p>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Frontend — New</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Frontend — New</h1>
+    <p>Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only. Two decimals.</p>
 
-      <!-- NEW: API status -->
-      <div class="card">
-        <h2>API Status</h2>
-        <div id="apiStatus" class="v">Checking…</div>
-        <div class="sub" id="apiBase">(backend url will show here)</div>
-      </div>
+    <section class="card">
+      <h2>API Status</h2>
+      <div id="apiStatusText">Checking…</div>
+      <div id="apiBaseUrl">(backend url will show here)</div>
+    </section>
 
-      <div class="card">
-        <h2>Settings</h2>
-        <div class="grid">
-          <label>
-            Distance (yards)
-            <select id="distanceYards">
-              <option value="50">50</option>
-              <option value="100" selected>100</option>
-            </select>
-          </label>
+    <section class="card">
+      <h2>Settings</h2>
+      <label>Distance (yards)
+        <select id="distanceYards">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+        </select>
+      </label>
 
-          <label>
-            Click value (MOA/click)
-            <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
-          </label>
+      <label>Click value (MOA/click)
+        <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
+      </label>
 
-          <label>
-            True MOA (1.047" @ 100y)
-            <select id="trueMoa">
-              <option value="true" selected>ON</option>
-              <option value="false">OFF</option>
-            </select>
-          </label>
-        </div>
-      </div>
+      <label>True MOA (1.047" @ 100y)
+        <select id="trueMoa">
+          <option value="ON" selected>ON</option>
+          <option value="OFF">OFF</option>
+        </select>
+      </label>
+    </section>
 
-      <div class="card">
-        <h2>Inputs (inches)</h2>
-        <div class="grid2">
-          <div>
-            <h3>Bull</h3>
-            <label>
-              Bull X (Right +)
-              <input id="bullX" type="number" step="0.01" value="0.00" />
-            </label>
-            <label>
-              Bull Y (Up +)
-              <input id="bullY" type="number" step="0.01" value="0.00" />
-            </label>
-          </div>
+    <section class="card">
+      <h2>Inputs (inches)</h2>
 
-          <div>
-            <h3>POIB</h3>
-            <label>
-              POIB X (Right +)
-              <input id="poibX" type="number" step="0.01" value="-1.00" />
-            </label>
-            <label>
-              POIB Y (Up +)
-              <input id="poibY" type="number" step="0.01" value="1.00" />
-            </label>
-          </div>
-        </div>
+      <h3>Bull</h3>
+      <label>Bull X (Right +)
+        <input id="bullX" type="number" step="0.01" value="0.00" />
+      </label>
+      <label>Bull Y (Up +)
+        <input id="bullY" type="number" step="0.01" value="0.00" />
+      </label>
 
-        <button id="calcBtn">Calculate</button>
-        <div id="errorBox" class="error"></div>
-      </div>
+      <h3>POIB</h3>
+      <label>POIB X (Right +)
+        <input id="poibX" type="number" step="0.01" value="-1.00" />
+      </label>
+      <label>POIB Y (Up +)
+        <input id="poibY" type="number" step="0.01" value="1.00" />
+      </label>
 
-      <div class="card">
-        <h2>Result</h2>
+      <button id="calcBtn">Calculate</button>
+    </section>
 
-        <div class="row">
-          <div class="k">Windage</div>
-          <div id="windageLine" class="v"></div>
-        </div>
+    <section class="card">
+      <h2>Result</h2>
+      <div>Windage: <span id="windage"></span></div>
+      <div>Elevation: <span id="elevation"></span></div>
+      <div>ΔX (in): <span id="dx"></span></div>
+      <div>ΔY (in): <span id="dy"></span></div>
+    </section>
+  </main>
 
-        <div class="row">
-          <div class="k">Elevation</div>
-          <div id="elevationLine" class="v"></div>
-        </div>
-
-        <div class="row">
-          <div class="k">ΔX (in)</div>
-          <div id="dxLine" class="v"></div>
-        </div>
-
-        <div class="row">
-          <div class="k">ΔY (in)</div>
-          <div id="dyLine" class="v"></div>
-        </div>
-      </div>
-    </div>
-
-    <script src="./api.js"></script>
-    <script src="./app.js"></script>
-  </body>
+  <!-- ORDER MATTERS -->
+  <script src="./api.js"></script>
+  <script src="./app.js"></script>
+</body>
 </html>
