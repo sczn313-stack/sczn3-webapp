@@ -4,15 +4,13 @@ const cors = require("cors");
 
 const app = express();
 
-// --- CORS: allow your Render static sites + local dev ---
+// CORS: allow your Render static site + local dev
 app.use(
   cors({
     origin: [
       "https://sczn3-webapp-313.onrender.com",
-      "https://sczn3-webapp-313.onrender.com/",
-      // add more later if you spin up other frontends
-      "http://localhost:5173",
       "http://localhost:3000",
+      "http://localhost:5173",
     ],
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
@@ -21,27 +19,17 @@ app.use(
 
 app.use(express.json({ limit: "2mb" }));
 
-// --- Health check (Render likes this) ---
+// Health check
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "sczn3-backend-new" });
 });
 
 /**
  * POST /api/calc
- * Body:
- * {
- *   yards: 100,
- *   clickValue: 0.25,
- *   trueMoa: true,
- *   bullX: 0,
- *   bullY: 0,
- *   poibX: -1,
- *   poibY: 1
- * }
- *
  * Rule: correction = bull - POIB
  * X: Right +, Left -
  * Y: Up +, Down -
+ * Two decimals.
  */
 app.post("/api/calc", (req, res) => {
   try {
@@ -74,8 +62,6 @@ app.post("/api/calc", (req, res) => {
     const elevationDir = dy >= 0 ? "UP" : "DOWN";
 
     // MOA conversion
-    // True MOA: 1.047" @ 100y
-    // Inches per MOA scales linearly with yards
     const inchesPerMoaAt100 = trueMoa ? 1.047 : 1.0;
     const inchesPerMoa = inchesPerMoaAt100 * (y / 100);
 
@@ -85,8 +71,7 @@ app.post("/api/calc", (req, res) => {
     const windageClicks = windageMoa / cv;
     const elevationClicks = elevationMoa / cv;
 
-    // Two decimals (always)
-    const out = {
+    return res.json({
       inputs: {
         yards: y,
         clickValue: cv,
@@ -108,15 +93,13 @@ app.post("/api/calc", (req, res) => {
         moa: Number(elevationMoa.toFixed(2)),
         clicks: Number(elevationClicks.toFixed(2)),
       },
-    };
-
-    return res.json(out);
+    });
   } catch (e) {
-    return res.status(500).json({ error: "server error", detail: String(e && e.message ? e.message : e) });
+    return res.status(500).json({ error: "server error", detail: String(e?.message || e) });
   }
 });
 
-// IMPORTANT: Render provides PORT
+// Render provides PORT — MUST listen on it
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`SCZN3 backend_new listening on port ${PORT}`);
