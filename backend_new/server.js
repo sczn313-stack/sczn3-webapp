@@ -6,122 +6,97 @@ const app = express();
 
 // ---- middleware ----
 app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "1mb" }));
 
 // ---- helpers ----
-function round2(n) {
-  return Math.round(n * 100) / 100;
-}
-function dirX(dx) {
-  if (dx > 0) return "RIGHT";
-  if (dx < 0) return "LEFT";
-  return "CENTER";
-}
-function dirY(dy) {
-  if (dy > 0) return "UP";
-  if (dy < 0) return "DOWN";
-  return "CENTER";
+function to2(n) {
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
 }
 
-/**
- * True MOA:
- * 1 MOA = 1.047" at 100y
- * At Y yards: inches_per_moa = 1.047 * (Y/100)
- * If trueMoa OFF, use 1.000" at 100y (shooter MOA)
- */
-function inchesPerMOA(yards, trueMoa) {
-  const base = trueMoa ? 1.047 : 1.0;
-  return base * (yards / 100);
+function calcAxis(deltaIn, distanceYards, clickValueMOA, useTrueMOA) {
+  const absIn = Math.abs(deltaIn);
+
+  const moaAt100 = useTrueMOA ? 1.047 : 1.0; // inches per MOA at 100y
+  const inchesPerMOA = moaAt100 * (distanceYards / 100);
+
+  const moa = inchesPerMOA === 0 ? 0 : absIn / inchesPerMOA;
+  const clicks = clickValueMOA === 0 ? 0 : moa / clickValueMOA;
+
+  return {
+    moa: to2(moa),
+    clicks: to2(clicks),
+  };
 }
 
 // ---- routes ----
 app.get("/", (req, res) => {
-  res.type("text").send(
-    "SCZN3 backend is live. Try GET /api/health or POST /api/calc"
-  );
+  res
+    .status(200)
+    .send("SCZN3 backend is live. Try /api/health or POST /api/calc");
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, service: "sczn3-backend-new" });
+  res.json({
+    ok: true,
+    service: "sczn3-backend-new",
+    ts: new Date().toISOString(),
+  });
 });
 
+/**
+ * POST /api/calc
+ * Body:
+ * {
+ *   distanceYards: 100,
+ *   clickValueMOA: 0.25,
+ *   trueMOA: true,
+ *   bullX: 0,
+ *   bullY: 0,
+ *   poibX: -1,
+ *   poibY: 1
+ * }
+ *
+ * Rule: correction = bull - POIB
+ * ΔX > 0 => RIGHT, ΔX < 0 => LEFT
+ * ΔY > 0 => UP,    ΔY < 0 => DOWN
+ */
 app.post("/api/calc", (req, res) => {
-  try {
-    const {
-      yards = 100,
-      clickValue = 0.25,
-      trueMoa = true,
-      bullX = 0,
-      bullY = 0,
-      poibX = 0,
-      poibY = 0,
-    } = req.body || {};
+  const {
+    distanceYards = 100,
+    clickValueMOA = 0.25,
+    trueMOA = true,
+    bullX = 0,
+    bullY = 0,
+    poibX = 0,
+    poibY = 0,
+  } = req.body || {};
 
-    const Y = Number(yards);
-    const CV = Number(clickValue);
-    const TM = Boolean(trueMoa);
+  const dx = Number(bullX) - Number(poibX);
+  const dy = Number(bullY) - Number(poibY);
 
-    const bX = Number(bullX);
-    const bY = Number(bullY);
-    const pX = Number(poibX);
-    const pY = Number(poibY);
+  const windDir = dx > 0 ? "RIGHT" : dx < 0 ? "LEFT" : "NONE";
+  const elevDir = dy > 0 ? "UP" : dy < 0 ? "DOWN" : "NONE";
 
-    if (!Number.isFinite(Y) || Y <= 0) {
-      return res.status(400).json({ error: "yards must be > 0" });
-    }
-    if (!Number.isFinite(CV) || CV <= 0) {
-      return res.status(400).json({ error: "clickValue must be > 0" });
-    }
-    for (const v of [bX, bY, pX, pY]) {
-      if (!Number.isFinite(v)) {
-        return res.status(400).json({ error: "inputs must be numbers" });
-      }
-    }
+  const wind = calcAxis(dx, Number(distanceYards), Number(clickValueMOA), !!trueMOA);
+  const elev = calcAxis(dy, Number(distanceYards), Number(clickValueMOA), !!trueMOA);
 
-    // Canonical SCZN3 direction rule:
-    // correction = bull − POIB
-    const dx = bX - pX; // Right +   (move POIB to bull)
-    const dy = bY - pY; // Up +      (move POIB to bull)
-
-    const ipm = inchesPerMOA(Y, TM); // inches per 1 MOA at Y yards
-
-    const moaX = dx / ipm;
-    const moaY = dy / ipm;
-
-    const clicksX = moaX / CV;
-    const clicksY = moaY / CV;
-
-    const out = {
-      settings: {
-        yards: round2(Y),
-        clickValue: round2(CV),
-        trueMoa: TM,
-        inchesPerMOA: round2(ipm),
-      },
-      inputs: {
-        bullX: round2(bX),
-        bullY: round2(bY),
-        poibX: round2(pX),
-        poibY: round2(pY),
-      },
-      delta: {
-        dxIn: round2(dx),
-        dyIn: round2(dy),
-        windageDir: dirX(dx),
-        elevationDir: dirY(dy),
-      },
-      output: {
-        windageMOA: round2(Math.abs(moaX)),
-        elevationMOA: round2(Math.abs(moaY)),
-        windageClicks: round2(Math.abs(clicksX)),
-        elevationClicks: round2(Math.abs(clicksY)),
-      },
-    };
-
-    return res.json(out);
-  } catch (e) {
-    return res.status(500).json({ error: "server error", details: String(e) });
-  }
+  res.json({
+    inputs: {
+      distanceYards: Number(distanceYards),
+      clickValueMOA: Number(clickValueMOA),
+      trueMOA: !!trueMOA,
+      bullX: to2(Number(bullX)),
+      bullY: to2(Number(bullY)),
+      poibX: to2(Number(poibX)),
+      poibY: to2(Number(poibY)),
+    },
+    deltas: {
+      dx: to2(dx),
+      dy: to2(dy),
+    },
+    windage: { direction: windDir, moa: wind.moa, clicks: wind.clicks },
+    elevation: { direction: elevDir, moa: elev.moa, clicks: elev.clicks },
+  });
 });
 
 // ---- start ----
