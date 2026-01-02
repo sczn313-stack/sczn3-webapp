@@ -1,7 +1,8 @@
 // backend_new/server.js
 // SCZN3 backend_new — CALC + ANALYZE
-// - /api/calc: bull - POIB (direction locked), 2-decimal outputs
-// - /api/analyze: upload image, estimate POIB offset (inches) relative to bull
+// - GET  /health
+// - POST /api/calc    (bull - POIB, direction locked, 2 decimals)
+// - POST /api/analyze (upload image -> heuristic POIB offsets in inches)
 
 const express = require("express");
 const cors = require("cors");
@@ -13,13 +14,13 @@ const app = express();
 app.use(cors({ origin: true, methods: ["GET", "POST", "OPTIONS"] }));
 app.use(express.json({ limit: "1mb" }));
 
-// ----- Upload (memory) -----
+// Upload in memory
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-// ----- Helpers -----
+// ---------- helpers ----------
 function toNum(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -46,18 +47,15 @@ function inchesPerMOA(distanceYards, trueMoaOn) {
   return baseAt100 * (distanceYards / 100);
 }
 
-// Detect a "dark centroid" inside the central region (crude POIB estimate).
-// Returns { cx, cy, scoreCount } in PIXELS.
+// Heuristic: find dark centroid in center region
 function estimateDarkCentroid(image) {
   const { width, height, data } = image.bitmap;
 
-  // ignore outer margins (text/border) — focus on central 80%
   const x0 = Math.floor(width * 0.10);
   const x1 = Math.floor(width * 0.90);
   const y0 = Math.floor(height * 0.10);
   const y1 = Math.floor(height * 0.90);
 
-  // sample step for speed (bigger step = faster, less accurate)
   const step = Math.max(2, Math.floor(Math.min(width, height) / 500));
 
   let sumW = 0;
@@ -72,14 +70,12 @@ function estimateDarkCentroid(image) {
       const g = data[idx + 1];
       const b = data[idx + 2];
 
-      // simple luminance
-      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b);
+      // luminance
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-      // Treat very dark pixels as candidate "holes"
-      // Lower threshold = fewer pixels, higher threshold = more noise
+      // darker = more weight
       if (lum < 60) {
-        // weight darker pixels more
-        const w = (60 - lum);
+        const w = 60 - lum;
         sumW += w;
         sumX += x * w;
         sumY += y * w;
@@ -89,13 +85,12 @@ function estimateDarkCentroid(image) {
   }
 
   if (sumW <= 0 || count < 30) {
-    // fallback: center of image
     return { cx: width / 2, cy: height / 2, scoreCount: count };
-    }
+  }
   return { cx: sumX / sumW, cy: sumY / sumW, scoreCount: count };
 }
 
-// ----- Routes -----
+// ---------- routes ----------
 app.get("/", (req, res) => {
   res.type("text/plain").send(
     [
@@ -114,23 +109,12 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, service: "sczn3-backend-new" });
 });
 
-/**
- * POST /api/calc
- * Accepts:
- * {
- *   distanceYards: 100,
- *   clickValue: 0.25 OR clickValueMoa: 0.25,
- *   trueMoa: true,
- *   bull: {x,y},
- *   poib: {x,y}
- * }
- *
- * Rule: correction = bull - POIB
- */
+// POST /api/calc
 app.post("/api/calc", (req, res) => {
   try {
     const distanceYards = toNum(req.body?.distanceYards, 100);
 
+    // accept clickValue or clickValueMoa
     let clickValue = toNum(req.body?.clickValue, NaN);
     if (!Number.isFinite(clickValue)) clickValue = toNum(req.body?.clickValueMoa, NaN);
     if (!Number.isFinite(clickValue)) clickValue = 0.25;
@@ -145,14 +129,11 @@ app.post("/api/calc", (req, res) => {
     const poibX = toNum(poib.x, 0);
     const poibY = toNum(poib.y, 0);
 
-    // correction = bull − POIB
-    const dxIn = bullX - poibX;
-    const dyIn = bullY - poibY;
+    // rule: correction = bull - POIB
+    const dxIn = bullX - poibX; // + RIGHT
+    const dyIn = bullY - poibY; // + UP
 
     const ipm = inchesPerMOA(distanceYards, trueMoa);
-
-    const windDir = dirLR(dxIn);
-    const elevDir = dirUD(dyIn);
 
     const windMoa = ipm === 0 ? 0 : Math.abs(dxIn) / ipm;
     const elevMoa = ipm === 0 ? 0 : Math.abs(dyIn) / ipm;
@@ -176,12 +157,12 @@ app.post("/api/calc", (req, res) => {
         dyIn: round2(dyIn),
       },
       windage: {
-        direction: windDir,
+        direction: dirLR(dxIn),
         moa: round2(windMoa),
         clicks: round2(windClicks),
       },
       elevation: {
-        direction: elevDir,
+        direction: dirUD(dyIn),
         moa: round2(elevMoa),
         clicks: round2(elevClicks),
       },
@@ -191,16 +172,7 @@ app.post("/api/calc", (req, res) => {
   }
 });
 
-/**
- * POST /api/analyze
- * multipart/form-data with field "image"
- *
- * Returns:
- * - bull assumed at center of page => offsets are relative to bull
- * - poib offsets in inches (Right +, Up +)
- *
- * NOTE: This is a FIRST PASS heuristic. It finds a dark centroid in the image.
- */
+// POST /api/analyze (upload image)
 app.post("/api/analyze", upload.single("image"), async (req, res) => {
   try {
     if (!req.file?.buffer) {
@@ -209,23 +181,20 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
 
     const img = await Jimp.read(req.file.buffer);
 
-    // Normalize a bit
-    img.resize(1200, Jimp.AUTO); // stable size for consistent sampling
+    // Normalize
+    img.resize(1200, Jimp.AUTO);
     img.contrast(0.2);
 
-    // Estimate POIB pixel centroid
     const { cx, cy, scoreCount } = estimateDarkCentroid(img);
 
     const w = img.bitmap.width;
     const h = img.bitmap.height;
 
-    // Bull pixel assumed at image center (0,0 origin for bull in inches)
+    // bull assumed at center of image
     const bullPxX = w / 2;
     const bullPxY = h / 2;
 
-    // Estimate pixels-per-inch based on paper assumption:
-    // - If portrait: width ~ 8.5", height ~ 11"
-    // - If landscape: width ~ 11", height ~ 8.5"
+    // paper assumption for pixels-per-inch
     const portrait = h >= w;
     const paperW = portrait ? 8.5 : 11;
     const paperH = portrait ? 11 : 8.5;
@@ -233,17 +202,13 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
     const ppiX = w / paperW;
     const ppiY = h / paperH;
 
-    // Pixel deltas: +X right, +Y down in images
+    // image coords: +Y is down, so invert for "Up +"
     const dpx = cx - bullPxX;
     const dpy = cy - bullPxY;
 
-    // Convert to inches with SCZN3 sign convention:
-    // X: Right +  => + inches
-    // Y: Up +     => image up is negative pixels, so invert
-    const poibX_in = dpx / ppiX;
-    const poibY_in = -(dpy / ppiY);
+    const poibX_in = dpx / ppiX;     // Right +
+    const poibY_in = -(dpy / ppiY);  // Up +
 
-    // We return bull at (0,0) and POIB offsets relative to bull
     res.json({
       ok: true,
       note: "Heuristic POIB (dark centroid) relative to bull(center).",
@@ -263,7 +228,7 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
   }
 });
 
-// ----- Start -----
+// ---------- start ----------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`SCZN3 backend_new listening on port ${PORT}`);
