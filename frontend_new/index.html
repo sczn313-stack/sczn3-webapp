@@ -2,75 +2,143 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Frontend — New</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SCZN3 Frontend — New</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
-  <main class="container">
+  <div class="wrap">
     <h1>Frontend — New</h1>
-    <p>Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only. Two decimals.</p>
+    <div class="sub">
+      Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only. Two decimals.
+    </div>
 
-    <section class="card">
-      <h2>API Status</h2>
-      <div id="apiStatusText">Checking…</div>
-      <div id="apiBaseUrl">(backend url will show here)</div>
-    </section>
+    <div class="card" id="apiCard">
+      <div class="cardTitle">API Status</div>
+      <div id="apiStatus">Checking…</div>
+      <div class="small" id="apiUrl">(backend url will show here)</div>
+    </div>
 
-    <section class="card">
-      <h2>Settings</h2>
-      <label>Distance (yards)
-        <select id="distanceYards">
-          <option value="50">50</option>
-          <option value="100" selected>100</option>
-        </select>
-      </label>
+    <div class="card">
+      <div class="cardTitle">Settings</div>
 
-      <label>Click value (MOA/click)
-        <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
-      </label>
+      <div class="row">
+        <label>
+          Distance (yards)
+          <select id="distanceYards">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+          </select>
+        </label>
 
-      <label>True MOA (1.047" @ 100y)
-        <select id="trueMoa">
-          <option value="ON" selected>ON</option>
-          <option value="OFF">OFF</option>
-        </select>
-      </label>
-    </section>
+        <label>
+          Click value (MOA/click)
+          <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
+        </label>
 
-    <section class="card">
-      <h2>Inputs (inches)</h2>
+        <label>
+          True MOA (1.047" @ 100y)
+          <select id="trueMoa">
+            <option value="true" selected>ON</option>
+            <option value="false">OFF</option>
+          </select>
+        </label>
+      </div>
+    </div>
 
-      <h3>Bull</h3>
-      <label>Bull X (Right +)
-        <input id="bullX" type="number" step="0.01" value="0.00" />
-      </label>
-      <label>Bull Y (Up +)
-        <input id="bullY" type="number" step="0.01" value="0.00" />
-      </label>
+    <div class="card">
+      <div class="cardTitle">Target photo</div>
 
-      <h3>POIB</h3>
-      <label>POIB X (Right +)
-        <input id="poibX" type="number" step="0.01" value="-1.00" />
-      </label>
-      <label>POIB Y (Up +)
-        <input id="poibY" type="number" step="0.01" value="1.00" />
-      </label>
+      <div class="row">
+        <label class="full">
+          Choose photo
+          <input id="targetPhoto" type="file" accept="image/*" />
+        </label>
 
-      <button id="calcBtn">Calculate</button>
-    </section>
+        <button id="analyzeBtn" class="btn">Analyze (Auto POIB)</button>
+        <button id="calcBtn" class="btn">Calculate</button>
+      </div>
 
-    <section class="card">
-      <h2>Result</h2>
-      <div>Windage: <span id="windage"></span></div>
-      <div>Elevation: <span id="elevation"></span></div>
-      <div>ΔX (in): <span id="dx"></span></div>
-      <div>ΔY (in): <span id="dy"></span></div>
-    </section>
-  </main>
+      <div class="small" id="analyzeNote">
+        After Analyze, you should see red dots on the detected bullet holes in the preview below.
+      </div>
 
-  <!-- ORDER MATTERS -->
+      <div class="preview">
+        <canvas id="debugCanvas" width="1" height="1"></canvas>
+      </div>
+
+      <div class="small" id="debugText"></div>
+    </div>
+
+    <div class="card">
+      <div class="cardTitle">Inputs (inches)</div>
+
+      <div class="row">
+        <div class="col">
+          <div class="sectionTitle">Bull</div>
+          <label>
+            Bull X (Right +)
+            <input id="bullX" type="number" step="0.01" value="0.00" />
+          </label>
+          <label>
+            Bull Y (Up +)
+            <input id="bullY" type="number" step="0.01" value="0.00" />
+          </label>
+        </div>
+
+        <div class="col">
+          <div class="sectionTitle">POIB</div>
+          <label>
+            POIB X (Right +)
+            <input id="poibX" type="number" step="0.01" value="0.00" />
+          </label>
+          <label>
+            POIB Y (Up +)
+            <input id="poibY" type="number" step="0.01" value="0.00" />
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="cardTitle">Result</div>
+      <div class="resultRow">
+        <div class="k">Windage</div>
+        <div class="v" id="windageOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">Elevation</div>
+        <div class="v" id="elevOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">ΔX (in)</div>
+        <div class="v" id="dxOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">ΔY (in)</div>
+        <div class="v" id="dyOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">MOA X</div>
+        <div class="v" id="moaXOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">MOA Y</div>
+        <div class="v" id="moaYOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">Clicks X</div>
+        <div class="v" id="clicksXOut">—</div>
+      </div>
+      <div class="resultRow">
+        <div class="k">Clicks Y</div>
+        <div class="v" id="clicksYOut">—</div>
+      </div>
+    </div>
+  </div>
+
   <script src="./api.js"></script>
-  <script src="./app.js"></script>
 </body>
 </html>
