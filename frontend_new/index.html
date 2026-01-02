@@ -16,6 +16,28 @@
       </header>
 
       <section class="card">
+        <h2>Analyze Image</h2>
+
+        <div class="grid2">
+          <div class="field">
+            <label for="imageFile">Target photo</label>
+            <input id="imageFile" type="file" accept="image/*" />
+          </div>
+
+          <div class="field">
+            <label for="analyzeStatus">Status</label>
+            <input id="analyzeStatus" type="text" value="Ready" readonly />
+          </div>
+        </div>
+
+        <button id="analyzeBtn" class="btn">Analyze (Auto POIB)</button>
+
+        <p class="sub" style="margin-top:10px;">
+          First-pass analyzer: finds darkest centroid in the photo and converts to inches (Right+/Up+).
+        </p>
+      </section>
+
+      <section class="card">
         <h2>Settings</h2>
 
         <div class="grid2">
@@ -65,12 +87,12 @@
 
             <div class="field">
               <label for="poibX">POIB X (Right +)</label>
-              <input id="poibX" type="number" step="0.01" value="-1.00" />
+              <input id="poibX" type="number" step="0.01" value="0.00" />
             </div>
 
             <div class="field">
               <label for="poibY">POIB Y (Up +)</label>
-              <input id="poibY" type="number" step="0.01" value="1.00" />
+              <input id="poibY" type="number" step="0.01" value="0.00" />
             </div>
           </div>
         </div>
@@ -103,6 +125,7 @@
       </section>
     </main>
 
-    <script src="app.js"></script>
+    <!-- IMPORTANT: module so imports work -->
+    <script type="module" src="app.js"></script>
   </body>
 </html>
