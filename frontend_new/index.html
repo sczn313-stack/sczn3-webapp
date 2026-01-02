@@ -4,114 +4,105 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frontend — New</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
-
   <body>
-    <main class="wrap">
-      <h1>Frontend — New</h1>
-      <p class="sub">
-        Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only. Two decimals.
-      </p>
+    <main class="page">
+      <header class="header">
+        <h1>Frontend — New</h1>
+        <p class="sub">
+          Clicks to move <strong>POIB → Bull</strong> (rule: <strong>bull − POIB</strong>). Inches only. Two decimals.
+        </p>
+      </header>
 
-      <!-- SETTINGS -->
       <section class="card">
         <h2>Settings</h2>
 
         <div class="grid2">
-          <label>
-            Distance (yards)
-            <select id="distance">
-              <option value="25">25</option>
+          <div class="field">
+            <label for="distanceYards">Distance (yards)</label>
+            <select id="distanceYards">
               <option value="50">50</option>
               <option value="100" selected>100</option>
             </select>
-          </label>
+          </div>
 
-          <label>
-            Click value (MOA/click)
+          <div class="field">
+            <label for="clickValue">Click value (MOA/click)</label>
             <input id="clickValue" type="number" step="0.01" value="0.25" />
-          </label>
+          </div>
 
-          <label>
-            True MOA (1.047&quot; @ 100y)
+          <div class="field">
+            <label for="trueMoa">True MOA (1.047&quot; @ 100y)</label>
             <select id="trueMoa">
               <option value="on" selected>ON</option>
               <option value="off">OFF</option>
             </select>
-          </label>
-
-          <div></div>
+          </div>
         </div>
       </section>
 
-      <!-- INPUTS -->
       <section class="card">
         <h2>Inputs (inches)</h2>
 
-        <div class="grid2">
-          <div>
+        <div class="inputsGrid">
+          <div class="block">
             <h3>Bull</h3>
 
-            <label>
-              Bull X (Right +)
+            <div class="field">
+              <label for="bullX">Bull X (Right +)</label>
               <input id="bullX" type="number" step="0.01" value="0.00" />
-            </label>
+            </div>
 
-            <label>
-              Bull Y (Up +)
+            <div class="field">
+              <label for="bullY">Bull Y (Up +)</label>
               <input id="bullY" type="number" step="0.01" value="0.00" />
-            </label>
+            </div>
           </div>
 
-          <div>
+          <div class="block">
             <h3>POIB</h3>
 
-            <label>
-              POIB X (Right +)
+            <div class="field">
+              <label for="poibX">POIB X (Right +)</label>
               <input id="poibX" type="number" step="0.01" value="-1.00" />
-            </label>
+            </div>
 
-            <label>
-              POIB Y (Up +)
+            <div class="field">
+              <label for="poibY">POIB Y (Up +)</label>
               <input id="poibY" type="number" step="0.01" value="1.00" />
-            </label>
+            </div>
           </div>
         </div>
 
-        <button id="calcBtn" class="btn" type="button">Calculate</button>
+        <button id="calcBtn" class="btn">Calculate</button>
       </section>
 
-      <!-- ANALYZE IMAGE (OPTIONAL) -->
-      <section class="card">
-        <h2>Analyze Image (optional)</h2>
-        <p class="sub">
-          Upload a target photo. When backend is connected, this will return POIB and clicks automatically.
-        </p>
-
-        <div class="grid2">
-          <label>
-            Target photo
-            <input id="imageFile" type="file" accept="image/*" />
-          </label>
-
-          <label>
-            Status
-            <input id="analyzeStatus" type="text" value="Not connected yet" disabled />
-          </label>
-        </div>
-
-        <button id="analyzeBtn" class="btn" type="button">Analyze Image</button>
-      </section>
-
-      <!-- RESULT -->
       <section class="card">
         <h2>Result</h2>
-        <div id="result"></div>
+
+        <div class="resultRow">
+          <div class="resultLabel">Windage</div>
+          <div id="windageText" class="resultValue">—</div>
+        </div>
+
+        <div class="resultRow">
+          <div class="resultLabel">Elevation</div>
+          <div id="elevationText" class="resultValue">—</div>
+        </div>
+
+        <div class="resultRow small">
+          <div class="resultLabel">ΔX (in)</div>
+          <div id="dxText" class="resultValue">—</div>
+        </div>
+
+        <div class="resultRow small">
+          <div class="resultLabel">ΔY (in)</div>
+          <div id="dyText" class="resultValue">—</div>
+        </div>
       </section>
     </main>
 
-    <!-- IMPORTANT: module so app.js can import api.js -->
-    <script type="module" src="./app.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>
