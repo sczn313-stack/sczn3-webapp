@@ -3,129 +3,108 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Frontend — New</title>
-    <link rel="stylesheet" href="styles.css" />
+    <title>SCZN3 — Frontend New</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="page">
-      <header class="header">
-        <h1>Frontend — New</h1>
-        <p class="sub">
-          Clicks to move <strong>POIB → Bull</strong> (rule: <strong>bull − POIB</strong>). Inches only. Two decimals.
-        </p>
-      </header>
+    <div class="wrap">
+      <h1>Frontend — New</h1>
+      <p class="sub">
+        Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only.
+        Two decimals.
+      </p>
 
-      <section class="card">
-        <h2>Analyze Image</h2>
+      <!-- NEW: API status -->
+      <div class="card">
+        <h2>API Status</h2>
+        <div id="apiStatus" class="v">Checking…</div>
+        <div class="sub" id="apiBase">(backend url will show here)</div>
+      </div>
 
-        <div class="grid2">
-          <div class="field">
-            <label for="imageFile">Target photo</label>
-            <input id="imageFile" type="file" accept="image/*" />
-          </div>
-
-          <div class="field">
-            <label for="analyzeStatus">Status</label>
-            <input id="analyzeStatus" type="text" value="Ready" readonly />
-          </div>
-        </div>
-
-        <button id="analyzeBtn" class="btn">Analyze (Auto POIB)</button>
-
-        <p class="sub" style="margin-top:10px;">
-          First-pass analyzer: finds darkest centroid in the photo and converts to inches (Right+/Up+).
-        </p>
-      </section>
-
-      <section class="card">
+      <div class="card">
         <h2>Settings</h2>
-
-        <div class="grid2">
-          <div class="field">
-            <label for="distanceYards">Distance (yards)</label>
+        <div class="grid">
+          <label>
+            Distance (yards)
             <select id="distanceYards">
               <option value="50">50</option>
               <option value="100" selected>100</option>
             </select>
-          </div>
+          </label>
 
-          <div class="field">
-            <label for="clickValue">Click value (MOA/click)</label>
-            <input id="clickValue" type="number" step="0.01" value="0.25" />
-          </div>
+          <label>
+            Click value (MOA/click)
+            <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
+          </label>
 
-          <div class="field">
-            <label for="trueMoa">True MOA (1.047&quot; @ 100y)</label>
+          <label>
+            True MOA (1.047" @ 100y)
             <select id="trueMoa">
-              <option value="on" selected>ON</option>
-              <option value="off">OFF</option>
+              <option value="true" selected>ON</option>
+              <option value="false">OFF</option>
             </select>
-          </div>
+          </label>
         </div>
-      </section>
+      </div>
 
-      <section class="card">
+      <div class="card">
         <h2>Inputs (inches)</h2>
-
-        <div class="inputsGrid">
-          <div class="block">
+        <div class="grid2">
+          <div>
             <h3>Bull</h3>
-
-            <div class="field">
-              <label for="bullX">Bull X (Right +)</label>
+            <label>
+              Bull X (Right +)
               <input id="bullX" type="number" step="0.01" value="0.00" />
-            </div>
-
-            <div class="field">
-              <label for="bullY">Bull Y (Up +)</label>
+            </label>
+            <label>
+              Bull Y (Up +)
               <input id="bullY" type="number" step="0.01" value="0.00" />
-            </div>
+            </label>
           </div>
 
-          <div class="block">
+          <div>
             <h3>POIB</h3>
-
-            <div class="field">
-              <label for="poibX">POIB X (Right +)</label>
-              <input id="poibX" type="number" step="0.01" value="0.00" />
-            </div>
-
-            <div class="field">
-              <label for="poibY">POIB Y (Up +)</label>
-              <input id="poibY" type="number" step="0.01" value="0.00" />
-            </div>
+            <label>
+              POIB X (Right +)
+              <input id="poibX" type="number" step="0.01" value="-1.00" />
+            </label>
+            <label>
+              POIB Y (Up +)
+              <input id="poibY" type="number" step="0.01" value="1.00" />
+            </label>
           </div>
         </div>
 
-        <button id="calcBtn" class="btn">Calculate</button>
-      </section>
+        <button id="calcBtn">Calculate</button>
+        <div id="errorBox" class="error"></div>
+      </div>
 
-      <section class="card">
+      <div class="card">
         <h2>Result</h2>
 
-        <div class="resultRow">
-          <div class="resultLabel">Windage</div>
-          <div id="windageText" class="resultValue">—</div>
+        <div class="row">
+          <div class="k">Windage</div>
+          <div id="windageLine" class="v"></div>
         </div>
 
-        <div class="resultRow">
-          <div class="resultLabel">Elevation</div>
-          <div id="elevationText" class="resultValue">—</div>
+        <div class="row">
+          <div class="k">Elevation</div>
+          <div id="elevationLine" class="v"></div>
         </div>
 
-        <div class="resultRow small">
-          <div class="resultLabel">ΔX (in)</div>
-          <div id="dxText" class="resultValue">—</div>
+        <div class="row">
+          <div class="k">ΔX (in)</div>
+          <div id="dxLine" class="v"></div>
         </div>
 
-        <div class="resultRow small">
-          <div class="resultLabel">ΔY (in)</div>
-          <div id="dyText" class="resultValue">—</div>
+        <div class="row">
+          <div class="k">ΔY (in)</div>
+          <div id="dyLine" class="v"></div>
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
 
-    <!-- IMPORTANT: module so imports work -->
-    <script type="module" src="app.js"></script>
+    <script src="./api.js"></script>
+    <script src="./app.js"></script>
   </body>
 </html>
