@@ -4,110 +4,120 @@ const cors = require("cors");
 
 const app = express();
 
-// CORS + JSON body parsing
-app.use(cors());
+// --- CORS: allow your Render static sites + local dev ---
+app.use(
+  cors({
+    origin: [
+      "https://sczn3-webapp-313.onrender.com",
+      "https://sczn3-webapp-313.onrender.com/",
+      // add more later if you spin up other frontends
+      "http://localhost:5173",
+      "http://localhost:3000",
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+
 app.use(express.json({ limit: "2mb" }));
 
-// Health check
-app.get("/", (req, res) => {
+// --- Health check (Render likes this) ---
+app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "sczn3-backend-new" });
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({ ok: true });
-});
-
 /**
- * POST /api/zero
+ * POST /api/calc
  * Body:
  * {
- *   "yards": 100,
- *   "clickValue": 0.25,
- *   "trueMOA": true,
- *   "bull": { "x": 0, "y": 0 },
- *   "poib": { "x": -1, "y": 1 }
+ *   yards: 100,
+ *   clickValue: 0.25,
+ *   trueMoa: true,
+ *   bullX: 0,
+ *   bullY: 0,
+ *   poibX: -1,
+ *   poibY: 1
  * }
  *
- * Convention:
- * - X: Right is +
- * - Y: Up is +
- * Rule: delta = bull - poib  (move POIB -> Bull)
+ * Rule: correction = bull - POIB
+ * X: Right +, Left -
+ * Y: Up +, Down -
  */
-app.post("/api/zero", (req, res) => {
+app.post("/api/calc", (req, res) => {
   try {
-    const yards = Number(req.body?.yards ?? 100);
-    const clickValue = Number(req.body?.clickValue ?? 0.25);
-    const trueMOA = Boolean(req.body?.trueMOA ?? true);
+    const {
+      yards = 100,
+      clickValue = 0.25,
+      trueMoa = true,
+      bullX = 0,
+      bullY = 0,
+      poibX = 0,
+      poibY = 0,
+    } = req.body || {};
 
-    const bullX = Number(req.body?.bull?.x ?? 0);
-    const bullY = Number(req.body?.bull?.y ?? 0);
+    const y = Number(yards);
+    const cv = Number(clickValue);
 
-    const poibX = Number(req.body?.poib?.x ?? 0);
-    const poibY = Number(req.body?.poib?.y ?? 0);
+    const bx = Number(bullX);
+    const by = Number(bullY);
+    const px = Number(poibX);
+    const py = Number(poibY);
 
-    if (!Number.isFinite(yards) || yards <= 0) {
-      return res.status(400).json({ ok: false, error: "yards must be > 0" });
-    }
-    if (!Number.isFinite(clickValue) || clickValue <= 0) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "clickValue must be > 0" });
-    }
+    if (!isFinite(y) || y <= 0) return res.status(400).json({ error: "yards must be > 0" });
+    if (!isFinite(cv) || cv <= 0) return res.status(400).json({ error: "clickValue must be > 0" });
 
-    // inches per 1 MOA at the given distance
-    const inchesPerMOAAt100 = trueMOA ? 1.047 : 1.0;
-    const inchesPerMOA = inchesPerMOAAt100 * (yards / 100);
-
-    // delta (inches)
-    const dx = bullX - poibX; // + = move RIGHT
-    const dy = bullY - poibY; // + = move UP
-
-    // moa
-    const moaX = dx / inchesPerMOA;
-    const moaY = dy / inchesPerMOA;
-
-    // clicks (signed)
-    const clicksX = moaX / clickValue;
-    const clicksY = moaY / clickValue;
+    // Core rule
+    const dx = bx - px; // + = RIGHT
+    const dy = by - py; // + = UP
 
     const windageDir = dx >= 0 ? "RIGHT" : "LEFT";
     const elevationDir = dy >= 0 ? "UP" : "DOWN";
 
-    const round2 = (n) => Number(n.toFixed(2));
+    // MOA conversion
+    // True MOA: 1.047" @ 100y
+    // Inches per MOA scales linearly with yards
+    const inchesPerMoaAt100 = trueMoa ? 1.047 : 1.0;
+    const inchesPerMoa = inchesPerMoaAt100 * (y / 100);
 
-    return res.json({
-      ok: true,
+    const windageMoa = Math.abs(dx) / inchesPerMoa;
+    const elevationMoa = Math.abs(dy) / inchesPerMoa;
+
+    const windageClicks = windageMoa / cv;
+    const elevationClicks = elevationMoa / cv;
+
+    // Two decimals (always)
+    const out = {
       inputs: {
-        yards,
-        clickValue,
-        trueMOA,
-        bull: { x: bullX, y: bullY },
-        poib: { x: poibX, y: poibY }
+        yards: y,
+        clickValue: cv,
+        trueMoa: !!trueMoa,
+        bull: { x: bx, y: by },
+        poib: { x: px, y: py },
       },
       delta: {
-        dx_in: round2(dx),
-        dy_in: round2(dy)
+        dx: Number(dx.toFixed(2)),
+        dy: Number(dy.toFixed(2)),
       },
-      result: {
-        windage: {
-          direction: windageDir,
-          moa: round2(Math.abs(moaX)),
-          clicks: round2(Math.abs(clicksX))
-        },
-        elevation: {
-          direction: elevationDir,
-          moa: round2(Math.abs(moaY)),
-          clicks: round2(Math.abs(clicksY))
-        }
-      }
-    });
+      windage: {
+        direction: windageDir,
+        moa: Number(windageMoa.toFixed(2)),
+        clicks: Number(windageClicks.toFixed(2)),
+      },
+      elevation: {
+        direction: elevationDir,
+        moa: Number(elevationMoa.toFixed(2)),
+        clicks: Number(elevationClicks.toFixed(2)),
+      },
+    };
+
+    return res.json(out);
   } catch (e) {
-    return res.status(500).json({ ok: false, error: "server error" });
+    return res.status(500).json({ error: "server error", detail: String(e && e.message ? e.message : e) });
   }
 });
 
-// Render uses PORT
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`SCZN3 backend_new listening on ${PORT}`);
+// IMPORTANT: Render provides PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`SCZN3 backend_new listening on port ${PORT}`);
 });
