@@ -1,5 +1,5 @@
 // frontend_new/app.js
-// Analyze (Auto POIB) v2 + Result rendering hard-lock
+// Analyze (Auto POIB) v3 + ROI masking to ignore grid labels/rulers + stronger hole filtering
 // - Convention locked:
 //   Right = +X, Up = +Y
 //   POIB is where the group is relative to bull
@@ -32,7 +32,7 @@
     calcBtn: $("calcBtn"),
     preview: $("preview"),
 
-    // results (these IDs must exist in your HTML; if some don't, we skip)
+    // results
     windageDir: $("windageDir"),
     windageClicks: $("windageClicks"),
     windageMoa: $("windageMoa"),
@@ -50,6 +50,9 @@
     clicksY: $("clicksY"),
   };
 
+  // ---------------------------
+  // Formatting + basic helpers
+  // ---------------------------
   function fmt2(n) {
     const x = Number(n);
     if (!Number.isFinite(x)) return "0.00";
@@ -72,6 +75,13 @@
     inputEl.value = fmt2(v);
   }
 
+  function clampInt(v, lo, hi) {
+    const x = v | 0;
+    if (x < lo) return lo;
+    if (x > hi) return hi;
+    return x;
+  }
+
   function getSettings() {
     const distanceYards = getNum(els.distanceYards, 100);
     const clickValueMoa = getNum(els.clickValueMoa, 0.25);
@@ -80,8 +90,6 @@
   }
 
   function inchesPerMOA(distanceYards, trueMoa) {
-    // true MOA: 1.047" @ 100y, scales linearly by distance
-    // "shooter's MOA": 1.000" @ 100y, scales linearly by distance
     const base = trueMoa ? 1.047 : 1.0;
     return base * (distanceYards / 100);
   }
@@ -114,7 +122,6 @@
   function renderDirectionsAndDeltas() {
     const { dx, dy } = computeCorrectionFromInputs();
 
-    // show absolute deltas + direction label
     if (els.windageDir) els.windageDir.textContent = dirX(dx);
     if (els.elevDir) els.elevDir.textContent = dirY(dy);
 
@@ -138,7 +145,6 @@
     if (els.clicksX) els.clicksX.textContent = fmt2(clicksX);
     if (els.clicksY) els.clicksY.textContent = fmt2(clicksY);
 
-    // keep the “Windage/Elevation line” populated even if API fields differ
     if (els.windageMoa) els.windageMoa.textContent = fmt2(moaX);
     if (els.elevMoa) els.elevMoa.textContent = fmt2(moaY);
     if (els.windageClicks) els.windageClicks.textContent = fmt2(clicksX);
@@ -146,9 +152,6 @@
   }
 
   function renderFromApiResponse(resp) {
-    // We still lock direction + Δ from bull-POIB locally,
-    // but if API returns MOA/clicks, we prefer those numbers.
-    // Handle multiple possible response shapes.
     const pick = (obj, paths) => {
       for (const p of paths) {
         const parts = p.split(".");
@@ -166,54 +169,20 @@
       return undefined;
     };
 
-    const windClicks = pick(resp, [
-      "windage.clicks",
-      "windageClicks",
-      "clicksX",
-      "clicks_x",
-      "xClicks",
-    ]);
-    const elevClicks = pick(resp, [
-      "elevation.clicks",
-      "elevClicks",
-      "elevationClicks",
-      "clicksY",
-      "clicks_y",
-      "yClicks",
-    ]);
-    const windMoa = pick(resp, [
-      "windage.moa",
-      "windageMoa",
-      "moaX",
-      "moa_x",
-      "xMoa",
-    ]);
-    const elevMoa = pick(resp, [
-      "elevation.moa",
-      "elevMoa",
-      "elevationMoa",
-      "moaY",
-      "moa_y",
-      "yMoa",
-    ]);
+    const windClicks = pick(resp, ["windage.clicks", "windageClicks", "clicksX", "clicks_x", "xClicks"]);
+    const elevClicks = pick(resp, ["elevation.clicks", "elevClicks", "elevationClicks", "clicksY", "clicks_y", "yClicks"]);
+    const windMoa = pick(resp, ["windage.moa", "windageMoa", "moaX", "moa_x", "xMoa"]);
+    const elevMoa = pick(resp, ["elevation.moa", "elevMoa", "elevationMoa", "moaY", "moa_y", "yMoa"]);
 
-    if (windClicks !== undefined && els.windageClicks)
-      els.windageClicks.textContent = fmt2(windClicks);
-    if (elevClicks !== undefined && els.elevClicks)
-      els.elevClicks.textContent = fmt2(elevClicks);
+    if (windClicks !== undefined && els.windageClicks) els.windageClicks.textContent = fmt2(windClicks);
+    if (elevClicks !== undefined && els.elevClicks) els.elevClicks.textContent = fmt2(elevClicks);
+    if (windMoa !== undefined && els.windageMoa) els.windageMoa.textContent = fmt2(windMoa);
+    if (elevMoa !== undefined && els.elevMoa) els.elevMoa.textContent = fmt2(elevMoa);
 
-    if (windMoa !== undefined && els.windageMoa)
-      els.windageMoa.textContent = fmt2(windMoa);
-    if (elevMoa !== undefined && els.elevMoa)
-      els.elevMoa.textContent = fmt2(elevMoa);
-
-    // Also fill the “MOA X/Y” and “Clicks X/Y” rows if present
     if (els.moaX && windMoa !== undefined) els.moaX.textContent = fmt2(windMoa);
     if (els.moaY && elevMoa !== undefined) els.moaY.textContent = fmt2(elevMoa);
-    if (els.clicksX && windClicks !== undefined)
-      els.clicksX.textContent = fmt2(windClicks);
-    if (els.clicksY && elevClicks !== undefined)
-      els.clicksY.textContent = fmt2(elevClicks);
+    if (els.clicksX && windClicks !== undefined) els.clicksX.textContent = fmt2(windClicks);
+    if (els.clicksY && elevClicks !== undefined) els.clicksY.textContent = fmt2(elevClicks);
   }
 
   function setApiStatus(connected, urlText, extraLines) {
@@ -224,7 +193,6 @@
   }
 
   async function checkApi() {
-    // Uses api.js which exposes window.getHealth() and window.postCalc()
     if (typeof window.getHealth !== "function") {
       setApiStatus(false, "", ["Missing window.getHealth(). Make sure api.js is loaded before app.js."]);
       return;
@@ -241,8 +209,8 @@
   }
 
   async function runCalc() {
-    renderDirectionsAndDeltas();   // always show directions + Δ from bull-POIB
-    renderMOAandClicksFallback();  // always show MOA/clicks even if API fields differ
+    renderDirectionsAndDeltas();
+    renderMOAandClicksFallback();
 
     if (typeof window.postCalc !== "function") {
       setDebug(["Missing window.postCalc(). Make sure api.js is loaded before app.js."]);
@@ -269,7 +237,7 @@
   }
 
   // ---------------------------
-  // Analyze (Auto POIB) — image -> POIB (inches)
+  // Analyze (Auto POIB)
   // ---------------------------
   function ensureCanvas() {
     if (!els.preview) return null;
@@ -298,25 +266,53 @@
     const { data, width, height } = imgData;
     const g = new Uint8ClampedArray(width * height);
     for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-      // luminance
       g[j] = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) | 0;
     }
     return g;
   }
 
-  function projectionPeaks(gray, w, h) {
-    // Count dark pixels per column/row with a threshold
-    const thr = 150;
-    const projX = new Float32Array(w);
-    const projY = new Float32Array(h);
+  // ROI mask to ignore top letters, bottom numbers, and side rulers.
+  // These percentages are tuned for your 8.5x11 grid template.
+  function computeROI(w, h) {
+    const topCut = Math.round(h * 0.12);
+    const botCut = Math.round(h * 0.12);
+    const leftCut = Math.round(w * 0.06);
+    const rightCut = Math.round(w * 0.06);
 
-    for (let y = 0; y < h; y++) {
+    const x1 = clampInt(leftCut, 0, w - 1);
+    const x2 = clampInt(w - 1 - rightCut, 0, w - 1);
+    const y1 = clampInt(topCut, 0, h - 1);
+    const y2 = clampInt(h - 1 - botCut, 0, h - 1);
+
+    return {
+      x1,
+      y1,
+      x2,
+      y2,
+      w: Math.max(1, x2 - x1 + 1),
+      h: Math.max(1, y2 - y1 + 1),
+    };
+  }
+
+  function projectionPeaksROI(gray, w, h, roi) {
+    // Count dark pixels per column/row INSIDE ROI only
+    const thr = 150;
+
+    const rw = roi.w;
+    const rh = roi.h;
+
+    const projX = new Float32Array(rw);
+    const projY = new Float32Array(rh);
+
+    for (let yy = 0; yy < rh; yy++) {
+      const y = roi.y1 + yy;
       const rowOff = y * w;
-      for (let x = 0; x < w; x++) {
+      for (let xx = 0; xx < rw; xx++) {
+        const x = roi.x1 + xx;
         const v = gray[rowOff + x];
         if (v < thr) {
-          projX[x] += 1;
-          projY[y] += 1;
+          projX[xx] += 1;
+          projY[yy] += 1;
         }
       }
     }
@@ -333,13 +329,22 @@
       return { idx: bestI, val: bestV };
     };
 
-    const x0 = argmax(projX).idx;
-    const y0 = argmax(projY).idx;
-    return { projX, projY, x0, y0 };
+    const xLocal = argmax(projX).idx;
+    const yLocal = argmax(projY).idx;
+
+    return {
+      projX,
+      projY,
+      x0: roi.x1 + xLocal,
+      y0: roi.y1 + yLocal,
+      xLocal,
+      yLocal,
+      rw,
+      rh,
+    };
   }
 
   function pickLinePositions(proj, minDist, topN) {
-    // pick local maxima with spacing
     const candidates = [];
     for (let i = 2; i < proj.length - 2; i++) {
       const v = proj[i];
@@ -358,10 +363,12 @@
     return picked;
   }
 
-  function estimatePixelsPerInch(projX, projY) {
-    // Use spacing between strong vertical and horizontal line peaks
-    const xs = pickLinePositions(projX, 40, 40);
-    const ys = pickLinePositions(projY, 40, 40);
+  function estimatePixelsPerInchFromROI(projX, projY) {
+    // spacing between strong grid line peaks inside ROI
+    const minDist = Math.max(20, Math.round(Math.min(projX.length, projY.length) * 0.04));
+
+    const xs = pickLinePositions(projX, minDist, 60);
+    const ys = pickLinePositions(projY, minDist, 60);
 
     const median = (arr) => {
       if (!arr.length) return null;
@@ -373,21 +380,31 @@
     function diffs(list) {
       const d = [];
       for (let i = 1; i < list.length; i++) d.push(list[i] - list[i - 1]);
-      // keep plausible 1" spacing range
-      return d.filter((x) => x >= 50 && x <= 200);
+      // plausible 1" spacing range (scaled)
+      return d.filter((x) => x >= 40 && x <= 220);
     }
 
-    const dx = median(diffs(xs)) || 100;
-    const dy = median(diffs(ys)) || 100;
-    // average them
-    return (dx + dy) / 2;
+    const dx = median(diffs(xs));
+    const dy = median(diffs(ys));
+
+    const fallback = 100;
+    const ppi = (Number(dx) || fallback) * 0.5 + (Number(dy) || fallback) * 0.5;
+    return ppi;
   }
 
-  function connectedComponents(gray, w, h) {
-    // Threshold dark blobs
+  function connectedComponents(gray, w, h, roi) {
+    // threshold dark blobs INSIDE ROI only
     const thr = 110;
     const mask = new Uint8Array(w * h);
-    for (let i = 0; i < mask.length; i++) mask[i] = gray[i] < thr ? 1 : 0;
+    for (let y = 0; y < h; y++) {
+      const inY = y >= roi.y1 && y <= roi.y2;
+      const rowOff = y * w;
+      for (let x = 0; x < w; x++) {
+        const inROI = inY && x >= roi.x1 && x <= roi.x2;
+        const idx = rowOff + x;
+        mask[idx] = inROI && gray[idx] < thr ? 1 : 0;
+      }
+    }
 
     const visited = new Uint8Array(w * h);
     const comps = [];
@@ -403,12 +420,11 @@
       [-1, -1],
     ];
 
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
+    for (let y = roi.y1; y <= roi.y2; y++) {
+      for (let x = roi.x1; x <= roi.x2; x++) {
         const idx = y * w + x;
         if (!mask[idx] || visited[idx]) continue;
 
-        // BFS
         const qx = [x];
         const qy = [y];
         visited[idx] = 1;
@@ -437,7 +453,7 @@
           for (const [dx, dy] of dirs) {
             const nx = cx + dx;
             const ny = cy + dy;
-            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            if (nx < roi.x1 || nx > roi.x2 || ny < roi.y1 || ny > roi.y2) continue;
             const nidx = ny * w + nx;
             if (mask[nidx] && !visited[nidx]) {
               visited[nidx] = 1;
@@ -467,42 +483,43 @@
     return comps;
   }
 
-  function filterHoleCandidates(comps, w, h, bullX, bullY) {
-    // Throw away line-ish and huge components; keep small-ish blobs.
+  function filterHoleCandidates(comps, ppi) {
+    // Dynamic sizing tied to pixels/inch so we don't accept label strokes.
+    // These ranges are conservative for typical phone photos of paper holes.
+    const minD = Math.max(6, Math.round(ppi * 0.06));  // ~0.06"
+    const maxD = Math.max(16, Math.round(ppi * 0.32)); // ~0.32"
+
+    const minArea = Math.max(30, Math.round((minD * minD) * 0.35));
+    const maxArea = Math.max(400, Math.round((maxD * maxD) * 0.90));
+
     const out = [];
+
     for (const c of comps) {
-      // reject huge areas (crosshair/grid/border)
-      if (c.area > 8000) continue;
+      // size gates
+      if (c.area < minArea) continue;
+      if (c.area > maxArea) continue;
 
-      // reject very long thin lines
+      if (c.bw < minD || c.bh < minD) continue;
+      if (c.bw > maxD || c.bh > maxD) continue;
+
+      // reject long thin strokes (numbers/letters)
       const ar = c.bw / c.bh;
-      if (ar > 8 || ar < 1 / 8) continue;
+      if (ar > 2.6 || ar < 1 / 2.6) continue;
 
-      // reject tiny specks
-      if (c.area < 25) continue;
-
-      // reject too big in one dimension
-      if (c.bw > 120 || c.bh > 120) continue;
-
-      // keep within reasonable radius of bull (avoid margins text)
-      const dx = c.cx - bullX;
-      const dy = c.cy - bullY;
-      const r = Math.sqrt(dx * dx + dy * dy);
-      if (r > Math.min(w, h) * 0.55) continue;
+      // fill ratio: text strokes have low fill inside bbox; holes are denser
+      const fill = c.area / (c.bw * c.bh);
+      if (fill < 0.22) continue;
 
       out.push(c);
     }
 
-    // If we got too many, keep the ones closest to the cluster (by density around their median)
-    if (out.length > 30) {
+    // If we still have a bunch (text got through), keep densest cluster:
+    // pick up to 10 closest to the median center.
+    if (out.length > 10) {
       const mx = out.reduce((s, c) => s + c.cx, 0) / out.length;
       const my = out.reduce((s, c) => s + c.cy, 0) / out.length;
-      out.sort((a, b) => {
-        const da = (a.cx - mx) ** 2 + (a.cy - my) ** 2;
-        const db = (b.cx - mx) ** 2 + (b.cy - my) ** 2;
-        return da - db;
-      });
-      return out.slice(0, 30);
+      out.sort((a, b) => ((a.cx - mx) ** 2 + (a.cy - my) ** 2) - ((b.cx - mx) ** 2 + (b.cy - my) ** 2));
+      return out.slice(0, 10);
     }
 
     return out;
@@ -538,22 +555,30 @@
     const imgData = ctx.getImageData(0, 0, w, h);
     const gray = toGrayscale(imgData);
 
-    // bull center via strongest vertical + horizontal lines
-    const { projX, projY, x0, y0 } = projectionPeaks(gray, w, h);
+    // ROI that excludes labels/rulers
+    const roi = computeROI(w, h);
 
-    // pixels per inch estimate
-    const ppi = estimatePixelsPerInch(projX, projY);
+    // bull center via strongest vertical + horizontal lines INSIDE ROI
+    const { projX, projY, x0, y0 } = projectionPeaksROI(gray, w, h, roi);
 
-    // find hole blobs
-    const comps = connectedComponents(gray, w, h);
-    const holes = filterHoleCandidates(comps, w, h, x0, y0);
+    // pixels per inch estimate INSIDE ROI
+    const ppi = estimatePixelsPerInchFromROI(projX, projY);
+
+    // find hole blobs INSIDE ROI
+    const comps = connectedComponents(gray, w, h, roi);
+    const holes = filterHoleCandidates(comps, ppi);
 
     if (!holes.length) {
-      setDebug(["No hole candidates found. Try a clearer photo (more contrast)."]);
+      setDebug([
+        "No hole candidates found inside ROI.",
+        `ROI: x=${roi.x1}-${roi.x2}, y=${roi.y1}-${roi.y2}`,
+        `ppi=${Math.round(ppi)}`,
+        "Try: brighter photo, higher contrast, avoid glare.",
+      ]);
       return;
     }
 
-    // group centroid (px)
+    // group center (px)
     const gx = holes.reduce((s, c) => s + c.cx, 0) / holes.length;
     const gy = holes.reduce((s, c) => s + c.cy, 0) / holes.length;
 
@@ -561,17 +586,21 @@
     const poibX = (gx - x0) / ppi;
     const poibY = (y0 - gy) / ppi;
 
-    // draw overlays (red dots for holes, cyan for bull, red for group center)
+    // draw overlays
     ctx.drawImage(img, 0, 0, w, h);
     ctx.lineWidth = 2;
 
-    // bull
+    // ROI outline
+    ctx.strokeStyle = "rgba(0, 180, 255, 0.35)";
+    ctx.strokeRect(roi.x1, roi.y1, roi.w, roi.h);
+
+    // bull (cyan)
     ctx.strokeStyle = "rgba(0,255,255,0.9)";
     ctx.beginPath();
     ctx.arc(x0, y0, 10, 0, Math.PI * 2);
     ctx.stroke();
 
-    // holes
+    // holes (red)
     ctx.fillStyle = "rgba(255,0,0,0.85)";
     for (const c of holes) {
       ctx.beginPath();
@@ -579,7 +608,7 @@
       ctx.fill();
     }
 
-    // group center
+    // group center (red ring)
     ctx.strokeStyle = "rgba(255,0,0,0.95)";
     ctx.beginPath();
     ctx.arc(gx, gy, 9, 0, Math.PI * 2);
@@ -589,18 +618,18 @@
     setVal(els.poibX, poibX);
     setVal(els.poibY, poibY);
 
-    // lock bull to 0/0 if you want (your flow)
-    // If you prefer bull always 0, keep these as 0:
+    // lock bull to 0/0 (your flow)
     setVal(els.bullX, 0);
     setVal(els.bullY, 0);
 
-    // debug lines (same style you were seeing)
+    // debug lines
     const lines = [
       `Detected holes: ${holes.length}`,
       `Pixels/inch estimate: ${Math.round(ppi)}`,
       `Group(px): (${gx.toFixed(1)}, ${gy.toFixed(1)})`,
       `Bull(px): (${x0.toFixed(0)}, ${y0.toFixed(0)})`,
       `POIB(in): (${poibX.toFixed(2)}, ${poibY.toFixed(2)})`,
+      `ROI: x=${roi.x1}-${roi.x2}, y=${roi.y1}-${roi.y2}`,
     ];
     setDebug(lines);
 
