@@ -1,106 +1,130 @@
-// backend_new/server.js
-const express = require("express");
-const cors = require("cors");
+'use strict';
+
+const express = require('express');
+const cors = require('cors');
 
 const app = express();
 
-// ---- middleware ----
-app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "1mb" }));
+/**
+ * CORS
+ * - If you set FRONTEND_ORIGIN on Render (recommended), we'll lock to it.
+ * - Otherwise we allow all origins.
+ */
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN === '*' ? true : FRONTEND_ORIGIN,
+  })
+);
 
-// ---- helpers ----
-function to2(n) {
-  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
+app.use(express.json({ limit: '1mb' }));
+
+// -------------------- Helpers --------------------
+function round2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function calcAxis(deltaIn, distanceYards, clickValueMOA, useTrueMOA) {
-  const absIn = Math.abs(deltaIn);
-
-  const moaAt100 = useTrueMOA ? 1.047 : 1.0; // inches per MOA at 100y
-  const inchesPerMOA = moaAt100 * (distanceYards / 100);
-
-  const moa = inchesPerMOA === 0 ? 0 : absIn / inchesPerMOA;
-  const clicks = clickValueMOA === 0 ? 0 : moa / clickValueMOA;
-
-  return {
-    moa: to2(moa),
-    clicks: to2(clicks),
-  };
+function dirFromSignedDelta(delta, posLabel, negLabel) {
+  if (delta > 0) return posLabel;
+  if (delta < 0) return negLabel;
+  return 'NONE';
 }
 
-// ---- routes ----
-app.get("/", (req, res) => {
-  res
-    .status(200)
-    .send("SCZN3 backend is live. Try /api/health or POST /api/calc");
+/**
+ * True MOA inches per MOA at distance:
+ * - True: 1.047" at 100y
+ * - Shooter MOA: 1.000" at 100y
+ */
+function inchesPerMoa(distanceYards, trueMoaOn) {
+  const base = trueMoaOn ? 1.047 : 1.0;
+  return base * (distanceYards / 100.0);
+}
+
+// -------------------- Routes --------------------
+// Fix "Cannot GET /"
+app.get('/', (req, res) => {
+  res.type('text').send(
+`SCZN3 backend_new is running.
+
+Endpoints:
+GET  /health
+POST /api/calc
+
+POST /api/calc JSON body example:
+{
+  "distanceYards": 50,
+  "clickValueMoa": 0.25,
+  "trueMoa": true,
+  "bull": {"x": 0, "y": 0},
+  "poib": {"x": -1, "y": 1}
+}`
+  );
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "sczn3-backend-new",
-    ts: new Date().toISOString(),
-  });
+app.get('/health', (req, res) => {
+  res.json({ ok: true, service: 'sczn3-backend-new' });
 });
 
 /**
- * POST /api/calc
- * Body:
- * {
- *   distanceYards: 100,
- *   clickValueMOA: 0.25,
- *   trueMOA: true,
- *   bullX: 0,
- *   bullY: 0,
- *   poibX: -1,
- *   poibY: 1
- * }
- *
- * Rule: correction = bull - POIB
- * ΔX > 0 => RIGHT, ΔX < 0 => LEFT
- * ΔY > 0 => UP,    ΔY < 0 => DOWN
+ * Calculates clicks to move POIB -> Bull using rule: bull - POIB
+ * X: Right + ; Y: Up +
  */
-app.post("/api/calc", (req, res) => {
-  const {
-    distanceYards = 100,
-    clickValueMOA = 0.25,
-    trueMOA = true,
-    bullX = 0,
-    bullY = 0,
-    poibX = 0,
-    poibY = 0,
-  } = req.body || {};
+app.post('/api/calc', (req, res) => {
+  try {
+    const distanceYards = Number(req.body?.distanceYards ?? 100);
+    const clickValueMoa = Number(req.body?.clickValueMoa ?? 0.25);
+    const trueMoa = Boolean(req.body?.trueMoa ?? true);
 
-  const dx = Number(bullX) - Number(poibX);
-  const dy = Number(bullY) - Number(poibY);
+    const bullX = Number(req.body?.bull?.x ?? 0);
+    const bullY = Number(req.body?.bull?.y ?? 0);
+    const poibX = Number(req.body?.poib?.x ?? 0);
+    const poibY = Number(req.body?.poib?.y ?? 0);
 
-  const windDir = dx > 0 ? "RIGHT" : dx < 0 ? "LEFT" : "NONE";
-  const elevDir = dy > 0 ? "UP" : dy < 0 ? "DOWN" : "NONE";
+    // Core rule: correction = bull - POIB
+    const dx = bullX - poibX; // + = RIGHT
+    const dy = bullY - poibY; // + = UP
 
-  const wind = calcAxis(dx, Number(distanceYards), Number(clickValueMOA), !!trueMOA);
-  const elev = calcAxis(dy, Number(distanceYards), Number(clickValueMOA), !!trueMOA);
+    const ipm = inchesPerMoa(distanceYards, trueMoa);
 
-  res.json({
-    inputs: {
-      distanceYards: Number(distanceYards),
-      clickValueMOA: Number(clickValueMOA),
-      trueMOA: !!trueMOA,
-      bullX: to2(Number(bullX)),
-      bullY: to2(Number(bullY)),
-      poibX: to2(Number(poibX)),
-      poibY: to2(Number(poibY)),
-    },
-    deltas: {
-      dx: to2(dx),
-      dy: to2(dy),
-    },
-    windage: { direction: windDir, moa: wind.moa, clicks: wind.clicks },
-    elevation: { direction: elevDir, moa: elev.moa, clicks: elev.clicks },
-  });
+    const windageDir = dirFromSignedDelta(dx, 'RIGHT', 'LEFT');
+    const elevDir = dirFromSignedDelta(dy, 'UP', 'DOWN');
+
+    const windageMoa = round2(Math.abs(dx) / ipm);
+    const elevMoa = round2(Math.abs(dy) / ipm);
+
+    const windageClicks = round2(windageMoa / clickValueMoa);
+    const elevClicks = round2(elevMoa / clickValueMoa);
+
+    res.json({
+      inputs: {
+        distanceYards,
+        clickValueMoa,
+        trueMoa,
+        bull: { x: round2(bullX), y: round2(bullY) },
+        poib: { x: round2(poibX), y: round2(poibY) },
+      },
+      deltas: {
+        dx: round2(dx),
+        dy: round2(dy),
+      },
+      windage: {
+        direction: windageDir,
+        moa: windageMoa,
+        clicks: windageClicks,
+      },
+      elevation: {
+        direction: elevDir,
+        moa: elevMoa,
+        clicks: elevClicks,
+      },
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message ?? e) });
+  }
 });
 
-// ---- start ----
+// -------------------- Start --------------------
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`SCZN3 backend_new listening on ${PORT}`);
+  console.log(`SCZN3 backend_new listening on port ${PORT}`);
 });
