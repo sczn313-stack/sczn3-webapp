@@ -1,144 +1,141 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SCZN3 Frontend — New</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SCZN3 — Frontend New</title>
+    <link rel="stylesheet" href="./styles.css?v=1" />
+  </head>
 
-<body>
-  <div class="wrap">
-    <h1>Frontend — New</h1>
-    <div class="sub">
-      Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only. Two decimals.
-    </div>
-
-    <div class="card" id="apiCard">
-      <div class="cardTitle">API Status</div>
-      <div id="apiStatus">Checking…</div>
-      <div class="small" id="apiUrl">(backend url will show here)</div>
-    </div>
-
-    <div class="card">
-      <div class="cardTitle">Settings</div>
-
-      <div class="row">
-        <label>
-          Distance (yards)
-          <select id="distanceYards">
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100" selected>100</option>
-          </select>
-        </label>
-
-        <label>
-          Click value (MOA/click)
-          <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
-        </label>
-
-        <label>
-          True MOA (1.047" @ 100y)
-          <select id="trueMoa">
-            <option value="true" selected>ON</option>
-            <option value="false">OFF</option>
-          </select>
-        </label>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="cardTitle">Target photo</div>
-
-      <div class="row">
-        <label class="full">
-          Choose photo
-          <input id="targetPhoto" type="file" accept="image/*" />
-        </label>
-
-        <button id="analyzeBtn" class="btn">Analyze (Auto POIB)</button>
-        <button id="calcBtn" class="btn">Calculate</button>
-      </div>
-
-      <div class="small" id="analyzeNote">
-        After Analyze, you should see red dots on the detected bullet holes in the preview below.
-      </div>
-
-      <div class="preview">
-        <canvas id="debugCanvas" width="1" height="1"></canvas>
-      </div>
-
-      <div class="small" id="debugText"></div>
-    </div>
-
-    <div class="card">
-      <div class="cardTitle">Inputs (inches)</div>
-
-      <div class="row">
-        <div class="col">
-          <div class="sectionTitle">Bull</div>
-          <label>
-            Bull X (Right +)
-            <input id="bullX" type="number" step="0.01" value="0.00" />
-          </label>
-          <label>
-            Bull Y (Up +)
-            <input id="bullY" type="number" step="0.01" value="0.00" />
-          </label>
-        </div>
-
-        <div class="col">
-          <div class="sectionTitle">POIB</div>
-          <label>
-            POIB X (Right +)
-            <input id="poibX" type="number" step="0.01" value="0.00" />
-          </label>
-          <label>
-            POIB Y (Up +)
-            <input id="poibY" type="number" step="0.01" value="0.00" />
-          </label>
+  <body>
+    <div class="page">
+      <div class="header">
+        <h1>Frontend — New</h1>
+        <div class="sub">
+          Clicks to move <b>POIB → Bull</b> (rule: <b>bull − POIB</b>). Inches only. Two decimals.
         </div>
       </div>
+
+      <div class="card">
+        <h2>API Status</h2>
+        <div id="apiStatus" class="status">Checking…</div>
+        <div id="apiUrl" class="small">(backend url will show here)</div>
+        <div id="debugText" class="debug"></div>
+      </div>
+
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="grid2">
+          <div class="field">
+            <label>Distance (yards)</label>
+            <select id="distanceYards">
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Click value (MOA/click)</label>
+            <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
+          </div>
+
+          <div class="field">
+            <label>True MOA (1.047&quot; @ 100y)</label>
+            <select id="trueMoa">
+              <option value="true" selected>ON</option>
+              <option value="false">OFF</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Target photo</h2>
+        <div class="row">
+          <div class="field" style="flex:1;">
+            <label>Choose photo</label>
+            <input id="photo" type="file" accept="image/*"/>
+          </div>
+        </div>
+
+        <div class="row buttons">
+          <button id="analyzeBtn" class="primary">Analyze (Auto POIB)</button>
+          <button id="calcBtn">Calculate</button>
+        </div>
+
+        <div class="hint">
+          After Analyze, you should see red dots on the detected bullet holes in the preview below.
+        </div>
+
+        <canvas id="preview" class="preview" width="900" height="650"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Inputs (inches)</h2>
+        <div class="grid2">
+          <div class="field">
+            <label>Bull X (Right +)</label>
+            <input id="bullX" type="number" step="0.01" value="0.00"/>
+          </div>
+          <div class="field">
+            <label>Bull Y (Up +)</label>
+            <input id="bullY" type="number" step="0.01" value="0.00"/>
+          </div>
+
+          <div class="field">
+            <label>POIB X (Right +)</label>
+            <input id="poibX" type="number" step="0.01" value="0.00"/>
+          </div>
+          <div class="field">
+            <label>POIB Y (Up +)</label>
+            <input id="poibY" type="number" step="0.01" value="0.00"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Result</h2>
+        <div class="resultRow">
+          <div class="k">Windage</div>
+          <div class="v"><span id="windageDir">—</span> • <span id="windageClicks">—</span> clicks • <span id="windageMoa">—</span> MOA</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Elevation</div>
+          <div class="v"><span id="elevDir">—</span> • <span id="elevClicks">—</span> clicks • <span id="elevMoa">—</span> MOA</div>
+        </div>
+
+        <div class="resultRow">
+          <div class="k">ΔX (in)</div>
+          <div class="v" id="dxIn">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">ΔY (in)</div>
+          <div class="v" id="dyIn">—</div>
+        </div>
+
+        <div class="resultRow">
+          <div class="k">MOA X</div>
+          <div class="v" id="moaX">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">MOA Y</div>
+          <div class="v" id="moaY">—</div>
+        </div>
+
+        <div class="resultRow">
+          <div class="k">Clicks X</div>
+          <div class="v" id="clicksX">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Clicks Y</div>
+          <div class="v" id="clicksY">—</div>
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="cardTitle">Result</div>
-      <div class="resultRow">
-        <div class="k">Windage</div>
-        <div class="v" id="windageOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">Elevation</div>
-        <div class="v" id="elevOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">ΔX (in)</div>
-        <div class="v" id="dxOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">ΔY (in)</div>
-        <div class="v" id="dyOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">MOA X</div>
-        <div class="v" id="moaXOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">MOA Y</div>
-        <div class="v" id="moaYOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">Clicks X</div>
-        <div class="v" id="clicksXOut">—</div>
-      </div>
-      <div class="resultRow">
-        <div class="k">Clicks Y</div>
-        <div class="v" id="clicksYOut">—</div>
-      </div>
-    </div>
-  </div>
-
-  <script src="./api.js"></script>
-</body>
+    <!-- IMPORTANT: api.js MUST load before app.js -->
+    <script src="./api.js?v=1"></script>
+    <script src="./app.js?v=1"></script>
+  </body>
 </html>
