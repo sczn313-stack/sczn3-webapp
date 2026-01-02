@@ -1,101 +1,83 @@
 // frontend_new/app.js
-// Rule: correction = bull - POIB
-// ΔX > 0 => RIGHT, ΔX < 0 => LEFT
-// ΔY > 0 => UP,    ΔY < 0 => DOWN
-// Two decimals everywhere.
+// UI uses backend as the source of truth for directions + 2-decimal outputs.
+
+import { calc } from "./api.js";
+
+function $(id) {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`Missing #${id}`);
+  return el;
+}
 
 function toNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-function to2(n) {
-  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
-}
-
 function fmt2(n) {
-  return to2(n).toFixed(2);
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "0.00";
+  return x.toFixed(2);
 }
 
-function calcAxis(deltaIn, distanceYards, clickValueMOA, trueMoaOn) {
-  const absIn = Math.abs(deltaIn);
+async function runCalc() {
+  const distanceYards = toNum($("distanceYards").value);
+  const clickValue = toNum($("clickValue").value);
+  const trueMoa = $("trueMoa").value === "on";
 
-  const moaAt100 = trueMoaOn ? 1.047 : 1.0; // inches per MOA at 100y
-  const inchesPerMOA = moaAt100 * (distanceYards / 100);
+  const bullX = toNum($("bullX").value);
+  const bullY = toNum($("bullY").value);
+  const poibX = toNum($("poibX").value);
+  const poibY = toNum($("poibY").value);
 
-  const moa = inchesPerMOA === 0 ? 0 : absIn / inchesPerMOA;
-  const clicks = clickValueMOA === 0 ? 0 : moa / clickValueMOA;
+  const payload = {
+    distanceYards,
+    clickValueMoa: clickValue, // backend accepts clickValueMoa
+    trueMoa,
+    bull: { x: bullX, y: bullY },
+    poib: { x: poibX, y: poibY },
+  };
 
-  return { moa: to2(moa), clicks: to2(clicks) };
-}
+  const data = await calc(payload);
 
-function dirX(dx) {
-  if (dx > 0) return "RIGHT";
-  if (dx < 0) return "LEFT";
-  return "NONE";
-}
+  // backend returns:
+  // data.delta.dxIn, data.delta.dyIn
+  // data.windage.direction, data.windage.moa, data.windage.clicks
+  // data.elevation.direction, data.elevation.moa, data.elevation.clicks
 
-function dirY(dy) {
-  if (dy > 0) return "UP";
-  if (dy < 0) return "DOWN";
-  return "NONE";
-}
+  $("windageText").textContent =
+    `${data.windage.direction} • ${fmt2(data.windage.clicks)} clicks • ${fmt2(data.windage.moa)} MOA`;
 
-function getEl(id) {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`Missing element #${id}`);
-  return el;
-}
+  $("elevationText").textContent =
+    `${data.elevation.direction} • ${fmt2(data.elevation.clicks)} clicks • ${fmt2(data.elevation.moa)} MOA`;
 
-function calcAndRender() {
-  const distanceYards = toNum(getEl("distanceYards").value);
-  const clickValue = toNum(getEl("clickValue").value);
-  const trueMoaOn = getEl("trueMoa").value === "on";
-
-  const bullX = toNum(getEl("bullX").value);
-  const bullY = toNum(getEl("bullY").value);
-  const poibX = toNum(getEl("poibX").value);
-  const poibY = toNum(getEl("poibY").value);
-
-  // correction = bull - POIB
-  const dx = bullX - poibX;
-  const dy = bullY - poibY;
-
-  const wind = calcAxis(dx, distanceYards, clickValue, trueMoaOn);
-  const elev = calcAxis(dy, distanceYards, clickValue, trueMoaOn);
-
-  const windText =
-    `${dirX(dx)} • ${fmt2(wind.clicks)} clicks • ${fmt2(wind.moa)} MOA`;
-  const elevText =
-    `${dirY(dy)} • ${fmt2(elev.clicks)} clicks • ${fmt2(elev.moa)} MOA`;
-
-  getEl("windageText").textContent = windText;
-  getEl("elevationText").textContent = elevText;
-  getEl("dxText").textContent = fmt2(dx);
-  getEl("dyText").textContent = fmt2(dy);
+  $("dxText").textContent = fmt2(data.delta.dxIn);
+  $("dyText").textContent = fmt2(data.delta.dyIn);
 }
 
 function wire() {
-  const btn = getEl("calcBtn");
-  btn.addEventListener("click", (e) => {
+  $("calcBtn").addEventListener("click", async (e) => {
     e.preventDefault();
-    calcAndRender();
+    try {
+      await runCalc();
+    } catch (err) {
+      alert(err?.message ? String(err.message) : "Error");
+    }
   });
 
-  // Auto-calc when values change
+  // auto-run on edits
   ["distanceYards", "clickValue", "trueMoa", "bullX", "bullY", "poibX", "poibY"].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener("change", calcAndRender);
+    el.addEventListener("change", () => runCalc().catch(() => {}));
     el.addEventListener("input", () => {
-      // keep it responsive but not spammy
-      window.clearTimeout(el.__t);
-      el.__t = window.setTimeout(calcAndRender, 80);
+      clearTimeout(el.__t);
+      el.__t = setTimeout(() => runCalc().catch(() => {}), 100);
     });
   });
 
-  // First render
-  calcAndRender();
+  // initial run
+  runCalc().catch(() => {});
 }
 
 document.addEventListener("DOMContentLoaded", wire);
