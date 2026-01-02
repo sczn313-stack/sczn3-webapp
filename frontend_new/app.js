@@ -1,7 +1,10 @@
 // frontend_new/app.js
-// UI uses backend as the source of truth for directions + 2-decimal outputs.
+// Wires:
+// - Analyze button: uploads image -> fills POIB -> runs calc
+// - Calculate button: runs backend calc
+// Output always comes from backend (direction locked, 2 decimals)
 
-import { calc } from "./api.js";
+import { calc, analyzeImage } from "./api.js";
 
 function $(id) {
   const el = document.getElementById(id);
@@ -20,6 +23,11 @@ function fmt2(n) {
   return x.toFixed(2);
 }
 
+function setStatus(msg) {
+  const s = document.getElementById("analyzeStatus");
+  if (s) s.value = msg;
+}
+
 async function runCalc() {
   const distanceYards = toNum($("distanceYards").value);
   const clickValue = toNum($("clickValue").value);
@@ -32,18 +40,13 @@ async function runCalc() {
 
   const payload = {
     distanceYards,
-    clickValueMoa: clickValue, // backend accepts clickValueMoa
+    clickValueMoa: clickValue,
     trueMoa,
     bull: { x: bullX, y: bullY },
     poib: { x: poibX, y: poibY },
   };
 
   const data = await calc(payload);
-
-  // backend returns:
-  // data.delta.dxIn, data.delta.dyIn
-  // data.windage.direction, data.windage.moa, data.windage.clicks
-  // data.elevation.direction, data.elevation.moa, data.elevation.clicks
 
   $("windageText").textContent =
     `${data.windage.direction} • ${fmt2(data.windage.clicks)} clicks • ${fmt2(data.windage.moa)} MOA`;
@@ -53,6 +56,31 @@ async function runCalc() {
 
   $("dxText").textContent = fmt2(data.delta.dxIn);
   $("dyText").textContent = fmt2(data.delta.dyIn);
+}
+
+async function runAnalyze() {
+  const file = $("imageFile")?.files?.[0];
+  if (!file) {
+    setStatus("Select an image first");
+    return;
+  }
+
+  setStatus("Uploading...");
+  try {
+    setStatus("Analyzing...");
+    const data = await analyzeImage(file);
+
+    // Analyzer returns bull at (0,0) and POIB offsets in inches (Right+/Up+)
+    $("bullX").value = fmt2(data?.bull?.x ?? 0);
+    $("bullY").value = fmt2(data?.bull?.y ?? 0);
+    $("poibX").value = fmt2(data?.poib?.x ?? 0);
+    $("poibY").value = fmt2(data?.poib?.y ?? 0);
+
+    setStatus("Analyze OK");
+    await runCalc();
+  } catch (err) {
+    setStatus(err?.message ? String(err.message) : "Analyze failed");
+  }
 }
 
 function wire() {
@@ -65,18 +93,23 @@ function wire() {
     }
   });
 
-  // auto-run on edits
+  $("analyzeBtn").addEventListener("click", async (e) => {
+    e.preventDefault();
+    await runAnalyze();
+  });
+
+  // Auto-calc when values change
   ["distanceYards", "clickValue", "trueMoa", "bullX", "bullY", "poibX", "poibY"].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener("change", () => runCalc().catch(() => {}));
     el.addEventListener("input", () => {
       clearTimeout(el.__t);
-      el.__t = setTimeout(() => runCalc().catch(() => {}), 100);
+      el.__t = setTimeout(() => runCalc().catch(() => {}), 120);
     });
   });
 
-  // initial run
+  // Initial calc
   runCalc().catch(() => {});
 }
 
