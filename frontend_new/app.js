@@ -1,13 +1,12 @@
 // frontend_new/app.js
-// Analyze (Auto POIB) v2:
-// - Finds bull center via strongest vertical + horizontal lines (crosshair)
-// - Finds bullet holes via connected components with shape filters
-// - Estimates scale using grid periodicity (autocorrelation) so inches are not tiny
-// - Outputs POIB in inches relative to bull (Bull forced to 0,0)
-// Convention locked:
+// Analyze (Auto POIB) v3
+// - Finds bull center via strongest vertical + horizontal edge energy (crosshair)
+// - Finds bullet holes via connected components on dark blobs with bull/crosshair exclusion
+// - Estimates pixels-per-inch using autocorrelation of vertical edge projection (grid periodicity)
+// - Outputs POIB in inches relative to bull, with convention locked:
 //   Right = +X, Up = +Y
 //   POIB is where the group is relative to bull
-//   Correction is bull - POIB (handled by backend)
+//   Backend computes correction = bull - POIB
 
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -15,28 +14,37 @@
   const els = {
     apiStatus: $("apiStatus"),
     apiUrl: $("apiUrl"),
+    debugText: $("debugText"),
+
     distanceYards: $("distanceYards"),
     clickValueMoa: $("clickValueMoa"),
     trueMoa: $("trueMoa"),
+
+    photo: $("photo"),
+    analyzeBtn: $("analyzeBtn"),
+    calcBtn: $("calcBtn"),
+
     bullX: $("bullX"),
     bullY: $("bullY"),
     poibX: $("poibX"),
     poibY: $("poibY"),
-    photo: $("photo"),
-    analyzeBtn: $("analyzeBtn"),
-    calcBtn: $("calcBtn"),
-    preview: $("preview"),
-    debugText: $("debugText"),
 
-    // results
+    preview: $("preview"),
+
     windageDir: $("windageDir"),
     windageClicks: $("windageClicks"),
     windageMoa: $("windageMoa"),
+
     elevDir: $("elevDir"),
     elevClicks: $("elevClicks"),
     elevMoa: $("elevMoa"),
+
     dxIn: $("dxIn"),
     dyIn: $("dyIn"),
+    moaX: $("moaX"),
+    moaY: $("moaY"),
+    clicksX: $("clicksX"),
+    clicksY: $("clicksY"),
   };
 
   function fmt2(n) {
@@ -45,522 +53,452 @@
     return x.toFixed(2);
   }
 
-  function setStatus(connected, urlText, extraText) {
+  function setDebug(msg) {
+    els.debugText.textContent = msg || "";
+  }
+
+  function setApiStatus(connected, urlText, extra) {
     if (!els.apiStatus) return;
     els.apiStatus.textContent = connected ? "CONNECTED" : "NOT CONNECTED";
-    els.apiStatus.className = connected ? "ok" : "bad";
-    if (els.apiUrl) els.apiUrl.textContent = urlText || "";
-    if (els.debugText && extraText) els.debugText.textContent = extraText;
+    els.apiStatus.style.color = connected ? "#bfffc7" : "#ffb7b7";
+    els.apiUrl.textContent = urlText || "";
+    setDebug(extra || "");
   }
 
   async function checkApi() {
     try {
-      if (!window.getHealth) throw new Error("getHealth not found (api.js not loaded)");
-      const data = await window.getHealth();
-      const base = (window.SCZN3_API_BASE || window.API_BASE || "").toString();
-      setStatus(true, `${base} (health OK)`, "");
-      return true;
+      els.apiStatus.textContent = "Checking…";
+      els.apiStatus.style.color = "#e8eef6";
+      els.apiUrl.textContent = "(backend url will show here)";
+      setDebug("");
+
+      if (!window.sczn3Api || !window.sczn3Api.getHealth) {
+        setApiStatus(false, "(api.js not loaded)", "Missing window.sczn3Api.getHealth");
+        return;
+      }
+
+      const health = await window.sczn3Api.getHealth();
+      const base = window.sczn3Api.API_BASE || window.SCZN3_API_BASE || "(unknown)";
+      setApiStatus(true, `${base} (health OK)`, JSON.stringify(health));
     } catch (e) {
-      const base = (window.SCZN3_API_BASE || window.API_BASE || "").toString();
-      setStatus(false, base ? `${base} (health failed)` : "(no backend url detected)", String(e && e.message ? e.message : e));
-      return false;
+      const base = (window.sczn3Api && window.sczn3Api.API_BASE) || window.SCZN3_API_BASE || "(unknown)";
+      setApiStatus(false, `${base}`, String(e && e.message ? e.message : e));
     }
   }
 
-  function readInputs() {
-    const distanceYards = Number(els.distanceYards?.value ?? 100);
-    const clickValueMoa = Number(els.clickValueMoa?.value ?? 0.25);
-    const trueMoa = String(els.trueMoa?.value ?? "ON").toUpperCase() === "ON";
-
-    const bull = {
-      x: Number(els.bullX?.value ?? 0),
-      y: Number(els.bullY?.value ?? 0),
-    };
-
-    const poib = {
-      x: Number(els.poibX?.value ?? 0),
-      y: Number(els.poibY?.value ?? 0),
-    };
-
-    return { distanceYards, clickValueMoa, trueMoa, bull, poib };
-  }
-
-  function renderResult(r) {
-    // Expect backend to return something like:
-    // {
-    //   dxIn, dyIn,
-    //   windageDir, windageClicks, windageMoa,
-    //   elevationDir, elevationClicks, elevationMoa
-    // }
-    if (!r || typeof r !== "object") return;
-
-    if (els.windageDir) els.windageDir.textContent = String(r.windageDir || "");
-    if (els.windageClicks) els.windageClicks.textContent = fmt2(r.windageClicks);
-    if (els.windageMoa) els.windageMoa.textContent = fmt2(r.windageMoa);
-
-    if (els.elevDir) els.elevDir.textContent = String(r.elevationDir || r.elevDir || "");
-    if (els.elevClicks) els.elevClicks.textContent = fmt2(r.elevationClicks ?? r.elevClicks);
-    if (els.elevMoa) els.elevMoa.textContent = fmt2(r.elevationMoa ?? r.elevMoa);
-
-    if (els.dxIn) els.dxIn.textContent = fmt2(r.dxIn);
-    if (els.dyIn) els.dyIn.textContent = fmt2(r.dyIn);
+  function clearResult() {
+    els.windageDir.textContent = "—";
+    els.windageClicks.textContent = "—";
+    els.windageMoa.textContent = "—";
+    els.elevDir.textContent = "—";
+    els.elevClicks.textContent = "—";
+    els.elevMoa.textContent = "—";
+    els.dxIn.textContent = "—";
+    els.dyIn.textContent = "—";
+    els.moaX.textContent = "—";
+    els.moaY.textContent = "—";
+    els.clicksX.textContent = "—";
+    els.clicksY.textContent = "—";
   }
 
   async function runCalc() {
-    const ok = await checkApi();
-    if (!ok) return;
-
-    const { distanceYards, clickValueMoa, trueMoa, bull, poib } = readInputs();
-
     try {
-      if (!window.postCalc) throw new Error("postCalc not found (api.js not loaded)");
+      setDebug("");
+
+      const distanceYards = Number(els.distanceYards.value);
+      const clickValueMoa = Number(els.clickValueMoa.value);
+      const trueMoa = String(els.trueMoa.value) === "true";
+
+      const bull = { x: Number(els.bullX.value), y: Number(els.bullY.value) };
+      const poib = { x: Number(els.poibX.value), y: Number(els.poibY.value) };
+
       const payload = { distanceYards, clickValueMoa, trueMoa, bull, poib };
-      const r = await window.postCalc(payload);
-      renderResult(r);
-      if (els.debugText) els.debugText.textContent = "";
+
+      if (!window.sczn3Api || !window.sczn3Api.postCalc) {
+        throw new Error("postCalc not available (api.js not loaded)");
+      }
+
+      const out = await window.sczn3Api.postCalc(payload);
+
+      // Expected backend output fields (safe access)
+      const wDir = out?.windage?.dir ?? out?.windageDir ?? "—";
+      const wClicks = out?.windage?.clicks ?? out?.windageClicks ?? NaN;
+      const wMoa = out?.windage?.moa ?? out?.windageMoa ?? NaN;
+
+      const eDir = out?.elevation?.dir ?? out?.elevDir ?? "—";
+      const eClicks = out?.elevation?.clicks ?? out?.elevClicks ?? NaN;
+      const eMoa = out?.elevation?.moa ?? out?.elevMoa ?? NaN;
+
+      const dxIn = out?.dxIn ?? out?.dx ?? out?.deltaX ?? NaN;
+      const dyIn = out?.dyIn ?? out?.dy ?? out?.deltaY ?? NaN;
+
+      const moaX = out?.moaX ?? NaN;
+      const moaY = out?.moaY ?? NaN;
+      const clicksX = out?.clicksX ?? NaN;
+      const clicksY = out?.clicksY ?? NaN;
+
+      els.windageDir.textContent = String(wDir).toUpperCase();
+      els.windageClicks.textContent = fmt2(wClicks);
+      els.windageMoa.textContent = fmt2(wMoa);
+
+      els.elevDir.textContent = String(eDir).toUpperCase();
+      els.elevClicks.textContent = fmt2(eClicks);
+      els.elevMoa.textContent = fmt2(eMoa);
+
+      els.dxIn.textContent = fmt2(dxIn);
+      els.dyIn.textContent = fmt2(dyIn);
+      els.moaX.textContent = fmt2(moaX);
+      els.moaY.textContent = fmt2(moaY);
+      els.clicksX.textContent = fmt2(clicksX);
+      els.clicksY.textContent = fmt2(clicksY);
     } catch (e) {
-      if (els.debugText) els.debugText.textContent = `Calc error: ${String(e && e.message ? e.message : e)}`;
+      clearResult();
+      setDebug(String(e && e.message ? e.message : e));
     }
   }
 
-  // ---------- Image analysis helpers ----------
-
-  function loadImageFromFile(file) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(img);
-      };
-      img.onerror = (err) => {
-        URL.revokeObjectURL(url);
-        reject(err);
-      };
-      img.src = url;
-    });
-  }
-
-  function drawToCanvasScaled(img, canvas, maxW, maxH) {
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-
-    let scale = 1;
-    if (w > maxW) scale = Math.min(scale, maxW / w);
-    if (h > maxH) scale = Math.min(scale, maxH / h);
-
-    const cw = Math.max(1, Math.round(w * scale));
-    const ch = Math.max(1, Math.round(h * scale));
-
-    canvas.width = cw;
-    canvas.height = ch;
-
+  // ---------- Image / Analyze helpers ----------
+  function drawToCanvas(img) {
+    const canvas = els.preview;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(img, 0, 0, cw, ch);
-    return ctx;
+
+    const maxW = 900;
+    const scale = Math.min(1, maxW / img.width);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+
+    canvas.width = w;
+    canvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+
+    return { ctx, w, h };
   }
 
-  function makeDarkMask(imgData, w, h, thresh) {
-    const data = imgData.data;
-    const mask = new Uint8Array(w * h);
-
-    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      // luminance
-      const y = (0.299 * r + 0.587 * g + 0.114 * b);
-      mask[p] = (y < thresh) ? 1 : 0;
+  function getGray(ctx, w, h) {
+    const img = ctx.getImageData(0, 0, w, h);
+    const d = img.data;
+    const g = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const r = d[i], gg = d[i + 1], b = d[i + 2];
+      g[p] = (0.2126 * r + 0.7152 * gg + 0.0722 * b);
     }
-    return mask;
+    return { gray: g, imageData: img };
   }
 
-  function projectionSums(mask, w, h, x0, x1, y0, y1) {
-    const col = new Float64Array(w);
-    const row = new Float64Array(h);
+  function sobelEnergy(gray, w, h) {
+    const e = new Float32Array(w * h);
+    const idx = (x, y) => y * w + x;
 
-    const xx0 = Math.max(0, x0 | 0);
-    const xx1 = Math.min(w, x1 | 0);
-    const yy0 = Math.max(0, y0 | 0);
-    const yy1 = Math.min(h, y1 | 0);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const a00 = gray[idx(x - 1, y - 1)], a10 = gray[idx(x, y - 1)], a20 = gray[idx(x + 1, y - 1)];
+        const a01 = gray[idx(x - 1, y)],     a11 = gray[idx(x, y)],     a21 = gray[idx(x + 1, y)];
+        const a02 = gray[idx(x - 1, y + 1)], a12 = gray[idx(x, y + 1)], a22 = gray[idx(x + 1, y + 1)];
 
-    for (let y = yy0; y < yy1; y++) {
-      let base = y * w;
-      for (let x = xx0; x < xx1; x++) {
-        if (mask[base + x]) {
-          col[x] += 1;
-          row[y] += 1;
-        }
+        const gx = (-1 * a00) + (1 * a20) + (-2 * a01) + (2 * a21) + (-1 * a02) + (1 * a22);
+        const gy = (-1 * a00) + (-2 * a10) + (-1 * a20) + (1 * a02) + (2 * a12) + (1 * a22);
+
+        e[idx(x, y)] = Math.abs(gx) + Math.abs(gy);
       }
     }
-    return { col, row };
+    return e;
   }
 
-  function argMaxInRange(arr, start, end) {
-    let bestI = start;
-    let bestV = -Infinity;
-    for (let i = start; i < end; i++) {
-      const v = arr[i];
-      if (v > bestV) {
-        bestV = v;
-        bestI = i;
+  function findCrosshair(energy, w, h) {
+    // Strongest vertical line = max column sum of energy
+    const col = new Float32Array(w);
+    const row = new Float32Array(h);
+
+    for (let y = 0; y < h; y++) {
+      let rs = 0;
+      const off = y * w;
+      for (let x = 0; x < w; x++) {
+        const v = energy[off + x];
+        col[x] += v;
+        rs += v;
       }
+      row[y] = rs;
     }
-    return bestI;
+
+    let bestX = 0, bestXV = -1;
+    for (let x = 0; x < w; x++) {
+      if (col[x] > bestXV) { bestXV = col[x]; bestX = x; }
+    }
+
+    let bestY = 0, bestYV = -1;
+    for (let y = 0; y < h; y++) {
+      if (row[y] > bestYV) { bestYV = row[y]; bestY = y; }
+    }
+
+    return { bullXpx: bestX, bullYpx: bestY, col, row };
   }
 
-  // Autocorrelation to estimate grid periodicity
-  function bestLagAutocorr(arr, minLag, maxLag) {
-    const n = arr.length;
-    // mean center
+  function autocorrPeriod(signal, minLag, maxLag) {
+    // signal: Float32Array
+    // returns best lag in [minLag, maxLag]
+    const n = signal.length;
     let mean = 0;
-    for (let i = 0; i < n; i++) mean += arr[i];
+    for (let i = 0; i < n; i++) mean += signal[i];
     mean /= n;
 
-    // precompute centered
-    const a = new Float64Array(n);
-    for (let i = 0; i < n; i++) a[i] = arr[i] - mean;
+    // demean
+    const s = new Float32Array(n);
+    for (let i = 0; i < n; i++) s[i] = signal[i] - mean;
 
-    let bestLag = minLag;
-    let bestScore = -Infinity;
+    let bestLag = 0;
+    let bestVal = -Infinity;
 
     for (let lag = minLag; lag <= maxLag; lag++) {
-      let s = 0;
-      // normalized-ish dot product
-      for (let i = 0; i < n - lag; i++) {
-        s += a[i] * a[i + lag];
-      }
-      if (s > bestScore) {
-        bestScore = s;
-        bestLag = lag;
-      }
+      let v = 0;
+      const limit = n - lag;
+      for (let i = 0; i < limit; i++) v += s[i] * s[i + lag];
+      if (v > bestVal) { bestVal = v; bestLag = lag; }
     }
-    return bestLag;
+
+    return { bestLag, bestVal };
   }
 
-  function estimatePixelsPerInch(mask, w, h) {
-    // Use central band to avoid borders
-    const x0 = Math.round(w * 0.15), x1 = Math.round(w * 0.85);
-    const y0 = Math.round(h * 0.20), y1 = Math.round(h * 0.80);
+  function estimatePixelsPerInch(energy, w, h, bullXpx, bullYpx) {
+    // Build a vertical-edge-ish projection by summing energy down rows
+    // and exclude a band around the crosshair so it doesn't dominate.
+    const proj = new Float32Array(w);
+    const band = Math.max(8, Math.round(w * 0.01));
 
-    const { col, row } = projectionSums(mask, w, h, x0, x1, y0, y1);
-
-    // Use reasonable lag search window
-    const lagX = bestLagAutocorr(col, 8, 80);
-    const lagY = bestLagAutocorr(row, 8, 80);
-
-    // If lag is small, assume it's the minor grid and multiply by 4.
-    const pxPerInX = (lagX < 30) ? (lagX * 4) : lagX;
-    const pxPerInY = (lagY < 30) ? (lagY * 4) : lagY;
-
-    // Blend + clamp
-    let pxPerIn = (pxPerInX + pxPerInY) / 2;
-    if (!Number.isFinite(pxPerIn) || pxPerIn < 30) pxPerIn = 80; // safe fallback
-    if (pxPerIn > 250) pxPerIn = 120; // prevent insane scale
-
-    return pxPerIn;
-  }
-
-  function zeroBand(mask, w, h, xCenter, yCenter, bandPx) {
-    const b = Math.max(2, bandPx | 0);
-    const x0 = Math.max(0, xCenter - b), x1 = Math.min(w, xCenter + b);
-    const y0 = Math.max(0, yCenter - b), y1 = Math.min(h, yCenter + b);
-
-    // vertical band
     for (let y = 0; y < h; y++) {
-      const base = y * w;
-      for (let x = x0; x < x1; x++) mask[base + x] = 0;
-    }
-
-    // horizontal band
-    for (let y = y0; y < y1; y++) {
-      const base = y * w;
-      for (let x = 0; x < w; x++) mask[base + x] = 0;
-    }
-  }
-
-  function zeroCircle(mask, w, h, cx, cy, r) {
-    const rr = r * r;
-    const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(w - 1, Math.ceil(cx + r));
-    const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(h - 1, Math.ceil(cy + r));
-
-    for (let y = y0; y <= y1; y++) {
-      const dy = y - cy;
-      const base = y * w;
-      for (let x = x0; x <= x1; x++) {
-        const dx = x - cx;
-        if (dx * dx + dy * dy <= rr) mask[base + x] = 0;
+      const off = y * w;
+      for (let x = 0; x < w; x++) {
+        if (Math.abs(x - bullXpx) <= band) continue;
+        proj[x] += energy[off + x];
       }
     }
+
+    // Typical 1" grid period in photos is usually 30–220 px depending on scale.
+    const { bestLag } = autocorrPeriod(proj, 20, Math.min(260, w - 5));
+
+    // Fail-safe
+    const ppi = (bestLag && bestLag > 0) ? bestLag : 100;
+    return ppi;
   }
 
-  function findComponents(mask, w, h, bullX, bullY, pxPerIn) {
+  function detectDarkBlobs(gray, w, h, bullXpx, bullYpx) {
+    // Adaptive-ish threshold using mean - k*std (simple + stable)
+    let mean = 0;
+    for (let i = 0; i < gray.length; i++) mean += gray[i];
+    mean /= gray.length;
+
+    let varSum = 0;
+    for (let i = 0; i < gray.length; i++) {
+      const d = gray[i] - mean;
+      varSum += d * d;
+    }
+    const std = Math.sqrt(varSum / gray.length);
+
+    // Dark pixels are well below mean
+    const thr = mean - 1.25 * std;
+
+    const idx = (x, y) => y * w + x;
+
+    // Exclusions: bull circle + crosshair band
+    const crossBand = Math.max(10, Math.round(w * 0.012));
+    const bullR = Math.max(18, Math.round(Math.min(w, h) * 0.04)); // excludes bull ring region
+
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = idx(x, y);
+
+        // exclude crosshair bands
+        if (Math.abs(x - bullXpx) <= crossBand) continue;
+        if (Math.abs(y - bullYpx) <= crossBand) continue;
+
+        // exclude center bull circle region
+        const dx = x - bullXpx;
+        const dy = y - bullYpx;
+        if ((dx * dx + dy * dy) <= (bullR * bullR)) continue;
+
+        if (gray[p] < thr) mask[p] = 1;
+      }
+    }
+
+    // Connected components (4-neighbor)
     const visited = new Uint8Array(w * h);
     const comps = [];
 
-    const edgePad = 6;
-    const excludeR = pxPerIn * 0.9; // exclude bull ring area
+    const qx = new Int32Array(w * h);
+    const qy = new Int32Array(w * h);
 
-    // stack arrays for flood fill (faster than push/pop objects)
-    const stackX = new Int32Array(w * h > 300000 ? 300000 : (w * h));
-    const stackY = new Int32Array(w * h > 300000 ? 300000 : (w * h));
+    for (let y0 = 0; y0 < h; y0++) {
+      for (let x0 = 0; x0 < w; x0++) {
+        const p0 = idx(x0, y0);
+        if (!mask[p0] || visited[p0]) continue;
 
-    for (let y = 0; y < h; y++) {
-      const base = y * w;
-      for (let x = 0; x < w; x++) {
-        const p = base + x;
-        if (!mask[p] || visited[p]) continue;
-
-        // flood fill
-        let sp = 0;
-        stackX[sp] = x;
-        stackY[sp] = y;
-        sp++;
-
-        visited[p] = 1;
+        let head = 0, tail = 0;
+        qx[tail] = x0; qy[tail] = y0; tail++;
+        visited[p0] = 1;
 
         let area = 0;
         let sumX = 0, sumY = 0;
-        let minX = x, maxX = x, minY = y, maxY = y;
+        let minX = x0, maxX = x0, minY = y0, maxY = y0;
 
-        while (sp > 0) {
-          sp--;
-          const cx = stackX[sp];
-          const cy = stackY[sp];
+        while (head < tail) {
+          const x = qx[head];
+          const y = qy[head];
+          head++;
+
           area++;
-          sumX += cx;
-          sumY += cy;
-          if (cx < minX) minX = cx;
-          if (cx > maxX) maxX = cx;
-          if (cy < minY) minY = cy;
-          if (cy > maxY) maxY = cy;
+          sumX += x;
+          sumY += y;
 
-          // 8-neighbors
-          for (let ny = cy - 1; ny <= cy + 1; ny++) {
-            if (ny < 0 || ny >= h) continue;
-            const nbase = ny * w;
-            for (let nx = cx - 1; nx <= cx + 1; nx++) {
-              if (nx < 0 || nx >= w) continue;
-              const np = nbase + nx;
-              if (!mask[np] || visited[np]) continue;
-              visited[np] = 1;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
 
-              if (sp < stackX.length) {
-                stackX[sp] = nx;
-                stackY[sp] = ny;
-                sp++;
-              }
-            }
-          }
+          // neighbors
+          const n1 = (x > 0) ? idx(x - 1, y) : -1;
+          const n2 = (x < w - 1) ? idx(x + 1, y) : -1;
+          const n3 = (y > 0) ? idx(x, y - 1) : -1;
+          const n4 = (y < h - 1) ? idx(x, y + 1) : -1;
+
+          if (n1 >= 0 && mask[n1] && !visited[n1]) { visited[n1] = 1; qx[tail] = x - 1; qy[tail] = y; tail++; }
+          if (n2 >= 0 && mask[n2] && !visited[n2]) { visited[n2] = 1; qx[tail] = x + 1; qy[tail] = y; tail++; }
+          if (n3 >= 0 && mask[n3] && !visited[n3]) { visited[n3] = 1; qx[tail] = x; qy[tail] = y - 1; tail++; }
+          if (n4 >= 0 && mask[n4] && !visited[n4]) { visited[n4] = 1; qx[tail] = x; qy[tail] = y + 1; tail++; }
         }
 
-        // component stats
-        const compCx = sumX / area;
-        const compCy = sumY / area;
-        const bw = (maxX - minX + 1);
-        const bh = (maxY - minY + 1);
-        const aspect = Math.max(bw / bh, bh / bw);
+        // Filter blobs by size and aspect ratio to prefer hole-like marks
+        const wBox = (maxX - minX + 1);
+        const hBox = (maxY - minY + 1);
+        const aspect = wBox / hBox;
 
-        // Filters:
-        // - area: hole blobs only (grid lines are huge)
-        // - aspect: holes ~ roundish, grid fragments are long
-        // - not near edge
-        // - not near bull
-        if (area < 40 || area > 6000) continue;
-        if (aspect > 3.0) continue;
-        if (minX < edgePad || minY < edgePad || maxX > (w - edgePad) || maxY > (h - edgePad)) continue;
-
-        const dx = compCx - bullX;
-        const dy = compCy - bullY;
-        if (dx * dx + dy * dy < excludeR * excludeR) continue;
-
-        comps.push({
-          area,
-          cx: compCx,
-          cy: compCy,
-          minX, minY, maxX, maxY,
-          bw, bh
-        });
+        // These thresholds are intentionally broad (your photo can vary)
+        if (area >= 20 && area <= 2500 && aspect > 0.35 && aspect < 2.8) {
+          comps.push({
+            cx: sumX / area,
+            cy: sumY / area,
+            area,
+            minX, maxX, minY, maxY,
+          });
+        }
       }
     }
 
-    return comps;
+    // Keep only the most plausible (largest few) if too many
+    comps.sort((a, b) => b.area - a.area);
+    return comps.slice(0, 12);
   }
 
-  function clusterCentroid(comps, pxPerIn) {
-    if (!comps.length) return null;
-
-    // Sort by area, keep top chunk
-    const top = comps.slice().sort((a, b) => b.area - a.area).slice(0, 20);
-
-    // Median center (robust)
-    const xs = top.map(c => c.cx).sort((a, b) => a - b);
-    const ys = top.map(c => c.cy).sort((a, b) => a - b);
-    const mx = xs[Math.floor(xs.length / 2)];
-    const my = ys[Math.floor(ys.length / 2)];
-
-    // Keep those within ~3 inches of median
-    const r = pxPerIn * 3.0;
-    const r2 = r * r;
-    const kept = top.filter(c => {
-      const dx = c.cx - mx;
-      const dy = c.cy - my;
-      return (dx * dx + dy * dy) <= r2;
-    });
-
-    if (!kept.length) return null;
-
-    // Area-weighted centroid
-    let A = 0, sx = 0, sy = 0;
-    for (const c of kept) {
-      A += c.area;
-      sx += c.area * c.cx;
-      sy += c.area * c.cy;
-    }
-    return { cx: sx / A, cy: sy / A, kept };
-  }
-
-  function drawDots(ctx, comps, color) {
+  function drawOverlay(ctx, w, h, bullXpx, bullYpx, comps) {
+    // redraw image already on canvas, just overlay markers
     ctx.save();
-    ctx.fillStyle = color || "red";
+
+    // bull cross marker
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(0,255,255,0.85)";
+    ctx.lineWidth = 2;
+    ctx.moveTo(bullXpx - 18, bullYpx);
+    ctx.lineTo(bullXpx + 18, bullYpx);
+    ctx.moveTo(bullXpx, bullYpx - 18);
+    ctx.lineTo(bullXpx, bullYpx + 18);
+    ctx.stroke();
+
+    // bullet dots
+    ctx.fillStyle = "rgba(255,0,0,0.9)";
     for (const c of comps) {
       ctx.beginPath();
       ctx.arc(c.cx, c.cy, 5, 0, Math.PI * 2);
       ctx.fill();
     }
+
     ctx.restore();
   }
 
-  function drawCross(ctx, x, y) {
-    ctx.save();
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 12, y);
-    ctx.lineTo(x + 12, y);
-    ctx.moveTo(x, y - 12);
-    ctx.lineTo(x, y + 12);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  async function analyzeAutoPOIB() {
-    const ok = await checkApi();
-    if (!ok) return;
-
-    const file = els.photo?.files?.[0];
-    if (!file) {
-      if (els.debugText) els.debugText.textContent = "Pick a target photo first.";
-      return;
-    }
-
+  async function analyzeAuto() {
     try {
-      const img = await loadImageFromFile(file);
+      setDebug("");
+      clearResult();
 
-      // Draw scaled image to preview canvas (keeps analysis fast)
-      const ctx = drawToCanvasScaled(img, els.preview, 1100, 1400);
-      const w = els.preview.width;
-      const h = els.preview.height;
+      const file = els.photo.files && els.photo.files[0];
+      if (!file) throw new Error("Choose a target photo first.");
 
-      const imgData = ctx.getImageData(0, 0, w, h);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = URL.createObjectURL(file);
 
-      // 1) Make dark pixel mask
-      const mask = makeDarkMask(imgData, w, h, 135);
+      await new Promise((res, rej) => {
+        img.onload = () => res();
+        img.onerror = () => rej(new Error("Could not load image"));
+      });
 
-      // 2) Estimate pixels per inch using grid periodicity
-      const pxPerIn = estimatePixelsPerInch(mask, w, h);
+      const { ctx, w, h } = drawToCanvas(img);
+      const { gray } = getGray(ctx, w, h);
 
-      // 3) Find bull center via strongest vertical/horizontal lines in central region
-      const x0 = Math.round(w * 0.20), x1 = Math.round(w * 0.80);
-      const y0 = Math.round(h * 0.20), y1 = Math.round(h * 0.80);
-      const { col, row } = projectionSums(mask, w, h, x0, x1, y0, y1);
+      const energy = sobelEnergy(gray, w, h);
+      const cross = findCrosshair(energy, w, h);
 
-      const bullX = argMaxInRange(col, x0, x1);
-      const bullY = argMaxInRange(row, y0, y1);
+      const bullXpx = cross.bullXpx;
+      const bullYpx = cross.bullYpx;
 
-      // 4) Remove crosshair bands + bull ring area from mask so we keep only holes
-      const bandPx = Math.max(6, Math.round(pxPerIn * 0.18)); // ~0.18 inch
-      zeroBand(mask, w, h, bullX, bullY, bandPx);
+      const ppi = estimatePixelsPerInch(energy, w, h, bullXpx, bullYpx);
 
-      const bullR = Math.max(20, Math.round(pxPerIn * 0.75)); // ~0.75 inch
-      zeroCircle(mask, w, h, bullX, bullY, bullR);
+      const comps = detectDarkBlobs(gray, w, h, bullXpx, bullYpx);
 
-      // 5) Connected components to find hole blobs
-      const comps = findComponents(mask, w, h, bullX, bullY, pxPerIn);
-
-      if (!comps.length) {
-        if (els.debugText) els.debugText.textContent = "No hole components found. Try a clearer photo or different lighting.";
-        // still draw bull cross for debugging
-        drawCross(ctx, bullX, bullY);
-        return;
+      if (comps.length === 0) {
+        drawOverlay(ctx, w, h, bullXpx, bullYpx, comps);
+        throw new Error("No bullet holes detected. If red dots are missing, the threshold needs tightening/loosening.");
       }
 
-      // 6) Cluster centroid (robust)
-      const cluster = clusterCentroid(comps, pxPerIn);
-      if (!cluster) {
-        if (els.debugText) els.debugText.textContent = "Holes detected, but cluster selection failed. Try a clearer photo.";
-        drawCross(ctx, bullX, bullY);
-        return;
-      }
+      // group center in pixels
+      let sx = 0, sy = 0;
+      for (const c of comps) { sx += c.cx; sy += c.cy; }
+      const gx = sx / comps.length;
+      const gy = sy / comps.length;
 
-      // 7) Convert to inches relative to bull
-      const dxPx = cluster.cx - bullX;      // + right
-      const dyPx = cluster.cy - bullY;      // + down
-      const poibX = dxPx / pxPerIn;         // + right
-      const poibY = -dyPx / pxPerIn;        // + up (invert canvas Y)
+      // POIB in inches relative to bull, with Up = +Y
+      // canvas y increases downward, so Up is (bullYpx - gy)
+      const poibX = (gx - bullXpx) / ppi;         // Right + (group right of bull)
+      const poibY = (bullYpx - gy) / ppi;         // Up + (group above bull)
 
-      // Force bull to 0,0 for this test workflow
-      if (els.bullX) els.bullX.value = "0.00";
-      if (els.bullY) els.bullY.value = "0.00";
+      // Update fields
+      els.bullX.value = fmt2(0);
+      els.bullY.value = fmt2(0);
+      els.poibX.value = fmt2(poibX);
+      els.poibY.value = fmt2(poibY);
 
-      if (els.poibX) els.poibX.value = fmt2(poibX);
-      if (els.poibY) els.poibY.value = fmt2(poibY);
+      drawOverlay(ctx, w, h, bullXpx, bullYpx, comps);
 
-      // 8) Draw debug marks: bull center + detected holes
-      // Red dots = kept hole blobs
-      // Lime cross = bull center
-      drawDots(ctx, cluster.kept, "red");
-      drawCross(ctx, bullX, bullY);
-
-      // 9) Auto-calc after analyze
+      // Auto-calc after analyze
       await runCalc();
 
-      if (els.debugText) {
-        els.debugText.textContent =
-          `Analyze OK. px/in≈${fmt2(pxPerIn)} | POIB≈(${fmt2(poibX)}, ${fmt2(poibY)})`;
-      }
+      setDebug(`Detected holes: ${comps.length}\nPixels/inch estimate: ${Math.round(ppi)}\nGroup(px): (${gx.toFixed(1)}, ${gy.toFixed(1)})\nBull(px): (${bullXpx}, ${bullYpx})`);
     } catch (e) {
-      if (els.debugText) els.debugText.textContent = `Analyze error: ${String(e && e.message ? e.message : e)}`;
+      setDebug(String(e && e.message ? e.message : e));
     }
   }
 
-  // ---------- Wire up ----------
   function wire() {
-    if (els.calcBtn) {
-      els.calcBtn.addEventListener("click", () => runCalc());
-    }
-    if (els.analyzeBtn) {
-      els.analyzeBtn.addEventListener("click", () => analyzeAutoPOIB());
-    }
+    els.analyzeBtn.addEventListener("click", (e) => { e.preventDefault(); analyzeAuto(); });
+    els.calcBtn.addEventListener("click", (e) => { e.preventDefault(); runCalc(); });
 
-    // Auto-recalc when settings change
-    const ids = ["distanceYards", "clickValueMoa", "trueMoa", "bullX", "bullY", "poibX", "poibY"];
-    ids.forEach((id) => {
+    // auto-recalc on settings/inputs change (manual flow)
+    [
+      "distanceYards",
+      "clickValueMoa",
+      "trueMoa",
+      "bullX",
+      "bullY",
+      "poibX",
+      "poibY",
+    ].forEach((id) => {
       const el = $(id);
       if (!el) return;
-      el.addEventListener("change", () => runCalc());
-      el.addEventListener("input", () => {
-        // keep it responsive without spamming
-        clearTimeout(el.__t);
-        el.__t = setTimeout(() => runCalc(), 200);
-      });
+      el.addEventListener("change", () => runCalc().catch(() => {}));
+      el.addEventListener("input", () => runCalc().catch(() => {}));
     });
 
-    checkApi().then(() => runCalc()).catch(() => {});
+    checkApi();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", wire);
-  } else {
-    wire();
-  }
+  wire();
 })();
