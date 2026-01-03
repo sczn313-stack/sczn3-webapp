@@ -1,38 +1,33 @@
 // frontend_new/app.js
-// Analyze (Auto POIB) v3 + ROI masking to ignore grid labels/rulers + stronger hole filtering
-// - Convention locked:
-//   Right = +X, Up = +Y
-//   POIB is where the group is relative to bull
-//   Correction is bull - POIB (dx = bullX - poibX, dy = bullY - poibY)
-// - Outputs: inches only + two decimals
+// Analyze (Auto POIB) v4
+// - Forces a visible preview area
+// - Shows selected image immediately (before Analyze)
+// - ROI masking to ignore labels/rulers
+// - Stronger hole filtering
+// - Direction + Δ locked to bull − POIB
 
 (function () {
   const $ = (id) => document.getElementById(id);
 
   const els = {
-    // status
     apiStatus: $("apiStatus"),
     apiUrl: $("apiUrl"),
     debugText: $("debugText"),
 
-    // settings
     distanceYards: $("distanceYards"),
     clickValueMoa: $("clickValueMoa"),
     trueMoa: $("trueMoa"),
 
-    // inputs
     bullX: $("bullX"),
     bullY: $("bullY"),
     poibX: $("poibX"),
     poibY: $("poibY"),
 
-    // photo + actions
     photo: $("photo"),
     analyzeBtn: $("analyzeBtn"),
     calcBtn: $("calcBtn"),
     preview: $("preview"),
 
-    // results
     windageDir: $("windageDir"),
     windageClicks: $("windageClicks"),
     windageMoa: $("windageMoa"),
@@ -50,9 +45,7 @@
     clicksY: $("clicksY"),
   };
 
-  // ---------------------------
-  // Formatting + basic helpers
-  // ---------------------------
+  // ---------- Utilities ----------
   function fmt2(n) {
     const x = Number(n);
     if (!Number.isFinite(x)) return "0.00";
@@ -100,10 +93,8 @@
     const poibX = getNum(els.poibX, 0);
     const poibY = getNum(els.poibY, 0);
 
-    // correction (move POIB to bull)
     const dx = bullX - poibX;
     const dy = bullY - poibY;
-
     return { bullX, bullY, poibX, poibY, dx, dy };
   }
 
@@ -121,10 +112,8 @@
 
   function renderDirectionsAndDeltas() {
     const { dx, dy } = computeCorrectionFromInputs();
-
     if (els.windageDir) els.windageDir.textContent = dirX(dx);
     if (els.elevDir) els.elevDir.textContent = dirY(dy);
-
     if (els.dxIn) els.dxIn.textContent = fmt2(Math.abs(dx));
     if (els.dyIn) els.dyIn.textContent = fmt2(Math.abs(dy));
   }
@@ -198,7 +187,7 @@
       return;
     }
     try {
-      const h = await window.getHealth();
+      await window.getHealth();
       const base = window.SCZN3_API_BASE || window.API_BASE || "(base unknown)";
       setApiStatus(true, `${base} (health OK)`, []);
       return true;
@@ -236,19 +225,33 @@
     }
   }
 
-  // ---------------------------
-  // Analyze (Auto POIB)
-  // ---------------------------
+  // ---------- Preview helpers (fix “no image shown”) ----------
+  function ensurePreviewDiv() {
+    if (els.preview) return els.preview;
+
+    const div = document.createElement("div");
+    div.id = "preview";
+    div.style.minHeight = "320px";
+    div.style.border = "2px solid #ddd";
+    div.style.borderRadius = "10px";
+    div.style.padding = "8px";
+    div.style.marginTop = "12px";
+
+    document.body.appendChild(div);
+    els.preview = div;
+    return div;
+  }
+
   function ensureCanvas() {
-    if (!els.preview) return null;
-    let c = els.preview.querySelector("canvas");
+    const preview = ensurePreviewDiv();
+    let c = preview.querySelector("canvas");
     if (!c) {
       c = document.createElement("canvas");
       c.style.width = "100%";
       c.style.height = "auto";
       c.style.display = "block";
-      els.preview.innerHTML = "";
-      els.preview.appendChild(c);
+      preview.innerHTML = "";
+      preview.appendChild(c);
     }
     return c;
   }
@@ -262,6 +265,26 @@
     });
   }
 
+  async function showSelectedImage() {
+    const file = els.photo?.files?.[0];
+    if (!file) return;
+
+    const canvas = ensureCanvas();
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const img = await loadImageFromFile(file);
+
+    const maxW = 900;
+    const scale = Math.min(1, maxW / img.width);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    setDebug(["Image loaded. Tap Analyze (Auto POIB)."]);
+  }
+
   function toGrayscale(imgData) {
     const { data, width, height } = imgData;
     const g = new Uint8ClampedArray(width * height);
@@ -271,8 +294,6 @@
     return g;
   }
 
-  // ROI mask to ignore top letters, bottom numbers, and side rulers.
-  // These percentages are tuned for your 8.5x11 grid template.
   function computeROI(w, h) {
     const topCut = Math.round(h * 0.12);
     const botCut = Math.round(h * 0.12);
@@ -284,30 +305,18 @@
     const y1 = clampInt(topCut, 0, h - 1);
     const y2 = clampInt(h - 1 - botCut, 0, h - 1);
 
-    return {
-      x1,
-      y1,
-      x2,
-      y2,
-      w: Math.max(1, x2 - x1 + 1),
-      h: Math.max(1, y2 - y1 + 1),
-    };
+    return { x1, y1, x2, y2, w: Math.max(1, x2 - x1 + 1), h: Math.max(1, y2 - y1 + 1) };
   }
 
   function projectionPeaksROI(gray, w, h, roi) {
-    // Count dark pixels per column/row INSIDE ROI only
     const thr = 150;
+    const projX = new Float32Array(roi.w);
+    const projY = new Float32Array(roi.h);
 
-    const rw = roi.w;
-    const rh = roi.h;
-
-    const projX = new Float32Array(rw);
-    const projY = new Float32Array(rh);
-
-    for (let yy = 0; yy < rh; yy++) {
+    for (let yy = 0; yy < roi.h; yy++) {
       const y = roi.y1 + yy;
       const rowOff = y * w;
-      for (let xx = 0; xx < rw; xx++) {
+      for (let xx = 0; xx < roi.w; xx++) {
         const x = roi.x1 + xx;
         const v = gray[rowOff + x];
         if (v < thr) {
@@ -318,30 +327,20 @@
     }
 
     const argmax = (arr) => {
-      let bestI = 0;
-      let bestV = -1;
+      let bestI = 0,
+        bestV = -1;
       for (let i = 0; i < arr.length; i++) {
         if (arr[i] > bestV) {
           bestV = arr[i];
           bestI = i;
         }
       }
-      return { idx: bestI, val: bestV };
+      return bestI;
     };
 
-    const xLocal = argmax(projX).idx;
-    const yLocal = argmax(projY).idx;
-
-    return {
-      projX,
-      projY,
-      x0: roi.x1 + xLocal,
-      y0: roi.y1 + yLocal,
-      xLocal,
-      yLocal,
-      rw,
-      rh,
-    };
+    const x0 = roi.x1 + argmax(projX);
+    const y0 = roi.y1 + argmax(projY);
+    return { projX, projY, x0, y0 };
   }
 
   function pickLinePositions(proj, minDist, topN) {
@@ -364,11 +363,15 @@
   }
 
   function estimatePixelsPerInchFromROI(projX, projY) {
-    // spacing between strong grid line peaks inside ROI
     const minDist = Math.max(20, Math.round(Math.min(projX.length, projY.length) * 0.04));
-
     const xs = pickLinePositions(projX, minDist, 60);
     const ys = pickLinePositions(projY, minDist, 60);
+
+    const diffs = (list) => {
+      const d = [];
+      for (let i = 1; i < list.length; i++) d.push(list[i] - list[i - 1]);
+      return d.filter((x) => x >= 40 && x <= 220);
+    };
 
     const median = (arr) => {
       if (!arr.length) return null;
@@ -377,25 +380,15 @@
       return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
     };
 
-    function diffs(list) {
-      const d = [];
-      for (let i = 1; i < list.length; i++) d.push(list[i] - list[i - 1]);
-      // plausible 1" spacing range (scaled)
-      return d.filter((x) => x >= 40 && x <= 220);
-    }
-
-    const dx = median(diffs(xs));
-    const dy = median(diffs(ys));
-
-    const fallback = 100;
-    const ppi = (Number(dx) || fallback) * 0.5 + (Number(dy) || fallback) * 0.5;
-    return ppi;
+    const dx = median(diffs(xs)) || 100;
+    const dy = median(diffs(ys)) || 100;
+    return (dx + dy) / 2;
   }
 
   function connectedComponents(gray, w, h, roi) {
-    // threshold dark blobs INSIDE ROI only
     const thr = 110;
     const mask = new Uint8Array(w * h);
+
     for (let y = 0; y < h; y++) {
       const inY = y >= roi.y1 && y <= roi.y2;
       const rowOff = y * w;
@@ -408,7 +401,6 @@
 
     const visited = new Uint8Array(w * h);
     const comps = [];
-
     const dirs = [
       [1, 0],
       [-1, 0],
@@ -425,34 +417,33 @@
         const idx = y * w + x;
         if (!mask[idx] || visited[idx]) continue;
 
-        const qx = [x];
-        const qy = [y];
+        const qx = [x],
+          qy = [y];
         visited[idx] = 1;
 
         let minX = x,
           maxX = x,
           minY = y,
-          maxY = y;
-        let area = 0;
-        let sumX = 0,
+          maxY = y,
+          area = 0,
+          sumX = 0,
           sumY = 0;
 
         while (qx.length) {
           const cx = qx.pop();
           const cy = qy.pop();
-          const cidx = cy * w + cx;
-
           area++;
           sumX += cx;
           sumY += cy;
+
           if (cx < minX) minX = cx;
           if (cx > maxX) maxX = cx;
           if (cy < minY) minY = cy;
           if (cy > maxY) maxY = cy;
 
           for (const [dx, dy] of dirs) {
-            const nx = cx + dx;
-            const ny = cy + dy;
+            const nx = cx + dx,
+              ny = cy + dy;
             if (nx < roi.x1 || nx > roi.x2 || ny < roi.y1 || ny > roi.y2) continue;
             const nidx = ny * w + nx;
             if (mask[nidx] && !visited[nidx]) {
@@ -465,18 +456,7 @@
 
         const bw = maxX - minX + 1;
         const bh = maxY - minY + 1;
-
-        comps.push({
-          area,
-          minX,
-          minY,
-          maxX,
-          maxY,
-          cx: sumX / area,
-          cy: sumY / area,
-          bw,
-          bh,
-        });
+        comps.push({ area, minX, minY, maxX, maxY, cx: sumX / area, cy: sumY / area, bw, bh });
       }
     }
 
@@ -484,41 +464,31 @@
   }
 
   function filterHoleCandidates(comps, ppi) {
-    // Dynamic sizing tied to pixels/inch so we don't accept label strokes.
-    // These ranges are conservative for typical phone photos of paper holes.
-    const minD = Math.max(6, Math.round(ppi * 0.06));  // ~0.06"
-    const maxD = Math.max(16, Math.round(ppi * 0.32)); // ~0.32"
+    const minD = Math.max(6, Math.round(ppi * 0.06));
+    const maxD = Math.max(16, Math.round(ppi * 0.32));
 
-    const minArea = Math.max(30, Math.round((minD * minD) * 0.35));
-    const maxArea = Math.max(400, Math.round((maxD * maxD) * 0.90));
+    const minArea = Math.max(30, Math.round(minD * minD * 0.35));
+    const maxArea = Math.max(400, Math.round(maxD * maxD * 0.9));
 
     const out = [];
-
     for (const c of comps) {
-      // size gates
-      if (c.area < minArea) continue;
-      if (c.area > maxArea) continue;
-
+      if (c.area < minArea || c.area > maxArea) continue;
       if (c.bw < minD || c.bh < minD) continue;
       if (c.bw > maxD || c.bh > maxD) continue;
 
-      // reject long thin strokes (numbers/letters)
       const ar = c.bw / c.bh;
       if (ar > 2.6 || ar < 1 / 2.6) continue;
 
-      // fill ratio: text strokes have low fill inside bbox; holes are denser
       const fill = c.area / (c.bw * c.bh);
       if (fill < 0.22) continue;
 
       out.push(c);
     }
 
-    // If we still have a bunch (text got through), keep densest cluster:
-    // pick up to 10 closest to the median center.
     if (out.length > 10) {
       const mx = out.reduce((s, c) => s + c.cx, 0) / out.length;
       const my = out.reduce((s, c) => s + c.cy, 0) / out.length;
-      out.sort((a, b) => ((a.cx - mx) ** 2 + (a.cy - my) ** 2) - ((b.cx - mx) ** 2 + (b.cy - my) ** 2));
+      out.sort((a, b) => (a.cx - mx) ** 2 + (a.cy - my) ** 2 - ((b.cx - mx) ** 2 + (b.cy - my) ** 2));
       return out.slice(0, 10);
     }
 
@@ -533,14 +503,9 @@
     }
 
     const canvas = ensureCanvas();
-    if (!canvas) {
-      setDebug(["Missing preview container/canvas."]);
-      return;
-    }
-
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const img = await loadImageFromFile(file);
 
-    // scale to manageable size
     const maxW = 900;
     const scale = Math.min(1, maxW / img.width);
     const w = Math.round(img.width * scale);
@@ -548,23 +513,15 @@
 
     canvas.width = w;
     canvas.height = h;
-
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(img, 0, 0, w, h);
 
     const imgData = ctx.getImageData(0, 0, w, h);
     const gray = toGrayscale(imgData);
 
-    // ROI that excludes labels/rulers
     const roi = computeROI(w, h);
-
-    // bull center via strongest vertical + horizontal lines INSIDE ROI
     const { projX, projY, x0, y0 } = projectionPeaksROI(gray, w, h, roi);
-
-    // pixels per inch estimate INSIDE ROI
     const ppi = estimatePixelsPerInchFromROI(projX, projY);
 
-    // find hole blobs INSIDE ROI
     const comps = connectedComponents(gray, w, h, roi);
     const holes = filterHoleCandidates(comps, ppi);
 
@@ -573,20 +530,17 @@
         "No hole candidates found inside ROI.",
         `ROI: x=${roi.x1}-${roi.x2}, y=${roi.y1}-${roi.y2}`,
         `ppi=${Math.round(ppi)}`,
-        "Try: brighter photo, higher contrast, avoid glare.",
       ]);
       return;
     }
 
-    // group center (px)
     const gx = holes.reduce((s, c) => s + c.cx, 0) / holes.length;
     const gy = holes.reduce((s, c) => s + c.cy, 0) / holes.length;
 
-    // POIB in inches relative to bull; Up is +Y, but image y goes down
     const poibX = (gx - x0) / ppi;
     const poibY = (y0 - gy) / ppi;
 
-    // draw overlays
+    // redraw + overlays
     ctx.drawImage(img, 0, 0, w, h);
     ctx.lineWidth = 2;
 
@@ -614,34 +568,27 @@
     ctx.arc(gx, gy, 9, 0, Math.PI * 2);
     ctx.stroke();
 
-    // update fields (two decimals)
     setVal(els.poibX, poibX);
     setVal(els.poibY, poibY);
 
-    // lock bull to 0/0 (your flow)
     setVal(els.bullX, 0);
     setVal(els.bullY, 0);
 
-    // debug lines
-    const lines = [
+    setDebug([
       `Detected holes: ${holes.length}`,
       `Pixels/inch estimate: ${Math.round(ppi)}`,
       `Group(px): (${gx.toFixed(1)}, ${gy.toFixed(1)})`,
       `Bull(px): (${x0.toFixed(0)}, ${y0.toFixed(0)})`,
       `POIB(in): (${poibX.toFixed(2)}, ${poibY.toFixed(2)})`,
       `ROI: x=${roi.x1}-${roi.x2}, y=${roi.y1}-${roi.y2}`,
-    ];
-    setDebug(lines);
+    ]);
 
-    // after analyze, show direction + deltas immediately + calc
     renderDirectionsAndDeltas();
     renderMOAandClicksFallback();
     await runCalc();
   }
 
-  // ---------------------------
-  // Wire events
-  // ---------------------------
+  // ---------- Wiring ----------
   function addAutoUpdate(id) {
     const el = $(id);
     if (!el) return;
@@ -657,27 +604,24 @@
 
   ["distanceYards", "clickValueMoa", "trueMoa", "bullX", "bullY", "poibX", "poibY"].forEach(addAutoUpdate);
 
+  if (els.photo) {
+    els.photo.addEventListener("change", () => {
+      showSelectedImage().catch((e) => setDebug([`Preview failed: ${String(e?.message || e)}`]));
+    });
+  }
+
   if (els.analyzeBtn) {
-    els.analyzeBtn.addEventListener("click", async () => {
-      try {
-        await analyzeAutoPOIB();
-      } catch (e) {
-        setDebug([`Analyze failed: ${String(e?.message || e)}`]);
-      }
+    els.analyzeBtn.addEventListener("click", () => {
+      analyzeAutoPOIB().catch((e) => setDebug([`Analyze failed: ${String(e?.message || e)}`]));
     });
   }
 
   if (els.calcBtn) {
-    els.calcBtn.addEventListener("click", async () => {
-      try {
-        await runCalc();
-      } catch (e) {
-        setDebug([`Calc failed: ${String(e?.message || e)}`]);
-      }
+    els.calcBtn.addEventListener("click", () => {
+      runCalc().catch((e) => setDebug([`Calc failed: ${String(e?.message || e)}`]));
     });
   }
 
-  // First render + API check
   renderDirectionsAndDeltas();
   renderMOAandClicksFallback();
   checkApi();
