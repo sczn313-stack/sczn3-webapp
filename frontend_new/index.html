@@ -1,160 +1,134 @@
-<!-- frontend_new/index.html -->
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SCZN3 Frontend New</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SCZN3 — Frontend New</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <h1>SCZN3 — Frontend New</h1>
 
-  <body>
-    <div class="container">
-      <h1>SCZN3 — Frontend New</h1>
-
-      <!-- API Status -->
-      <div class="card">
-        <div>
-          <span class="status" id="apiStatus">CHECKING...</span>
-          <span style="margin-left:10px; font-size:13px; color:#444;">API:</span>
-          <span id="apiUrl" style="font-size:13px; color:#444;"></span>
-        </div>
+    <section class="card">
+      <div class="row">
+        <div class="badge" id="apiStatus">CHECKING…</div>
+        <div class="muted">API:</div>
+        <div class="mono" id="apiUrlLabel"></div>
       </div>
+    </section>
 
-      <!-- Settings -->
-      <div class="card">
-        <h2>Settings</h2>
+    <section class="card">
+      <h2>Settings</h2>
 
-        <div class="row">
-          <div>
-            <label for="distanceYards">Distance (yards)</label>
-            <input id="distanceYards" type="number" step="1" value="100" />
-          </div>
+      <label class="field">
+        <div class="label">Distance (yards)</div>
+        <input id="distanceYards" type="number" inputmode="numeric" value="100" />
+      </label>
 
-          <div>
-            <label for="clickValueMoa">MOA per click</label>
-            <input id="clickValueMoa" type="number" step="0.01" value="0.25" />
-          </div>
-        </div>
+      <label class="field">
+        <div class="label">MOA per click</div>
+        <input id="moaPerClick" type="number" inputmode="decimal" step="0.01" value="0.25" />
+      </label>
 
-        <label for="trueMoa">MOA mode</label>
-        <select id="trueMoa">
-          <option value="ON" selected>True MOA (1.047&quot; @ 100y)</option>
-          <option value="OFF">Shooter MOA (1.000&quot; @ 100y)</option>
+      <label class="field">
+        <div class="label">MOA mode</div>
+        <select id="moaMode">
+          <option value="true">True MOA (1.047&quot; @ 100y)</option>
+          <option value="shooter">Shooter MOA (1.000&quot; @ 100y)</option>
         </select>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Bull + POIB (inches)</h2>
+
+      <div class="grid2">
+        <label class="field">
+          <div class="label">Bull X (in)</div>
+          <input id="bullX" type="number" inputmode="decimal" step="0.01" value="0.00" />
+        </label>
+        <label class="field">
+          <div class="label">Bull Y (in)</div>
+          <input id="bullY" type="number" inputmode="decimal" step="0.01" value="0.00" />
+        </label>
+
+        <label class="field">
+          <div class="label">POIB X (in)</div>
+          <input id="poibX" type="number" inputmode="decimal" step="0.01" value="0.00" />
+        </label>
+        <label class="field">
+          <div class="label">POIB Y (in)</div>
+          <input id="poibY" type="number" inputmode="decimal" step="0.01" value="0.00" />
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Photo</h2>
+
+      <div class="row">
+        <label class="fileBtn">
+          <input id="fileInput" type="file" accept="image/*" />
+          Choose File
+        </label>
+        <div class="mono" id="fileName">No file chosen</div>
       </div>
 
-      <!-- Inputs -->
-      <div class="card">
-        <h2>Bull + POIB (inches)</h2>
-
-        <div class="row">
-          <div>
-            <label for="bullX">Bull X (in)</label>
-            <input id="bullX" type="number" step="0.01" value="0.00" />
-          </div>
-          <div>
-            <label for="bullY">Bull Y (in)</label>
-            <input id="bullY" type="number" step="0.01" value="0.00" />
-          </div>
-        </div>
-
-        <div class="row">
-          <div>
-            <label for="poibX">POIB X (in)</label>
-            <input id="poibX" type="number" step="0.01" value="0.00" />
-          </div>
-          <div>
-            <label for="poibY">POIB Y (in)</label>
-            <input id="poibY" type="number" step="0.01" value="0.00" />
-          </div>
-        </div>
+      <div class="row gap">
+        <button id="analyzeBtn" class="btn primary">Analyze (Auto POIB)</button>
+        <button id="calcBtn" class="btn">Calculate</button>
       </div>
 
-      <!-- Photo + Actions -->
-      <div class="card">
-        <h2>Photo</h2>
-
-        <label for="photo">Choose image</label>
-        <input id="photo" type="file" accept="image/*" />
-
-        <div class="btn-row" style="margin-top:12px;">
-          <button class="btn-primary" id="analyzeBtn" type="button">Analyze (Auto POIB)</button>
-          <button class="btn-secondary" id="calcBtn" type="button">Calculate</button>
-        </div>
-
-        <!-- Preview Canvas Goes Here -->
-        <div id="preview" class="preview"></div>
-
-        <!-- Debug -->
-        <pre id="debugText" class="debug"></pre>
+      <div class="preview">
+        <img id="previewImg" alt="preview" />
       </div>
 
-      <!-- Results -->
-      <div class="card">
-        <h2>Results</h2>
+      <pre class="debug" id="debugBox"></pre>
+    </section>
 
-        <div class="results-grid">
-          <div class="result-line">
-            <div class="k">Windage Direction</div>
-            <div class="v" id="windageDir">CENTER</div>
-          </div>
-          <div class="result-line">
-            <div class="k">Elevation Direction</div>
-            <div class="v" id="elevDir">CENTER</div>
-          </div>
+    <section class="card">
+      <h2>Results</h2>
 
-          <div class="result-line">
-            <div class="k">ΔX (inches)</div>
-            <div class="v"><span id="dxIn">0.00</span></div>
-          </div>
-          <div class="result-line">
-            <div class="k">ΔY (inches)</div>
-            <div class="v"><span id="dyIn">0.00</span></div>
-          </div>
-
-          <div class="result-line">
-            <div class="k">Windage MOA</div>
-            <div class="v"><span id="windageMoa">0.00</span></div>
-          </div>
-          <div class="result-line">
-            <div class="k">Elevation MOA</div>
-            <div class="v"><span id="elevMoa">0.00</span></div>
-          </div>
-
-          <div class="result-line">
-            <div class="k">Windage Clicks</div>
-            <div class="v"><span id="windageClicks">0.00</span></div>
-          </div>
-          <div class="result-line">
-            <div class="k">Elevation Clicks</div>
-            <div class="v"><span id="elevClicks">0.00</span></div>
-          </div>
-
-          <!-- Optional detail fields (kept for compatibility with app.js) -->
-          <div class="result-line">
-            <div class="k">MOA X</div>
-            <div class="v"><span id="moaX">0.00</span></div>
-          </div>
-          <div class="result-line">
-            <div class="k">MOA Y</div>
-            <div class="v"><span id="moaY">0.00</span></div>
-          </div>
-
-          <div class="result-line">
-            <div class="k">Clicks X</div>
-            <div class="v"><span id="clicksX">0.00</span></div>
-          </div>
-          <div class="result-line">
-            <div class="k">Clicks Y</div>
-            <div class="v"><span id="clicksY">0.00</span></div>
-          </div>
+      <div class="resultBox">
+        <div class="resultRow">
+          <div class="k">Windage Direction</div>
+          <div class="v" id="windDir">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Elevation Direction</div>
+          <div class="v" id="elevDir">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">ΔX (inches)</div>
+          <div class="v" id="dxIn">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">ΔY (inches)</div>
+          <div class="v" id="dyIn">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Windage MOA</div>
+          <div class="v" id="dxMoa">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Elevation MOA</div>
+          <div class="v" id="dyMoa">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Windage Clicks</div>
+          <div class="v" id="dxClicks">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="k">Elevation Clicks</div>
+          <div class="v" id="dyClicks">—</div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- IMPORTANT: api.js must load before app.js -->
-    <script src="./api.js"></script>
-    <script src="./app.js"></script>
-  </body>
+    <footer class="foot">Faith • Order • Precision</footer>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
 </html>
