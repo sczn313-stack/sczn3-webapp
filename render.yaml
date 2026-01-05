@@ -1,8 +1,23 @@
 services:
+  # =========================
+  # BACKEND (LOCKED to backend_new)
+  # =========================
   - type: web
-    name: sczn3-webapp
-    env: node
-    plan: free
-    rootDir: .
-    buildCommand: "npm install"
-    startCommand: "npm start"
+    name: sczn3-backend-new
+    runtime: node
+    plan: starter
+    rootDir: backend_new
+    buildCommand: npm ci
+    startCommand: npm start
+    autoDeploy: true
+
+  # =========================
+  # FRONTEND (LOCKED to frontend_new)
+  # =========================
+  - type: web
+    name: sczn3-frontend-new
+    runtime: static
+    rootDir: frontend_new
+    buildCommand: echo "no build"
+    staticPublishPath: .
+    autoDeploy: true
