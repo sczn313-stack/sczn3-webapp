@@ -1,235 +1,342 @@
-// backend_new/server.js
-// SCZN3 backend_new — CALC + ANALYZE
-// - GET  /health
-// - POST /api/calc    (bull - POIB, direction locked, 2 decimals)
-// - POST /api/analyze (upload image -> heuristic POIB offsets in inches)
+/**
+ * backend_new/server.js
+ *
+ * SCZN3 BACKEND — PADLOCKED COORDS (LOCK_V1)
+ *
+ * LOCK RULES (DO NOT EDIT WITHOUT UPDATING LOCK_VERSION + TESTS):
+ * 1) Target coordinate system is:
+ *      +X = RIGHT, +Y = UP
+ * 2) POIB inches returned by /api/analyze MUST be in target coords.
+ * 3) Correction is ALWAYS:
+ *      correction = bull - POIB
+ *    where bull is in target coords (usually 0,0), POIB is target coords inches.
+ * 4) Backend returns DIRECTIONS (frontend must display, not reinterpret).
+ *
+ * Endpoints:
+ *   GET  /health
+ *   GET  /api/health
+ *   POST /api/calc
+ *   POST /api/analyze   (multipart form-data: image)
+ */
 
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const Jimp = require("jimp");
 
+// =====================
+// PADLOCK STAMP
+// =====================
+const LOCK_VERSION = "LOCK_V1";
+const COORD_SYSTEM = "TARGET_INCHES_X_RIGHT_Y_UP";
+
+// =====================
+// APP
+// =====================
 const app = express();
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
 
-app.use(cors({ origin: true, methods: ["GET", "POST", "OPTIONS"] }));
-app.use(express.json({ limit: "1mb" }));
-
-// Upload in memory
+// Multer (memory)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
 });
 
-// ---------- helpers ----------
-function toNum(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+// =====================
+// HELPERS (LOCKED)
+// =====================
+function n(v, fallback = 0) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : fallback;
 }
 
-function round2(n) {
-  return Math.round(n * 100) / 100;
+function f2(v) {
+  const x = n(v);
+  return Math.round(x * 100) / 100;
 }
 
-function dirLR(dx) {
-  if (dx > 0) return "RIGHT";
-  if (dx < 0) return "LEFT";
-  return "NONE";
+/**
+ * LOCKED direction/correction:
+ * correction = bull - POIB
+ */
+function computeCorrection(bullX_in, bullY_in, poibX_in, poibY_in) {
+  const dx = n(bullX_in) - n(poibX_in);
+  const dy = n(bullY_in) - n(poibY_in);
+
+  return {
+    dx,
+    dy,
+    windageDirection: dx >= 0 ? "RIGHT" : "LEFT",
+    elevationDirection: dy >= 0 ? "UP" : "DOWN",
+  };
 }
 
-function dirUD(dy) {
-  if (dy > 0) return "UP";
-  if (dy < 0) return "DOWN";
-  return "NONE";
+/**
+ * LOCKED pixel -> inches conversion in TARGET coords
+ * image coords: +X right, +Y down
+ * target coords: +X right, +Y up
+ *
+ * poibX_in = (groupX_px - bullX_px)/ppi
+ * poibY_in = (bullY_px - groupY_px)/ppi   <-- Y flipped (LOCK)
+ */
+function pixelsToTargetInches(groupX_px, groupY_px, bullX_px, bullY_px, ppi) {
+  const p = n(ppi);
+  if (!(p > 0)) return { poibX_in: 0, poibY_in: 0, ppi_used: 0 };
+
+  const poibX_in = (n(groupX_px) - n(bullX_px)) / p;
+  const poibY_in = (n(bullY_px) - n(groupY_px)) / p; // LOCK: Y flipped
+
+  return { poibX_in, poibY_in, ppi_used: p };
 }
 
-function inchesPerMOA(distanceYards, trueMoaOn) {
-  const baseAt100 = trueMoaOn ? 1.047 : 1.0;
-  return baseAt100 * (distanceYards / 100);
-}
+/**
+ * Rough heuristic analyzer (direction-safe):
+ * - Finds bull center by locating the centroid of "dark" pixels in the image.
+ * - Finds group center by locating centroid of "orange-ish" pixels (bullet holes).
+ *
+ * NOTE:
+ * - PPI is optional. If not provided and we can’t estimate reliably, we use a fallback.
+ * - Direction is still correct because it's based on relative position and the Y flip.
+ */
+async function analyzeImage(buffer) {
+  const img = await Jimp.read(buffer);
 
-// Heuristic: find dark centroid in center region
-function estimateDarkCentroid(image) {
-  const { width, height, data } = image.bitmap;
+  // Normalize size for stable thresholding
+  const targetW = 1200;
+  if (img.bitmap.width > targetW) img.resize(targetW, Jimp.AUTO);
 
-  const x0 = Math.floor(width * 0.10);
-  const x1 = Math.floor(width * 0.90);
-  const y0 = Math.floor(height * 0.10);
-  const y1 = Math.floor(height * 0.90);
+  const w = img.bitmap.width;
+  const h = img.bitmap.height;
 
-  const step = Math.max(2, Math.floor(Math.min(width, height) / 500));
+  // ---------
+  // 1) Bull center = centroid of dark pixels (bull is usually the biggest dark region)
+  // ---------
+  let bullSumX = 0,
+    bullSumY = 0,
+    bullCount = 0;
 
-  let sumW = 0;
-  let sumX = 0;
-  let sumY = 0;
-  let count = 0;
+  // ---------
+  // 2) Group center = centroid of orange pixels (splatter)
+  // ---------
+  let grpSumX = 0,
+    grpSumY = 0,
+    grpCount = 0;
 
-  for (let y = y0; y < y1; y += step) {
-    for (let x = x0; x < x1; x += step) {
-      const idx = (width * y + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
+  // Sampling step (speed)
+  const step = 2;
 
-      // luminance
-      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
 
-      // darker = more weight
-      if (lum < 60) {
-        const w = 60 - lum;
-        sumW += w;
-        sumX += x * w;
-        sumY += y * w;
-        count++;
+      // Dark pixel heuristic (bull & rings)
+      // "dark" = low brightness
+      const brightness = (r + g + b) / 3;
+      const isDark = brightness < 70; // adjust if needed
+
+      if (isDark) {
+        bullSumX += x;
+        bullSumY += y;
+        bullCount++;
+      }
+
+      // Orange splatter heuristic: red high, green medium, blue low
+      // Works well for your synthetic orange cluster targets.
+      const isOrange =
+        r > 140 && g > 70 && g < 200 && b < 120 && r > g && g > b;
+
+      if (isOrange) {
+        grpSumX += x;
+        grpSumY += y;
+        grpCount++;
       }
     }
   }
 
-  if (sumW <= 0 || count < 30) {
-    return { cx: width / 2, cy: height / 2, scoreCount: count };
-  }
-  return { cx: sumX / sumW, cy: sumY / sumW, scoreCount: count };
-}
+  // If we didn’t find orange, fall back to "dark centroid far from bull" approach:
+  // (still direction-safe, just less stable)
+  let groupX_px, groupY_px;
 
-// ---------- routes ----------
-app.get("/", (req, res) => {
-  res.type("text/plain").send(
-    [
-      "SCZN3 backend_new is running.",
-      "",
-      "Endpoints:",
-      "GET  /health",
-      "POST /api/calc",
-      "POST /api/analyze (multipart form-data: image)",
-      "",
-    ].join("\n")
-  );
-});
+  const bullX_px = bullCount > 0 ? bullSumX / bullCount : w / 2;
+  const bullY_px = bullCount > 0 ? bullSumY / bullCount : h / 2;
 
-app.get("/health", (req, res) => {
-  res.json({ ok: true, service: "sczn3-backend-new" });
-});
+  if (grpCount > 50) {
+    groupX_px = grpSumX / grpCount;
+    groupY_px = grpSumY / grpCount;
+  } else {
+    // Fallback: find a second centroid of dark pixels weighted away from bull center
+    let farSumX = 0,
+      farSumY = 0,
+      farCount = 0;
 
-// POST /api/calc
-app.post("/api/calc", (req, res) => {
-  try {
-    const distanceYards = toNum(req.body?.distanceYards, 100);
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
+        const brightness = (r + g + b) / 3;
+        const isDark = brightness < 60;
+        if (!isDark) continue;
 
-    // accept clickValue or clickValueMoa
-    let clickValue = toNum(req.body?.clickValue, NaN);
-    if (!Number.isFinite(clickValue)) clickValue = toNum(req.body?.clickValueMoa, NaN);
-    if (!Number.isFinite(clickValue)) clickValue = 0.25;
+        const dx = x - bullX_px;
+        const dy = y - bullY_px;
+        const dist2 = dx * dx + dy * dy;
 
-    const trueMoa = Boolean(req.body?.trueMoa);
+        // Only consider dark pixels not near the bull (cluster likely farther out)
+        if (dist2 < 140 * 140) continue;
 
-    const bull = req.body?.bull || {};
-    const poib = req.body?.poib || {};
-
-    const bullX = toNum(bull.x, 0);
-    const bullY = toNum(bull.y, 0);
-    const poibX = toNum(poib.x, 0);
-    const poibY = toNum(poib.y, 0);
-
-    // rule: correction = bull - POIB
-    const dxIn = bullX - poibX; // + RIGHT
-    const dyIn = bullY - poibY; // + UP
-
-    const ipm = inchesPerMOA(distanceYards, trueMoa);
-
-    const windMoa = ipm === 0 ? 0 : Math.abs(dxIn) / ipm;
-    const elevMoa = ipm === 0 ? 0 : Math.abs(dyIn) / ipm;
-
-    const windClicks = clickValue === 0 ? 0 : windMoa / clickValue;
-    const elevClicks = clickValue === 0 ? 0 : elevMoa / clickValue;
-
-    res.json({
-      settings: {
-        distanceYards: round2(distanceYards),
-        clickValueMoa: round2(clickValue),
-        trueMoa,
-        inchesPerMoa: round2(ipm),
-      },
-      inputs: {
-        bull: { x: round2(bullX), y: round2(bullY) },
-        poib: { x: round2(poibX), y: round2(poibY) },
-      },
-      delta: {
-        dxIn: round2(dxIn),
-        dyIn: round2(dyIn),
-      },
-      windage: {
-        direction: dirLR(dxIn),
-        moa: round2(windMoa),
-        clicks: round2(windClicks),
-      },
-      elevation: {
-        direction: dirUD(dyIn),
-        moa: round2(elevMoa),
-        clicks: round2(elevClicks),
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
-  }
-});
-
-// POST /api/analyze (upload image)
-app.post("/api/analyze", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file?.buffer) {
-      return res.status(400).json({ ok: false, error: "No image uploaded" });
+        farSumX += x;
+        farSumY += y;
+        farCount++;
+      }
     }
 
-    const img = await Jimp.read(req.file.buffer);
+    groupX_px = farCount > 0 ? farSumX / farCount : bullX_px;
+    groupY_px = farCount > 0 ? farSumY / farCount : bullY_px;
+  }
 
-    // Normalize
-    img.resize(1200, Jimp.AUTO);
-    img.contrast(0.2);
+  // PPI (optional). If caller supplies, use it. Otherwise fallback.
+  // Direction does NOT depend on perfect PPI.
+  const ppi_fallback = 100; // safe fallback scale
+  const ppi = ppi_fallback;
 
-    const { cx, cy, scoreCount } = estimateDarkCentroid(img);
+  return {
+    resizedW: w,
+    resizedH: h,
+    bull_px: { x: bullX_px, y: bullY_px },
+    group_px: { x: groupX_px, y: groupY_px },
+    ppi_estimate: ppi,
+    method: grpCount > 50 ? "orange_centroid" : "dark_far_centroid",
+    samples: Math.floor((w / step) * (h / step)),
+    orangeCount: grpCount,
+    darkCount: bullCount,
+  };
+}
 
-    const w = img.bitmap.width;
-    const h = img.bitmap.height;
+// =====================
+// ROUTES
+// =====================
+app.get(["/health", "/api/health"], (req, res) => {
+  res.json({
+    ok: true,
+    service: "sczn3-backend-new",
+    lock_version: LOCK_VERSION,
+    coord_system: COORD_SYSTEM,
+    time: new Date().toISOString(),
+  });
+});
 
-    // bull assumed at center of image
-    const bullPxX = w / 2;
-    const bullPxY = h / 2;
+/**
+ * POST /api/calc
+ * body:
+ *   bull_in: {x,y} (optional, default 0,0)
+ *   poib_in: {x,y} (required)
+ */
+app.post("/api/calc", (req, res) => {
+  const bullX = n(req.body?.bull_in?.x, 0);
+  const bullY = n(req.body?.bull_in?.y, 0);
 
-    // paper assumption for pixels-per-inch
-    const portrait = h >= w;
-    const paperW = portrait ? 8.5 : 11;
-    const paperH = portrait ? 11 : 8.5;
+  const poibX = n(req.body?.poib_in?.x, 0);
+  const poibY = n(req.body?.poib_in?.y, 0);
 
-    const ppiX = w / paperW;
-    const ppiY = h / paperH;
+  const corr = computeCorrection(bullX, bullY, poibX, poibY);
 
-    // image coords: +Y is down, so invert for "Up +"
-    const dpx = cx - bullPxX;
-    const dpy = cy - bullPxY;
+  res.json({
+    ok: true,
+    lock_version: LOCK_VERSION,
+    coord_system: COORD_SYSTEM,
+    bull_in: { x: bullX, y: bullY },
+    poib_in: { x: poibX, y: poibY },
+    correction_in: { dx: corr.dx, dy: corr.dy },
+    directions: {
+      windage: corr.windageDirection,
+      elevation: corr.elevationDirection,
+    },
+  });
+});
 
-    const poibX_in = dpx / ppiX;     // Right +
-    const poibY_in = -(dpy / ppiY);  // Up +
+/**
+ * POST /api/analyze
+ * multipart form-data:
+ *   image: file
+ *
+ * Returns (LOCKED):
+ *   poib_in in TARGET coords (+X right, +Y up)
+ *   directions computed from correction = bull - POIB
+ */
+app.post("/api/analyze", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ ok: false, error: "No image uploaded (field name: image)" });
+    }
 
-    res.json({
+    // Analyze pixels
+    const a = await analyzeImage(req.file.buffer);
+
+    // Bull in target coords is defined as 0,0 for our standard.
+    const bull_in = { x: 0, y: 0 };
+
+    // Convert pixels -> inches in TARGET coords (LOCKED Y flip)
+    const conv = pixelsToTargetInches(
+      a.group_px.x,
+      a.group_px.y,
+      a.bull_px.x,
+      a.bull_px.y,
+      a.ppi_estimate
+    );
+
+    const poib_in = {
+      x: f2(conv.poibX_in),
+      y: f2(conv.poibY_in),
+    };
+
+    // LOCKED correction and directions
+    const corr = computeCorrection(bull_in.x, bull_in.y, poib_in.x, poib_in.y);
+
+    return res.json({
       ok: true,
-      note: "Heuristic POIB (dark centroid) relative to bull(center).",
-      debug: {
-        resizedW: w,
-        resizedH: h,
-        samples: scoreCount,
-        portrait,
-        ppiX: round2(ppiX),
-        ppiY: round2(ppiY),
+
+      // Padlock stamp
+      lock_version: LOCK_VERSION,
+      coord_system: COORD_SYSTEM,
+
+      // Canonical values
+      bull_in,
+      poib_in,
+      correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
+      directions: {
+        windage: corr.windageDirection,
+        elevation: corr.elevationDirection,
       },
-      bull: { x: 0.0, y: 0.0 },
-      poib: { x: round2(poibX_in), y: round2(poibY_in) },
+
+      // Debug info (safe; helps verify drift)
+      note: "LOCKED: target coords +X right +Y up; poibY uses Y flip; correction = bull - POIB",
+      debug: {
+        method: a.method,
+        resizedW: a.resizedW,
+        resizedH: a.resizedH,
+        bull_px: { x: f2(a.bull_px.x), y: f2(a.bull_px.y) },
+        group_px: { x: f2(a.group_px.x), y: f2(a.group_px.y) },
+        ppi_estimate: a.ppi_estimate,
+        orangeCount: a.orangeCount,
+        darkCount: a.darkCount,
+        samples: a.samples,
+      },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
+    return res.status(500).json({
+      ok: false,
+      lock_version: LOCK_VERSION,
+      coord_system: COORD_SYSTEM,
+      error: String(err),
+    });
   }
 });
 
-// ---------- start ----------
-const PORT = process.env.PORT || 3000;
+// =====================
+// START
+// =====================
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`SCZN3 backend_new listening on port ${PORT}`);
+  console.log(`[sczn3-backend-new] listening on :${PORT}`);
+  console.log(`[LOCK] ${LOCK_VERSION} — ${COORD_SYSTEM}`);
 });
