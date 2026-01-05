@@ -2,45 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
     <title>SCZN3 — Frontend New</title>
 
-    <!-- OPTIONAL: if you have styles.css already, keep this line -->
+    <!-- Styles (keep) -->
     <link rel="stylesheet" href="./styles.css" />
 
-    <style>
-      /* Safe fallback styling (won't break your existing styles.css) */
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
-      .wrap { max-width: 920px; margin: 0 auto; padding: 18px; }
-      h1 { margin: 6px 0 14px; font-size: 34px; }
-      .card { border-radius: 16px; padding: 16px; margin: 14px 0; border: 1px solid rgba(0,0,0,.12); }
-      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-      label { display:block; font-size: 13px; opacity: .8; margin-bottom: 6px; }
-      input, select, button { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,.18); font-size: 16px; }
-      button { cursor: pointer; font-weight: 700; }
-      .btnRow { display:flex; gap: 10px; }
-      .btnRow button { width: auto; padding: 12px 16px; }
-      .pill { display:inline-flex; align-items:center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(0,0,0,.12); }
-      .good { color: #1b7f3a; border-color: rgba(27,127,58,.35) !important; }
-      .bad { color: #b42318; border-color: rgba(180,35,24,.35) !important; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; }
-      .preview { width: 100%; max-width: 100%; border-radius: 14px; border: 1px solid rgba(0,0,0,.12); display:none; }
-      .resultsGrid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .resultBox { border-radius: 14px; padding: 12px; border: 1px solid rgba(0,0,0,.12); }
-      .resultBox .k { opacity:.7; font-size: 12px; margin-bottom: 6px; }
-      .resultBox .v { font-weight: 800; font-size: 18px; }
-      @media (max-width: 780px) {
-        .row, .row3, .resultsGrid { grid-template-columns: 1fr; }
-        .btnRow { flex-direction: column; }
-        .btnRow button { width: 100%; }
-      }
-    </style>
-
-    <!-- ✅ LOCK: Put your BACKEND base URL here -->
+    <!-- SCZN3 BACKEND LOCK — DO NOT EDIT -->
     <script>
-      // If your backend service URL changes, update this one line only.
-      // This is the backend (web service), NOT the static site.
       window.SZN3_API_BASE = "https://sczn3-webapp-213.onrender.com";
     </script>
   </head>
@@ -50,27 +22,34 @@
       <h1>SCZN3 — Frontend New</h1>
 
       <div class="card">
-        <div class="pill" id="apiPill">
-          <div><strong id="apiStatus">CHECKING…</strong></div>
-          <div>API:</div>
-          <div class="mono" id="apiUrlLabel">—</div>
+        <div class="row">
+          <div>
+            <div class="label">API:</div>
+            <div id="apiStatus" class="pill">CHECKING…</div>
+          </div>
+          <div class="grow">
+            <div class="label">API URL:</div>
+            <div id="apiUrlLabel" class="mono">—</div>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <h2 style="margin:0 0 12px;">Settings</h2>
+        <h2>Settings</h2>
 
-        <div class="row3">
+        <div class="grid2">
           <div>
-            <label for="distanceYards">Distance (yards)</label>
+            <label class="label" for="distanceYards">Distance (yards)</label>
             <input id="distanceYards" type="number" value="100" />
           </div>
+
           <div>
-            <label for="moaPerClick">MOA per click</label>
+            <label class="label" for="moaPerClick">MOA per click</label>
             <input id="moaPerClick" type="number" step="0.01" value="0.25" />
           </div>
-          <div>
-            <label for="moaMode">MOA mode</label>
+
+          <div class="span2">
+            <label class="label" for="moaMode">MOA mode</label>
             <select id="moaMode">
               <option value="true">True MOA (1.047" @ 100y)</option>
               <option value="shooter">Shooter MOA (1.000" @ 100y)</option>
@@ -80,95 +59,96 @@
       </div>
 
       <div class="card">
-        <h2 style="margin:0 0 12px;">Bull + POIB (inches)</h2>
+        <h2>Bull + POIB (inches)</h2>
 
-        <div class="row">
+        <div class="grid2">
           <div>
-            <label for="bullX">Bull X (in)</label>
+            <label class="label" for="bullX">Bull X (in)</label>
             <input id="bullX" type="number" step="0.01" value="0.00" />
           </div>
+
           <div>
-            <label for="bullY">Bull Y (in)</label>
+            <label class="label" for="bullY">Bull Y (in)</label>
             <input id="bullY" type="number" step="0.01" value="0.00" />
           </div>
-        </div>
 
-        <div class="row" style="margin-top:12px;">
           <div>
-            <label for="poibX">POIB X (in)</label>
+            <label class="label" for="poibX">POIB X (in)</label>
             <input id="poibX" type="number" step="0.01" value="0.00" />
           </div>
+
           <div>
-            <label for="poibY">POIB Y (in)</label>
+            <label class="label" for="poibY">POIB Y (in)</label>
             <input id="poibY" type="number" step="0.01" value="0.00" />
           </div>
         </div>
       </div>
 
       <div class="card">
-        <h2 style="margin:0 0 12px;">Photo</h2>
+        <h2>Photo</h2>
 
         <div class="row">
-          <div>
-            <input id="fileInput" type="file" accept="image/*" />
-            <div class="mono" style="margin-top:10px;">Selected: <span id="fileName">—</span></div>
-          </div>
-          <div class="btnRow">
-            <button id="analyzeBtn" type="button">Analyze (Auto POIB)</button>
-            <button id="calcBtn" type="button">Calculate</button>
-          </div>
+          <input id="fileInput" type="file" accept="image/*" />
+          <div id="fileName" class="mono">No file chosen</div>
         </div>
 
-        <div style="margin-top:12px;">
-          <img id="previewImg" class="preview" alt="preview" />
+        <div class="row">
+          <button id="analyzeBtn" type="button">Analyze (Auto POIB)</button>
+          <button id="calcBtn" type="button">Calculate</button>
         </div>
 
-        <pre id="debugBox" class="card mono" style="margin-top:14px; white-space:pre-wrap;">preview</pre>
+        <img id="previewImg" alt="preview" style="display:none; max-width:100%; border-radius:12px; margin-top:12px;" />
       </div>
 
       <div class="card">
-        <h2 style="margin:0 0 12px;">Results</h2>
+        <h2>Results</h2>
 
-        <div class="resultsGrid">
-          <div class="resultBox">
-            <div class="k">Windage Direction</div>
-            <div class="v" id="windDir">—</div>
+        <div class="grid2">
+          <div>
+            <div class="label">Windage Direction</div>
+            <div id="windDir" class="value">—</div>
           </div>
-          <div class="resultBox">
-            <div class="k">Elevation Direction</div>
-            <div class="v" id="elevDir">—</div>
-          </div>
-
-          <div class="resultBox">
-            <div class="k">ΔX (inches)</div>
-            <div class="v" id="dxIn">—</div>
-          </div>
-          <div class="resultBox">
-            <div class="k">ΔY (inches)</div>
-            <div class="v" id="dyIn">—</div>
+          <div>
+            <div class="label">Elevation Direction</div>
+            <div id="elevDir" class="value">—</div>
           </div>
 
-          <div class="resultBox">
-            <div class="k">Windage MOA</div>
-            <div class="v" id="dxMoa">—</div>
+          <div>
+            <div class="label">ΔX (inches)</div>
+            <div id="dxIn" class="value">—</div>
           </div>
-          <div class="resultBox">
-            <div class="k">Elevation MOA</div>
-            <div class="v" id="dyMoa">—</div>
+          <div>
+            <div class="label">ΔY (inches)</div>
+            <div id="dyIn" class="value">—</div>
           </div>
 
-          <div class="resultBox">
-            <div class="k">Windage Clicks</div>
-            <div class="v" id="dxClicks">—</div>
+          <div>
+            <div class="label">Windage MOA</div>
+            <div id="dxMoa" class="value">—</div>
           </div>
-          <div class="resultBox">
-            <div class="k">Elevation Clicks</div>
-            <div class="v" id="dyClicks">—</div>
+          <div>
+            <div class="label">Elevation MOA</div>
+            <div id="dyMoa" class="value">—</div>
+          </div>
+
+          <div>
+            <div class="label">Windage Clicks</div>
+            <div id="dxClicks" class="value">—</div>
+          </div>
+          <div>
+            <div class="label">Elevation Clicks</div>
+            <div id="dyClicks" class="value">—</div>
           </div>
         </div>
       </div>
+
+      <div class="card">
+        <h2>Debug</h2>
+        <pre id="debugBox" class="mono" style="white-space:pre-wrap; word-break:break-word; margin:0;">—</pre>
+      </div>
     </div>
 
+    <!-- IMPORTANT: app.js must load AFTER the SZN3_API_BASE lock -->
     <script src="./app.js"></script>
   </body>
 </html>
