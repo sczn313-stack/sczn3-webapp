@@ -2,8 +2,7 @@
   // ===========
   // CONFIG
   // ===========
-  // If your backend is on another Render service, set it here.
-  // Otherwise it will default to same-origin.
+  // Backend base URL (set in index.html)
   const API_BASE = (window.SZN3_API_BASE || "").trim() || "";
 
   // ===========
@@ -57,9 +56,21 @@
   }
 
   // ===========
-  // LOCK #1: Pixels -> Inches (flip Y exactly once)
-  // target coords: +X right, +Y up
+  // CANONICAL LOCKED MATH
   // ===========
+  // LOCK #1: correction = bull - POIB (move POIB to bull)
+  function computeCorrection(bullX, bullY, poibX, poibY) {
+    const dx = bullX - poibX;
+    const dy = bullY - poibY;
+
+    const windageDirection = dx >= 0 ? "RIGHT" : "LEFT";
+    const elevationDirection = dy >= 0 ? "UP" : "DOWN";
+
+    return { dx, dy, windageDirection, elevationDirection };
+  }
+
+  // LOCK #2: pixels -> inches with Y FLIPPED
+  // target coords: +X right, +Y up
   function pixelsToInchesTargetCoords(groupX_px, groupY_px, bullX_px, bullY_px, ppi) {
     const gx = n(groupX_px);
     const gy = n(groupY_px);
@@ -70,37 +81,22 @@
     if (!(p > 0)) return { poibX_in: 0, poibY_in: 0 };
 
     const poibX_in = (gx - bx) / p;
-    const poibY_in = (by - gy) / p; // ✅ Y FLIP LOCK (ONLY PLACE Y FLIPS)
+    const poibY_in = (by - gy) / p; // <-- Y flipped (LOCK)
 
     return { poibX_in, poibY_in };
-  }
-
-  // ===========
-  // LOCK #2: correction = bull - POIB (move POIB to bull)
-  // ===========
-  function computeCorrection(bullX_in, bullY_in, poibX_in, poibY_in) {
-    const dx = n(bullX_in) - n(poibX_in);
-    const dy = n(bullY_in) - n(poibY_in);
-
-    // Directions (locked)
-    const windageDirection = dx > 0 ? "RIGHT" : dx < 0 ? "LEFT" : "NONE";
-    const elevationDirection = dy > 0 ? "UP" : dy < 0 ? "DOWN" : "NONE";
-
-    return { dx, dy, windageDirection, elevationDirection };
   }
 
   // ===========
   // UI OUTPUT
   // ===========
   function setDebug(obj) {
-    if (!debugBox) return;
     debugBox.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
   }
 
   function renderResults(corr) {
-    const distanceYards = n(distanceYardsEl?.value, 100);
-    const moaPerClick = n(moaPerClickEl?.value, 0.25);
-    const moaMode = moaModeEl?.value || "true";
+    const distanceYards = n(distanceYardsEl.value, 100);
+    const moaPerClick = n(moaPerClickEl.value, 0.25);
+    const moaMode = moaModeEl.value;
 
     const inPerMOA = inchesPerMOAAtDistance(distanceYards, moaMode);
 
@@ -127,29 +123,43 @@
   // API
   // ===========
   async function apiHealthCheck() {
-    const url = (API_BASE || window.location.origin).replace(/\/$/, "") + "/health";
-    if (apiUrlLabel) apiUrlLabel.textContent = url;
+    const base = (API_BASE || window.location.origin).replace(/\/$/, "");
+    const urls = [base + "/health", base + "/api/health"];
 
-    try {
-      const res = await fetch(url, { method: "GET" });
-      if (!res.ok) throw new Error("Health not OK");
-      if (apiStatus) {
+    apiUrlLabel.textContent = urls[0];
+
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { method: "GET" });
+        if (!res.ok) throw new Error("Health not OK");
+
+        apiUrlLabel.textContent = url;
         apiStatus.textContent = "LIVE";
         apiStatus.classList.add("good");
         apiStatus.classList.remove("bad");
+        return;
+      } catch {
+        // try next
       }
-    } catch {
-      if (apiStatus) {
-        apiStatus.textContent = "NO API";
-        apiStatus.classList.add("bad");
-        apiStatus.classList.remove("good");
-      }
-      setDebug("API health check failed. If your backend is separate, set window.SZN3_API_BASE in index.html before app.js.");
     }
+
+    apiStatus.textContent = "NO API";
+    apiStatus.classList.add("bad");
+    apiStatus.classList.remove("good");
+    setDebug(
+      "API health check failed.\n" +
+      "Confirm backend supports GET /health or /api/health.\n" +
+      "API_BASE: " + (API_BASE || "(same-origin)")
+    );
   }
 
   async function analyzeAutoPOIB(file) {
+    // Preferred: POST /analyze (multipart) returning either:
+    //   A) { poib_in: {x,y} }  OR { poibX_in, poibY_in }
+    //   B) { group_px:{x,y}, bull_px:{x,y}, ppi }
+    //   C) { groupPx:[x,y], bullPx:[x,y], pixelsPerInch }
     const base = (API_BASE || window.location.origin).replace(/\/$/, "");
+
     const candidates = [
       base + "/analyze",
       base + "/api/analyze",
@@ -172,38 +182,36 @@
         lastErr = e;
       }
     }
+
     throw lastErr || new Error("Analyze failed");
   }
 
   // ===========
   // EVENTS
   // ===========
-  fileInput?.addEventListener("change", () => {
+  fileInput.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
 
-    if (fileName) fileName.textContent = file.name;
+    fileName.textContent = file.name;
 
     const url = URL.createObjectURL(file);
-    if (previewImg) {
-      previewImg.src = url;
-      previewImg.style.display = "block";
-    }
+    previewImg.src = url;
+    previewImg.style.display = "block";
   });
 
-  calcBtn?.addEventListener("click", () => {
-    const bullX = n(bullXEl?.value);
-    const bullY = n(bullYEl?.value);
-    const poibX = n(poibXEl?.value);
-    const poibY = n(poibYEl?.value);
+  calcBtn.addEventListener("click", () => {
+    const bullX = n(bullXEl.value);
+    const bullY = n(bullYEl.value);
+    const poibX = n(poibXEl.value);
+    const poibY = n(poibYEl.value);
 
     const corr = computeCorrection(bullX, bullY, poibX, poibY);
     renderResults(corr);
 
     setDebug({
       mode: "MANUAL",
-      lock_1: "pixels->inches flips Y once: poibY_in = (bullY_px - groupY_px)/ppi",
-      lock_2: "correction = bull - POIB",
+      lock: "correction = bull - POIB",
       bull_in: { x: bullX, y: bullY },
       poib_in: { x: poibX, y: poibY },
       correction_in: { dx: corr.dx, dy: corr.dy },
@@ -211,8 +219,8 @@
     });
   });
 
-  analyzeBtn?.addEventListener("click", async () => {
-    const file = fileInput?.files && fileInput.files[0];
+  analyzeBtn.addEventListener("click", async () => {
+    const file = fileInput.files && fileInput.files[0];
     if (!file) {
       setDebug("Pick a photo first.");
       return;
@@ -240,7 +248,7 @@
         poibY_in = n(data.poib.y);
       }
 
-      // Case B/C: pixel centers + ppi (convert and LOCK Y flip here)
+      // Case B/C: pixel centers + ppi (we convert and LOCK Y flip here)
       if (poibX_in == null || poibY_in == null) {
         const groupX =
           data?.group_px?.x ?? data?.groupPx?.[0] ?? data?.group?.x ?? data?.group?.[0];
@@ -260,12 +268,12 @@
       }
 
       // Write POIB back to UI
-      if (poibXEl) poibXEl.value = f2(poibX_in);
-      if (poibYEl) poibYEl.value = f2(poibY_in);
+      poibXEl.value = f2(poibX_in);
+      poibYEl.value = f2(poibY_in);
 
       // Compute correction from current bull + POIB
-      const bullX_in = n(bullXEl?.value);
-      const bullY_in = n(bullYEl?.value);
+      const bullX_in = n(bullXEl.value);
+      const bullY_in = n(bullYEl.value);
 
       const corr = computeCorrection(bullX_in, bullY_in, poibX_in, poibY_in);
       renderResults(corr);
