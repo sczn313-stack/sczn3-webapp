@@ -1,43 +1,48 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SCZN3 — Frontend New</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
   <main class="wrap">
     <h1>SCZN3 — Frontend New</h1>
 
     <section class="card">
-      <div class="row">
-        <div class="badge" id="apiStatus">CHECKING…</div>
-        <div class="muted">API:</div>
-        <div class="mono" id="apiUrlLabel"></div>
+      <div class="row space">
+        <div class="pill">
+          <span class="label">API:</span>
+          <span id="apiStatus" class="status bad">CHECKING…</span>
+        </div>
+        <div class="muted small" id="apiUrlLabel"></div>
       </div>
     </section>
 
     <section class="card">
       <h2>Settings</h2>
 
-      <label class="field">
-        <div class="label">Distance (yards)</div>
-        <input id="distanceYards" type="number" inputmode="numeric" value="100" />
-      </label>
+      <div class="grid2">
+        <label class="field">
+          <span>Distance (yards)</span>
+          <input id="distanceYards" type="number" value="100" step="1" />
+        </label>
 
-      <label class="field">
-        <div class="label">MOA per click</div>
-        <input id="moaPerClick" type="number" inputmode="decimal" step="0.01" value="0.25" />
-      </label>
+        <label class="field">
+          <span>MOA per click</span>
+          <input id="moaPerClick" type="number" value="0.25" step="0.01" />
+        </label>
 
-      <label class="field">
-        <div class="label">MOA mode</div>
-        <select id="moaMode">
-          <option value="true">True MOA (1.047&quot; @ 100y)</option>
-          <option value="shooter">Shooter MOA (1.000&quot; @ 100y)</option>
-        </select>
-      </label>
+        <label class="field span2">
+          <span>MOA mode</span>
+          <select id="moaMode">
+            <option value="true" selected>True MOA (1.047" @ 100y)</option>
+            <option value="shooter">Shooter MOA (1.000" @ 100y)</option>
+          </select>
+        </label>
+      </div>
     </section>
 
     <section class="card">
@@ -45,89 +50,103 @@
 
       <div class="grid2">
         <label class="field">
-          <div class="label">Bull X (in)</div>
-          <input id="bullX" type="number" inputmode="decimal" step="0.01" value="0.00" />
-        </label>
-        <label class="field">
-          <div class="label">Bull Y (in)</div>
-          <input id="bullY" type="number" inputmode="decimal" step="0.01" value="0.00" />
+          <span>Bull X (in)</span>
+          <input id="bullX" type="number" value="0.00" step="0.01" />
         </label>
 
         <label class="field">
-          <div class="label">POIB X (in)</div>
-          <input id="poibX" type="number" inputmode="decimal" step="0.01" value="0.00" />
+          <span>Bull Y (in)</span>
+          <input id="bullY" type="number" value="0.00" step="0.01" />
         </label>
+
         <label class="field">
-          <div class="label">POIB Y (in)</div>
-          <input id="poibY" type="number" inputmode="decimal" step="0.01" value="0.00" />
+          <span>POIB X (in)</span>
+          <input id="poibX" type="number" value="0.00" step="0.01" />
         </label>
+
+        <label class="field">
+          <span>POIB Y (in)</span>
+          <input id="poibY" type="number" value="0.00" step="0.01" />
+        </label>
+      </div>
+
+      <div class="row gap">
+        <button id="calcBtn" class="btn secondary">Calculate</button>
       </div>
     </section>
 
     <section class="card">
       <h2>Photo</h2>
 
-      <div class="row">
-        <label class="fileBtn">
-          <input id="fileInput" type="file" accept="image/*" />
+      <div class="row gap wrapRow">
+        <label class="btn fileBtn">
           Choose File
+          <input id="fileInput" type="file" accept="image/*" />
         </label>
-        <div class="mono" id="fileName">No file chosen</div>
+        <div id="fileName" class="muted">No file chosen</div>
       </div>
+
+      <img id="previewImg" class="preview" alt="preview" style="display:none" />
 
       <div class="row gap">
         <button id="analyzeBtn" class="btn primary">Analyze (Auto POIB)</button>
-        <button id="calcBtn" class="btn">Calculate</button>
+        <button id="calcBtn2" class="btn secondary" style="display:none">Calculate</button>
       </div>
 
-      <div class="preview">
-        <img id="previewImg" alt="preview" />
-      </div>
-
-      <pre class="debug" id="debugBox"></pre>
+      <pre id="debugBox" class="debug">preview</pre>
     </section>
 
     <section class="card">
       <h2>Results</h2>
 
-      <div class="resultBox">
+      <div class="results">
         <div class="resultRow">
           <div class="k">Windage Direction</div>
           <div class="v" id="windDir">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">Elevation Direction</div>
           <div class="v" id="elevDir">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">ΔX (inches)</div>
           <div class="v" id="dxIn">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">ΔY (inches)</div>
           <div class="v" id="dyIn">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">Windage MOA</div>
           <div class="v" id="dxMoa">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">Elevation MOA</div>
           <div class="v" id="dyMoa">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">Windage Clicks</div>
-          <div class="v" id="dxClicks">—</div>
+          <div class="v big" id="dxClicks">—</div>
         </div>
+
         <div class="resultRow">
           <div class="k">Elevation Clicks</div>
-          <div class="v" id="dyClicks">—</div>
+          <div class="v big" id="dyClicks">—</div>
         </div>
       </div>
     </section>
-
-    <footer class="foot">Faith • Order • Precision</footer>
   </main>
+
+  <!-- BACKEND BASE URL (LOCKED) -->
+  <script>
+    window.SZN3_API_BASE = "https://sczn3-webapp-213.onrender.com";
+  </script>
 
   <script src="./app.js"></script>
 </body>
