@@ -1,128 +1,79 @@
-// frontend_new/clean-sec.js
-// Minimal UI: Upload + Distance + Generate SEC.
-// Shows errors on-screen (no silent failures).
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shooter Experience Card (SEC)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
 
-(() => {
-  // ✅ Your LIVE backend (padlocked)
-  const BACKEND_BASE = "https://sczn3-backend-new.onrender.com";
+  <body>
+    <main class="wrap">
+      <header class="hero">
+        <h1 class="title">
+          <span class="sec-red">S</span>hooter
+          <span class="sec-red">E</span>xperience
+          <span class="sec-red">C</span>ard
+          <span class="sec-red">SEC</span>
+        </h1>
+      </header>
 
-  const el = (id) => document.getElementById(id);
+      <!-- INPUT PANEL -->
+      <section class="panel" id="panel">
+        <div class="row">
+          <div class="label">Upload target photo</div>
 
-  const fileEl = el("file");
-  const fileBtn = el("fileBtn");
-  const fileName = el("fileName");
-  const yardsEl = el("yards");
-  const btn = el("btn");
-  const status = el("status");
+          <!-- Real file input (hidden) -->
+          <input id="file" class="fileInput" type="file" accept="image/*" />
 
-  const secOut = el("secOut");
-  const windageText = el("windageText");
-  const elevText = el("elevText");
-  const thumb = el("thumb");
-  const lockLine = el("lockLine");
+          <!-- Custom "Choose File" button (this is what you see) -->
+          <label for="file" class="chooseBtn" id="fileBtn">Choose File</label>
 
-  function setStatus(msg) {
-    status.textContent = msg;
-  }
+          <div class="fileName" id="fileName">No file selected</div>
+        </div>
 
-  // ✅ True MOA only (kept simple since you deleted the MOA controls)
-  function inchesPerMOAAtYards(yards) {
-    const y = Number(yards) || 100;
-    return (1.047 * y) / 100;
-  }
+        <div class="row">
+          <label class="label" for="yards">Distance (yards)</label>
+          <input id="yards" class="input" type="number" inputmode="numeric" value="100" />
+        </div>
 
-  // ✅ Default click value (kept simple since you deleted the click control)
-  // If you want a different default later, change this ONE value.
-  const MOA_PER_CLICK_DEFAULT = 0.25;
+        <button class="primary" id="btn" type="button">Generate SEC</button>
 
-  function clicksFromInches(inches, yards) {
-    const ipm = inchesPerMOAAtYards(yards);
-    const moa = inches / ipm;
-    const clicks = moa / MOA_PER_CLICK_DEFAULT;
-    return Math.round(clicks * 100) / 100;
-  }
+        <div class="status" id="status"></div>
+      </section>
 
-  async function postAnalyze(file) {
-    const fd = new FormData();
-    fd.append("image", file); // backend expects "image"
+      <!-- OUTPUT (HIDDEN UNTIL GENERATED) -->
+      <section class="secOut" id="secOut" style="display:none;">
+        <div class="secCard">
+          <div class="secTop">
+            <div class="secHeading">Shooter Experience Card (SEC)</div>
+            <div class="lockLine" id="lockLine"></div>
+          </div>
 
-    const url = `${BACKEND_BASE}/api/analyze`;
-    const r = await fetch(url, { method: "POST", body: fd });
+          <div class="thumbWrap">
+            <img id="thumb" alt="Uploaded target preview" />
+          </div>
 
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch { data = { ok: false, error: "Non-JSON response", raw: text }; }
+          <div class="vals">
+            <div class="valBox">
+              <div class="valLabel">Windage</div>
+              <div class="valNum" id="windageText">—</div>
+            </div>
 
-    if (!r.ok || !data.ok) {
-      const err = data?.error || data?.message || `HTTP ${r.status}`;
-      throw new Error(`Analyze failed: ${err}\nURL: ${url}\nRAW: ${text.slice(0, 300)}`);
-    }
+            <div class="valBox">
+              <div class="valLabel">Elevation</div>
+              <div class="valNum" id="elevText">—</div>
+            </div>
+          </div>
 
-    return data;
-  }
+          <div class="footer">Faith • Order • Precision</div>
 
-  function showSEC(apiData, fileObj, yards) {
-    const { correction_in, directions, lock_version, coord_system } = apiData;
+          <button class="secondary" id="again" type="button">Do Another</button>
+        </div>
+      </section>
+    </main>
 
-    const dx = Number(correction_in?.dx) || 0;
-    const dy = Number(correction_in?.dy) || 0;
-
-    const windClicks = clicksFromInches(Math.abs(dx), yards);
-    const elevClicks = clicksFromInches(Math.abs(dy), yards);
-
-    windageText.textContent = `${windClicks.toFixed(2)} ${directions?.windage || ""}`.trim();
-    elevText.textContent = `${elevClicks.toFixed(2)} ${directions?.elevation || ""}`.trim();
-
-    if (fileObj) {
-      const url = URL.createObjectURL(fileObj);
-      thumb.src = url;
-      thumb.style.display = "block";
-    } else {
-      thumb.style.display = "none";
-    }
-
-    lockLine.textContent = `lock_version: ${lock_version || "?"} • coord_system: ${coord_system || "?"}`;
-    secOut.style.display = "block";
-  }
-
-  async function onGenerate() {
-    try {
-      const f = fileEl.files && fileEl.files[0];
-      if (!f) {
-        setStatus("Pick a photo first.");
-        return;
-      }
-
-      btn.disabled = true;
-      secOut.style.display = "none";
-      setStatus("Uploading…");
-
-      const yards = Number(yardsEl.value) || 100;
-
-      setStatus("Analyzing…");
-      const a = await postAnalyze(f);
-
-      setStatus("Building SEC…");
-      showSEC(a, f, yards);
-
-      setStatus("Done.");
-    } catch (e) {
-      setStatus(String(e));
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  // Wire up custom file button
-  fileBtn.addEventListener("click", () => fileEl.click());
-  fileEl.addEventListener("change", () => {
-    const f = fileEl.files && fileEl.files[0];
-    fileName.textContent = f ? f.name : "No file selected";
-  });
-
-  // Proof JS is loaded
-  setStatus("Ready. JS loaded ✅");
-
-  btn.addEventListener("click", onGenerate);
-})();
+    <script src="./api.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
