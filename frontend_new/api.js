@@ -1,29 +1,39 @@
 // frontend_new/api.js
-// Backend API + click math (true MOA, 1/4 MOA per click)
+// Minimal helpers used by app.js
 
-const API_BASE = "https://sczn3-sec-backend-144.onrender.com"; // <-- keep your real backend here
+// If your backend is same-origin, leave API_BASE = "".
+// If your backend is elsewhere, set: window.API_BASE = "https://YOUR-BACKEND.onrender.com";
+const API_BASE = (window.API_BASE || "").replace(/\/$/, "");
 
-async function postAnalyze(file) {
+// True MOA conversion: 1 MOA = 1.047" at 100y
+// clicks = MOA / 0.25
+function clicksFromInches(inches, yards, clickValueMoa = 0.25) {
+  const y = Number(yards) || 100;
+  const inchPerMoa = 1.047 * (y / 100);
+  const moa = inches / inchPerMoa;
+  return moa / clickValueMoa;
+}
+
+async function postAnalyze(file, yards) {
+  const url = `${API_BASE}/api/analyze`;
+
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("image", file);
+  fd.append("yards", String(Number(yards) || 100));
 
-  const res = await fetch(`${API_BASE}/analyze`, {
-    method: "POST",
-    body: fd,
-  });
+  const res = await fetch(url, { method: "POST", body: fd });
+  const text = await res.text();
+
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
   if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`Analyze failed: ${res.status} ${res.statusText} ${t}`.trim());
+    const msg = data?.error || data?.message || text || `HTTP ${res.status}`;
+    throw new Error(msg);
   }
 
-  return await res.json();
+  return data;
 }
 
-// inches → clicks using TRUE MOA (1 MOA = 1.047" @ 100y) and 0.25 MOA/click
-function clicksFromInches(inches, yards, clickValueMOA = 0.25) {
-  const y = Number(yards) || 100;
-  const inchesPerMOA = 1.047 * (y / 100);
-  const moa = inches / inchesPerMOA;
-  return moa / clickValueMOA;
-}
+window.clicksFromInches = clicksFromInches;
+window.postAnalyze = postAnalyze;
