@@ -4,7 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shooter Experience Card</title>
-    <link rel="stylesheet" href="./styles.css" />
+
+    <!-- IMPORTANT: absolute path + cache-bust so iPad Safari can’t serve stale CSS -->
+    <link rel="stylesheet" href="/styles.css?v=3" />
   </head>
 
   <body>
@@ -39,9 +41,7 @@
             <div class="secSub">Use the adjustments below to bring your group to center</div>
           </div>
 
-          <!-- NEW: two-column layout area -->
           <div class="secMid">
-            <!-- Move adjustments UP (left column) -->
             <div class="vals">
               <div class="valBox">
                 <div class="valLabel">Windage Adjustment</div>
@@ -54,7 +54,6 @@
               </div>
             </div>
 
-            <!-- Target preview (right column) -->
             <div class="thumbWrap">
               <img id="thumb" alt="Uploaded target preview" />
             </div>
@@ -67,7 +66,8 @@
       </section>
     </main>
 
-    <script src="./api.js"></script>
-    <script src="./app.js"></script>
+    <!-- IMPORTANT: absolute path + cache-bust so iPad Safari can’t serve stale JS -->
+    <script src="/api.js?v=3"></script>
+    <script src="/app.js?v=3"></script>
   </body>
 </html>
