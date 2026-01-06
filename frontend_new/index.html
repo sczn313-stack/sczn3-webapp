@@ -1,154 +1,128 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Shooter Experience Card</title>
-  <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0;
-      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      background: #0b1220;
-      color: #e7eefc;
-    }
-    .wrap {
-      max-width: 860px;
-      margin: 28px auto;
-      padding: 0 16px;
-    }
-    h1 {
-      margin: 0 0 14px;
-      font-size: 44px;
-      letter-spacing: .3px;
-    }
-    .card {
-      background: rgba(255,255,255,.05);
-      border: 1px solid rgba(255,255,255,.10);
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.35);
-    }
-    label { display:block; font-size: 14px; opacity: .9; margin: 12px 0 6px; }
-    input, select, button {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 12px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(0,0,0,.35);
-      color: #e7eefc;
-      font-size: 16px;
-    }
-    button {
-      margin-top: 14px;
-      background: #214eaa;
-      border: 1px solid rgba(255,255,255,.12);
-      font-weight: 700;
-      letter-spacing: .3px;
-      cursor: pointer;
-    }
-    button:disabled { opacity: .55; cursor: default; }
-    .status {
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.28);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 13px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .secOut {
-      margin-top: 14px;
-      padding: 14px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.28);
-      display: none;
-    }
-    .secTitle {
-      font-weight: 800;
-      font-size: 22px;
-      margin: 0 0 10px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    .kv {
-      border: 1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.03);
-      border-radius: 10px;
-      padding: 10px;
-    }
-    .kv .k { opacity: .85; font-size: 12px; margin-bottom: 6px; }
-    .kv .v { font-size: 20px; font-weight: 800; }
-    .thumb {
-      margin-top: 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.10);
-      width: 100%;
-      max-height: 420px;
-      object-fit: contain;
-      display: none;
-      background: rgba(0,0,0,.25);
-    }
-    .tiny {
-      opacity: .75;
-      margin-top: 10px;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Shooter Experience Card</h1>
+// frontend_new/clean-sec.js
+// Minimal UI: Upload + Distance + Generate SEC.
+// Shows errors on-screen (no silent failures).
 
-    <div class="card">
-      <label>Upload target photo</label>
-      <input id="file" type="file" accept="image/*" />
+(() => {
+  // ✅ Your LIVE backend (padlocked)
+  const BACKEND_BASE = "https://sczn3-backend-new.onrender.com";
 
-      <label>Distance (yards)</label>
-      <input id="yards" type="number" inputmode="numeric" value="100" min="1" step="1" />
+  const el = (id) => document.getElementById(id);
 
-      <label>MOA per click</label>
-      <input id="moaPerClick" type="number" inputmode="decimal" value="0.25" min="0.01" step="0.01" />
+  const fileEl = el("file");
+  const fileBtn = el("fileBtn");
+  const fileName = el("fileName");
+  const yardsEl = el("yards");
+  const btn = el("btn");
+  const status = el("status");
 
-      <label>MOA mode</label>
-      <select id="moaMode">
-        <option value="true">True MOA (1.047&quot; @ 100y)</option>
-        <option value="shooters">Shooter MOA (1.000&quot; @ 100y)</option>
-      </select>
+  const secOut = el("secOut");
+  const windageText = el("windageText");
+  const elevText = el("elevText");
+  const thumb = el("thumb");
+  const lockLine = el("lockLine");
 
-      <button id="btn">Generate SEC</button>
+  function setStatus(msg) {
+    status.textContent = msg;
+  }
 
-      <div id="status" class="status">Ready.</div>
+  // ✅ True MOA only (kept simple since you deleted the MOA controls)
+  function inchesPerMOAAtYards(yards) {
+    const y = Number(yards) || 100;
+    return (1.047 * y) / 100;
+  }
 
-      <div id="secOut" class="secOut">
-        <div class="secTitle">SEC Output</div>
+  // ✅ Default click value (kept simple since you deleted the click control)
+  // If you want a different default later, change this ONE value.
+  const MOA_PER_CLICK_DEFAULT = 0.25;
 
-        <div class="grid">
-          <div class="kv">
-            <div class="k">Windage</div>
-            <div class="v" id="windageText">—</div>
-          </div>
-          <div class="kv">
-            <div class="k">Elevation</div>
-            <div class="v" id="elevText">—</div>
-          </div>
-        </div>
+  function clicksFromInches(inches, yards) {
+    const ipm = inchesPerMOAAtYards(yards);
+    const moa = inches / ipm;
+    const clicks = moa / MOA_PER_CLICK_DEFAULT;
+    return Math.round(clicks * 100) / 100;
+  }
 
-        <img id="thumb" class="thumb" alt="Uploaded target preview" />
+  async function postAnalyze(file) {
+    const fd = new FormData();
+    fd.append("image", file); // backend expects "image"
 
-        <div class="tiny" id="lockLine"></div>
-      </div>
-    </div>
-  </div>
+    const url = `${BACKEND_BASE}/api/analyze`;
+    const r = await fetch(url, { method: "POST", body: fd });
 
-  <script src="./clean-sec.js"></script>
-</body>
-</html>
+    const text = await r.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { data = { ok: false, error: "Non-JSON response", raw: text }; }
+
+    if (!r.ok || !data.ok) {
+      const err = data?.error || data?.message || `HTTP ${r.status}`;
+      throw new Error(`Analyze failed: ${err}\nURL: ${url}\nRAW: ${text.slice(0, 300)}`);
+    }
+
+    return data;
+  }
+
+  function showSEC(apiData, fileObj, yards) {
+    const { correction_in, directions, lock_version, coord_system } = apiData;
+
+    const dx = Number(correction_in?.dx) || 0;
+    const dy = Number(correction_in?.dy) || 0;
+
+    const windClicks = clicksFromInches(Math.abs(dx), yards);
+    const elevClicks = clicksFromInches(Math.abs(dy), yards);
+
+    windageText.textContent = `${windClicks.toFixed(2)} ${directions?.windage || ""}`.trim();
+    elevText.textContent = `${elevClicks.toFixed(2)} ${directions?.elevation || ""}`.trim();
+
+    if (fileObj) {
+      const url = URL.createObjectURL(fileObj);
+      thumb.src = url;
+      thumb.style.display = "block";
+    } else {
+      thumb.style.display = "none";
+    }
+
+    lockLine.textContent = `lock_version: ${lock_version || "?"} • coord_system: ${coord_system || "?"}`;
+    secOut.style.display = "block";
+  }
+
+  async function onGenerate() {
+    try {
+      const f = fileEl.files && fileEl.files[0];
+      if (!f) {
+        setStatus("Pick a photo first.");
+        return;
+      }
+
+      btn.disabled = true;
+      secOut.style.display = "none";
+      setStatus("Uploading…");
+
+      const yards = Number(yardsEl.value) || 100;
+
+      setStatus("Analyzing…");
+      const a = await postAnalyze(f);
+
+      setStatus("Building SEC…");
+      showSEC(a, f, yards);
+
+      setStatus("Done.");
+    } catch (e) {
+      setStatus(String(e));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Wire up custom file button
+  fileBtn.addEventListener("click", () => fileEl.click());
+  fileEl.addEventListener("change", () => {
+    const f = fileEl.files && fileEl.files[0];
+    fileName.textContent = f ? f.name : "No file selected";
+  });
+
+  // Proof JS is loaded
+  setStatus("Ready. JS loaded ✅");
+
+  btn.addEventListener("click", onGenerate);
+})();
