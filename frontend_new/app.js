@@ -1,7 +1,6 @@
 // frontend_new/app.js
 // SEC v2.0 — Minimal SEC: upload + yards + generate
-// Removes all debug UI (lock_version / coord_system)
-// Formats output as STACKED: number (line 1) + "clicks DIRECTION" (line 2)
+// Output format: STACKED -> number (line 1) + "clicks DIRECTION" (line 2)
 
 (function () {
   const el = (id) => document.getElementById(id);
@@ -45,28 +44,25 @@
     thumb.removeAttribute("src");
   }
 
+  function cleanDir(s) {
+    return String(s || "").trim().toUpperCase();
+  }
+
+  function setStacked(targetEl, clicks, dirWord) {
+    const n = Number(clicks || 0).toFixed(2);
+    const d = cleanDir(dirWord);
+    targetEl.innerHTML = `
+      <span class="numLine">${n}</span>
+      <span class="dirLine">clicks ${d}</span>
+    `.trim();
+  }
+
   // File picker label behavior
   fileEl.addEventListener("change", () => {
     const f = fileEl.files && fileEl.files[0];
     fileName.textContent = f ? f.name : "No file selected";
     setStatus("");
   });
-
-  // Helper: normalize direction to a clean word
-  function cleanDir(s) {
-    return String(s || "").trim().toUpperCase();
-  }
-
-  // Helper: render stacked "number\nclicks DIR"
-  function setStacked(elNode, clicks, dir) {
-    const n = Number(clicks) || 0;
-    const d = cleanDir(dir);
-    const line1 = n.toFixed(2);
-    const line2 = d ? `clicks ${d}` : "clicks";
-    // Stacked: relies on CSS white-space OR we can enforce with <br> via innerHTML.
-    // Safer across CSS: use innerHTML with <br>.
-    elNode.innerHTML = `${line1}<br>${line2}`;
-  }
 
   async function onGenerate() {
     try {
@@ -85,23 +81,21 @@
       // 1) Analyze image (backend)
       const apiData = await postAnalyze(f);
 
-      // 2) Compute clicks from correction inches
+      // 2) Use correction inches from backend
       const dx = Number(apiData?.correction_in?.dx) || 0;
       const dy = Number(apiData?.correction_in?.dy) || 0;
 
       const windClicks = clicksFromInches(Math.abs(dx), yards);
       const elevClicks = clicksFromInches(Math.abs(dy), yards);
 
-      const windDir = apiData?.directions?.windage;
-      const elevDir = apiData?.directions?.elevation;
+      const windDir = apiData?.directions?.windage || "";
+      const elevDir = apiData?.directions?.elevation || "";
 
-      // SEC v2.0 stacked output
       setStacked(windageText, windClicks, windDir);
       setStacked(elevText, elevClicks, elevDir);
 
       // 3) Thumbnail preview
-      const url = URL.createObjectURL(f);
-      thumb.src = url;
+      thumb.src = URL.createObjectURL(f);
 
       // 4) Show output
       showOutput(true);
@@ -118,10 +112,8 @@
     showOutput(false);
     resetOutput();
     setStatus("");
-    // keep file selection so you can just re-run if you want
   });
 
-  // Start state
   showOutput(false);
   setStatus("");
 })();
