@@ -1,50 +1,43 @@
 // frontend_new/api.js
-(() => {
-  const DEFAULT_BACKEND = "https://sczn3-webapp-213.onrender.com";
+// Locked: backend expects multipart field name "image"
 
-  function normalizeBaseUrl(u) {
-    if (!u) return DEFAULT_BACKEND;
-    u = String(u).trim();
-    if (!u) return DEFAULT_BACKEND;
-    return u.replace(/\/+$/, "");
+const BACKEND_BASE = "https://sczn3-backend-new.onrender.com"; // ✅ your live backend
+
+async function postAnalyze(file) {
+  const fd = new FormData();
+  fd.append("image", file); // ✅ must be "image"
+
+  const url = `${BACKEND_BASE}/api/analyze`;
+  const r = await fetch(url, { method: "POST", body: fd });
+
+  const text = await r.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { ok: false, error: "Non-JSON response", raw: text };
   }
 
-  // Optional override:
-  // window.SCZN3_API_BASE = "https://YOUR-BACKEND.onrender.com";
-  const API_BASE = normalizeBaseUrl(window.SCZN3_API_BASE || window.API_BASE || DEFAULT_BACKEND);
-
-  async function getHealth(timeoutMs = 6000) {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), timeoutMs);
-    try {
-      const r = await fetch(`${API_BASE}/health`, { method: "GET", signal: ac.signal });
-      if (!r.ok) throw new Error(await r.text());
-      return await r.json();
-    } finally {
-      clearTimeout(t);
-    }
+  if (!r.ok || !data.ok) {
+    const msg = data.error || data.message || `HTTP ${r.status}`;
+    throw new Error(`Analyze failed: ${msg}`);
   }
 
-  async function postCalc(payload, timeoutMs = 12000) {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), timeoutMs);
-    try {
-      const r = await fetch(`${API_BASE}/api/calc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: ac.signal,
-      });
-      if (!r.ok) throw new Error(await r.text());
-      return await r.json();
-    } finally {
-      clearTimeout(t);
-    }
-  }
+  return data;
+}
 
-  // Expose globally
-  window.SCZN3_API_BASE = API_BASE;
-  window.getHealth = getHealth;
-  window.postCalc = postCalc;
-  window.sczn3Api = { API_BASE, getHealth, postCalc };
-})();
+// True MOA only (simple + stable)
+function inchesPerMOAAtYards(yards) {
+  const y = Number(yards) || 100;
+  return (1.047 * y) / 100;
+}
+
+// Default click value locked here (change ONE value later if you want)
+const MOA_PER_CLICK_DEFAULT = 0.25;
+
+function clicksFromInches(inches, yards) {
+  const ipm = inchesPerMOAAtYards(yards);
+  const moa = inches / ipm;
+  const clicks = moa / MOA_PER_CLICK_DEFAULT;
+  return Math.round(clicks * 100) / 100;
+}
