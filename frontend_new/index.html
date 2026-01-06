@@ -1,33 +1,73 @@
-<!-- OUTPUT (HIDDEN UNTIL GENERATED) -->
-<section class="secOut" id="secOut" style="display:none;">
-  <div class="secCard">
-    <div class="secTop">
-      <div class="secSub">Use the adjustments below to bring your group to center</div>
-    </div>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shooter Experience Card</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
 
-    <!-- NEW: two-column layout area -->
-    <div class="secMid">
-      <!-- Move adjustments UP (left column) -->
-      <div class="vals">
-        <div class="valBox">
-          <div class="valLabel">Windage Adjustment</div>
-          <div class="valNum" id="windageText">—</div>
+  <body>
+    <main class="wrap">
+      <header class="hero" id="hero">
+        <h1 class="title">Shooter Experience Card</h1>
+      </header>
+
+      <!-- INPUT PANEL -->
+      <section class="panel" id="panel">
+        <div class="row">
+          <div class="label">Upload target photo</div>
+
+          <input id="file" class="fileInput" type="file" accept="image/*" />
+          <label for="file" class="chooseBtn" id="fileBtn">Choose File</label>
+          <div class="fileName" id="fileName">No file selected</div>
         </div>
 
-        <div class="valBox">
-          <div class="valLabel">Elevation Adjustment</div>
-          <div class="valNum" id="elevText">—</div>
+        <div class="row">
+          <label class="label" for="yards">Distance (yards)</label>
+          <input id="yards" class="input" type="number" inputmode="numeric" value="100" />
         </div>
-      </div>
 
-      <!-- Target preview (right column) -->
-      <div class="thumbWrap">
-        <img id="thumb" alt="Uploaded target preview" />
-      </div>
-    </div>
+        <button class="primary" id="btn" type="button">Generate SEC</button>
+        <div class="status" id="status"></div>
+      </section>
 
-    <div class="footer">Faith • Order • Precision</div>
+      <!-- OUTPUT (HIDDEN UNTIL GENERATED) -->
+      <section class="secOut" id="secOut" style="display:none;">
+        <div class="secCard">
+          <div class="secTop">
+            <div class="secSub">Use the adjustments below to bring your group to center</div>
+          </div>
 
-    <button class="secondary" id="again" type="button">Do Another</button>
-  </div>
-</section>
+          <!-- NEW: two-column layout area -->
+          <div class="secMid">
+            <!-- Move adjustments UP (left column) -->
+            <div class="vals">
+              <div class="valBox">
+                <div class="valLabel">Windage Adjustment</div>
+                <div class="valNum" id="windageText">—</div>
+              </div>
+
+              <div class="valBox">
+                <div class="valLabel">Elevation Adjustment</div>
+                <div class="valNum" id="elevText">—</div>
+              </div>
+            </div>
+
+            <!-- Target preview (right column) -->
+            <div class="thumbWrap">
+              <img id="thumb" alt="Uploaded target preview" />
+            </div>
+          </div>
+
+          <div class="footer">Faith • Order • Precision</div>
+
+          <button class="secondary" id="again" type="button">Do Another</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./api.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
