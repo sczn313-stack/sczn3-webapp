@@ -1,8 +1,8 @@
 // frontend_new/app.js
 // Minimal SEC: upload + yards + generate
-// Output format: stacked lines:
-//   10.16
-//   clicks RIGHT
+// Output format (single line):
+//   10.16 clicks RIGHT
+//   0.00 clicks
 
 (function () {
   const el = (id) => document.getElementById(id);
@@ -57,16 +57,16 @@
 
   // Derive direction if backend didn't send it
   // dx: +RIGHT / -LEFT, dy: +UP / -DOWN
+  // If exactly zero, return "" (no direction word)
   function dirFromSign(axis, value) {
     const v = num(value);
-    if (v === 0) return "HOLD";
+    if (v === 0) return "";
     if (axis === "x") return v > 0 ? "RIGHT" : "LEFT";
     return v > 0 ? "UP" : "DOWN";
   }
 
   // Accept multiple backend response shapes for dx/dy + directions
   function extractDxDyAndDirs(apiData) {
-    // dx / dy inches (try a bunch of common shapes)
     const dx =
       apiData?.correction_in?.dx ??
       apiData?.correctionIn?.dx ??
@@ -89,7 +89,6 @@
       apiData?.elev_in ??
       0;
 
-    // direction strings (try a bunch of common shapes)
     const windDir =
       apiData?.directions?.windage ??
       apiData?.direction?.windage ??
@@ -112,6 +111,12 @@
       windDir: cleanDir(windDir),
       elevDir: cleanDir(elevDir),
     };
+  }
+
+  function formatLine(clicks, dirWord) {
+    const n = Number(clicks || 0).toFixed(2);
+    const d = cleanDir(dirWord);
+    return d ? `${n} clicks ${d}` : `${n} clicks`;
   }
 
   // File picker label behavior
@@ -141,7 +146,7 @@
       // 2) Pull dx/dy + directions (robust)
       const { dx, dy, windDir, elevDir } = extractDxDyAndDirs(apiData);
 
-      // 3) Convert inches -> clicks (true MOA) using your helper
+      // 3) Convert inches -> clicks (true MOA)
       const windClicks = window.clicksFromInches(Math.abs(dx), yards);
       const elevClicks = window.clicksFromInches(Math.abs(dy), yards);
 
@@ -149,8 +154,8 @@
       const finalWindDir = windDir || dirFromSign("x", dx);
       const finalElevDir = elevDir || dirFromSign("y", dy);
 
-      windageText.textContent = `${windClicks.toFixed(2)}\nclicks ${finalWindDir}`;
-      elevText.textContent = `${elevClicks.toFixed(2)}\nclicks ${finalElevDir}`;
+      windageText.textContent = formatLine(windClicks, finalWindDir);
+      elevText.textContent = formatLine(elevClicks, finalElevDir);
 
       // 5) Thumbnail preview
       thumb.src = URL.createObjectURL(f);
