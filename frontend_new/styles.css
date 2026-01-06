@@ -1,98 +1,94 @@
-/* =========================
-   SEC v2.0 OVERRIDES (LOCK)
-   Paste at bottom of styles.css
-   ========================= */
+/* ==============================
+   SEC v2.0 CONSISTENCY LOCK
+   Paste at VERY BOTTOM of styles.css
+   ============================== */
 
-/* --- SEC Header: clean, tight --- */
-.hero {
-  padding-bottom: 10px;
+/* Ensure the output section is actually “card-like” */
+.secOut { display: block; }
+
+.secCard{
+  max-width: 900px !important;
+  margin: 0 auto !important;
+  padding: 18px 16px !important;
+  border-radius: 18px !important;
 }
 
-.title {
-  margin: 0;
-  line-height: 1.05;
+/* Subtitle */
+.secTop{ margin-bottom: 10px !important; }
+.secSub{
+  opacity: 0.85 !important;
+  font-size: 0.95rem !important;
+  line-height: 1.25 !important;
 }
 
-/* If any old red SEC spans still exist somewhere, hide them */
-.sec-red {
-  display: none !important;
+/* FORCE the two-column layout */
+.secMid{
+  display: grid !important;
+  grid-template-columns: 320px 1fr !important;
+  gap: 18px !important;
+  align-items: start !important;
+  margin-top: 8px !important;
 }
 
-/* --- SEC Output Top: subtitle + spacing --- */
-.secTop {
-  padding: 14px 14px 8px 14px;
+/* Left column: value boxes (keep stacked) */
+.vals{
+  display: grid !important;
+  gap: 14px !important;
 }
 
-.secHeading {
-  margin: 0;
-  line-height: 1.05;
+.valBox{
+  padding: 14px 12px !important;
+  border-radius: 16px !important;
 }
 
-.secSub {
-  margin-top: 6px;
-  opacity: 0.85;
-  font-size: 0.95rem;
-  line-height: 1.25;
+.valLabel{
+  font-weight: 700 !important;
+  margin-bottom: 8px !important;
 }
 
-/* Kill debug line if any CSS still targets it */
-.lockLine {
-  display: none !important;
+/* Big stacked output */
+.valNum{
+  font-weight: 800 !important;
+  font-size: 2.1rem !important;
+  line-height: 1.05 !important;
 }
 
-/* --- Target image: physically smaller + centered --- */
-.thumbWrap {
-  display: flex;
-  justify-content: center;
-  padding: 10px 0 6px 0;
+/* Right column: image */
+.thumbWrap{
+  display: flex !important;
+  justify-content: center !important;
 }
 
-#thumb {
-  width: 100%;
-  max-width: 320px;   /* <-- adjust to taste: 300–340 */
-  height: auto;
-  border-radius: 12px;
-  display: block;
+#thumb{
+  width: 100% !important;
+  max-width: 520px !important;
+  height: auto !important;
+  display: block !important;
+  border-radius: 14px !important;
 }
 
-/* --- Remove any quadrant/corner labels if they exist --- */
-.quadrant,
-.quadrant-label,
-.corner-label,
-.ul, .ur, .ll, .lr,
-#ul, #ur, #ll, #lr {
-  display: none !important;
+/* Footer + button */
+.footer{
+  text-align: center !important;
+  margin-top: 14px !important;
+  opacity: 0.9 !important;
 }
 
-/* --- Values row spacing --- */
-.vals {
-  gap: 12px;
-  padding: 10px 14px 6px 14px;
+#again{
+  width: auto !important;
+  min-width: 240px !important;
+  padding: 10px 16px !important;
+  margin: 14px auto 0 !important;
+  display: block !important;
+  border-radius: 14px !important;
 }
 
-.valBox {
-  padding: 14px 12px;
-}
-
-/* --- Labels: SEC v2.0 wording already in HTML; just polish --- */
-.valLabel {
-  opacity: 0.9;
-  margin-bottom: 6px;
-}
-
-/* --- Button: narrower + tighter (Do Another) --- */
-#again.secondary,
-button#again.secondary,
-#again {
-  width: auto;
-  min-width: 220px;
-  padding: 10px 16px;
-  margin: 14px auto 0 auto;
-  display: block;
-  border-radius: 14px;
-}
-
-/* Optional: keep footer breathing room without growing the card */
-.footer {
-  margin-top: 10px;
+/* Mobile: ONLY stack when screen is truly small */
+@media (max-width: 520px){
+  .secMid{
+    grid-template-columns: 1fr !important;
+  }
+  #thumb{
+    max-width: 360px !important;
+  }
 }
