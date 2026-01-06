@@ -1,6 +1,8 @@
 // frontend_new/app.js
-// SEC v2.0 — Minimal SEC: upload + yards + generate
-// Output format: STACKED -> number (line 1) + "clicks DIRECTION" (line 2)
+// Minimal SEC: upload + yards + generate
+// Output format: stacked lines:
+//   10.16
+//   clicks RIGHT
 
 (function () {
   const el = (id) => document.getElementById(id);
@@ -48,15 +50,6 @@
     return String(s || "").trim().toUpperCase();
   }
 
-  function setStacked(targetEl, clicks, dirWord) {
-    const n = Number(clicks || 0).toFixed(2);
-    const d = cleanDir(dirWord);
-    targetEl.innerHTML = `
-      <span class="numLine">${n}</span>
-      <span class="dirLine">clicks ${d}</span>
-    `.trim();
-  }
-
   // File picker label behavior
   fileEl.addEventListener("change", () => {
     const f = fileEl.files && fileEl.files[0];
@@ -79,20 +72,20 @@
       resetOutput();
 
       // 1) Analyze image (backend)
-      const apiData = await postAnalyze(f);
+      const apiData = await window.postAnalyze(f, yards);
 
-      // 2) Use correction inches from backend
+      // 2) Compute clicks from correction inches
       const dx = Number(apiData?.correction_in?.dx) || 0;
       const dy = Number(apiData?.correction_in?.dy) || 0;
 
-      const windClicks = clicksFromInches(Math.abs(dx), yards);
-      const elevClicks = clicksFromInches(Math.abs(dy), yards);
+      const windClicks = window.clicksFromInches(Math.abs(dx), yards);
+      const elevClicks = window.clicksFromInches(Math.abs(dy), yards);
 
-      const windDir = apiData?.directions?.windage || "";
-      const elevDir = apiData?.directions?.elevation || "";
+      const windDir = cleanDir(apiData?.directions?.windage);
+      const elevDir = cleanDir(apiData?.directions?.elevation);
 
-      setStacked(windageText, windClicks, windDir);
-      setStacked(elevText, elevClicks, elevDir);
+      windageText.textContent = `${windClicks.toFixed(2)}\nclicks ${windDir}`.trim();
+      elevText.textContent = `${elevClicks.toFixed(2)}\nclicks ${elevDir}`.trim();
 
       // 3) Thumbnail preview
       thumb.src = URL.createObjectURL(f);
@@ -114,6 +107,7 @@
     setStatus("");
   });
 
+  // Start state
   showOutput(false);
   setStatus("");
 })();
