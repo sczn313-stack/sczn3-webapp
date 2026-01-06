@@ -1,43 +1,29 @@
 // frontend_new/api.js
-// Locked: backend expects multipart field name "image"
+// Backend API + click math (true MOA, 1/4 MOA per click)
 
-const BACKEND_BASE = "https://sczn3-backend-new.onrender.com"; // ✅ your live backend
+const API_BASE = "https://sczn3-sec-backend-144.onrender.com"; // <-- keep your real backend here
 
 async function postAnalyze(file) {
   const fd = new FormData();
-  fd.append("image", file); // ✅ must be "image"
+  fd.append("file", file);
 
-  const url = `${BACKEND_BASE}/api/analyze`;
-  const r = await fetch(url, { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/analyze`, {
+    method: "POST",
+    body: fd,
+  });
 
-  const text = await r.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = { ok: false, error: "Non-JSON response", raw: text };
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Analyze failed: ${res.status} ${res.statusText} ${t}`.trim());
   }
 
-  if (!r.ok || !data.ok) {
-    const msg = data.error || data.message || `HTTP ${r.status}`;
-    throw new Error(`Analyze failed: ${msg}`);
-  }
-
-  return data;
+  return await res.json();
 }
 
-// True MOA only (simple + stable)
-function inchesPerMOAAtYards(yards) {
+// inches → clicks using TRUE MOA (1 MOA = 1.047" @ 100y) and 0.25 MOA/click
+function clicksFromInches(inches, yards, clickValueMOA = 0.25) {
   const y = Number(yards) || 100;
-  return (1.047 * y) / 100;
-}
-
-// Default click value locked here (change ONE value later if you want)
-const MOA_PER_CLICK_DEFAULT = 0.25;
-
-function clicksFromInches(inches, yards) {
-  const ipm = inchesPerMOAAtYards(yards);
-  const moa = inches / ipm;
-  const clicks = moa / MOA_PER_CLICK_DEFAULT;
-  return Math.round(clicks * 100) / 100;
+  const inchesPerMOA = 1.047 * (y / 100);
+  const moa = inches / inchesPerMOA;
+  return moa / clickValueMOA;
 }
