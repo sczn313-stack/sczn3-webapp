@@ -1,6 +1,9 @@
+/* frontend_new/styles.css */
+
 /* ===== Base ===== */
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+
 body {
   margin: 0;
   font-family: Georgia, "Times New Roman", Times, serif;
@@ -15,6 +18,7 @@ body {
 }
 
 .hero { padding-bottom: 10px; }
+
 .title {
   margin: 0;
   line-height: 1.05;
@@ -44,6 +48,7 @@ body {
   color: #0b4aa2;
   border: 1px solid #d8e2f5;
   cursor: pointer;
+  user-select: none;
   font-size: 18px;
 }
 
@@ -62,15 +67,18 @@ body {
 }
 
 .primary, .secondary {
-  width: fit-content;
-  padding: 8px 14px;
+  width: 100%;
+  padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid #d8e2f5;
   background: #e9eef7;
   color: #0b4aa2;
   cursor: pointer;
   font-size: 18px;
+  font-weight: 700;
 }
+
+.primary { margin-top: 6px; }
 
 .primary:disabled {
   opacity: 0.6;
@@ -88,7 +96,7 @@ body {
 /* ===== Output Card ===== */
 .secOut { margin-top: 18px; }
 
-.secCard{
+.secCard {
   max-width: 900px;
   margin: 0 auto;
   padding: 18px 16px;
@@ -97,53 +105,54 @@ body {
 
 /* Subtitle */
 .secTop { margin-bottom: 10px; }
-.secSub{
+
+.secSub {
   opacity: 0.85;
   font-size: 22px;
   line-height: 1.25;
 }
 
-/* Two-column layout */
-.secMid{
+/* Ensure target stays UNDER adjustments */
+.secMid { display: block; }
+
+/* Windage + Elevation side-by-side */
+.valsRow {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 18px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
   align-items: start;
-  margin-top: 8px;
 }
 
 /* Left column: value boxes */
-.vals{
-  display: grid;
-  gap: 14px;
-}
+.vals { margin-top: 8px; }
 
-.valBox{
+.valBox {
   padding: 14px 12px;
   border-radius: 16px;
 }
 
-.valLabel{
+.valLabel {
   font-weight: 700;
   margin-bottom: 8px;
   font-size: 26px;
 }
 
-.valNum{
+.valNum {
   font-weight: 800;
   font-size: 34px;
   line-height: 1.05;
   white-space: pre-line; /* allows "\n" in JS output */
 }
 
-/* Right column: image */
-.thumbWrap{
+/* Target preview */
+.thumbWrap {
   display: flex;
   justify-content: center;
   padding: 10px 0 6px;
+  margin-top: 16px; /* space under adjustments */
 }
 
-#thumb{
+#thumb {
   width: 100%;
   max-width: 360px;
   height: auto;
@@ -151,20 +160,23 @@ body {
   display: block;
 }
 
-.footer{
-  margin-top: 18px;
+/* Swap: button above footer */
+#again {
+  margin-top: 14px;
+}
+
+.footer {
+  margin-top: 10px;
+  padding-top: 6px;
   font-size: 22px;
 }
 
-.secondary{
-  margin: 14px auto 0;
-  display: block;
-  padding: 10px 18px;
+/* Stack adjustments on small screens */
+@media (max-width: 520px) {
+  .valsRow { grid-template-columns: 1fr; }
 }
 
-/* Mobile stacking */
-@media (max-width: 720px){
+/* Title sizing on smaller screens */
+@media (max-width: 720px) {
   .title { font-size: 48px; }
-  .secMid { grid-template-columns: 1fr; }
-  #thumb { max-width: 520px; }
 }
