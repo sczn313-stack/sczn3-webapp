@@ -1,39 +1,52 @@
 // frontend_new/api.js
-// Minimal helpers used by app.js
+// HARD-LOCK the backend base URL (do NOT use relative paths)
+(function () {
+  const BACKEND_BASE = "https://sczn3-backend-new.onrender.com";
 
-// If your backend is same-origin, leave API_BASE = "".
-// If your backend is elsewhere, set: window.API_BASE = "https://YOUR-BACKEND.onrender.com";
-const API_BASE = (window.API_BASE || "").replace(/\/$/, "");
-
-// True MOA conversion: 1 MOA = 1.047" at 100y
-// clicks = MOA / 0.25
-function clicksFromInches(inches, yards, clickValueMoa = 0.25) {
-  const y = Number(yards) || 100;
-  const inchPerMoa = 1.047 * (y / 100);
-  const moa = inches / inchPerMoa;
-  return moa / clickValueMoa;
-}
-
-async function postAnalyze(file, yards) {
-  const url = `${API_BASE}/api/analyze`;
-
-  const fd = new FormData();
-  fd.append("image", file);
-  fd.append("yards", String(Number(yards) || 100));
-
-  const res = await fetch(url, { method: "POST", body: fd });
-  const text = await res.text();
-
-  let data;
-  try { data = JSON.parse(text); } catch { data = { raw: text }; }
-
-  if (!res.ok) {
-    const msg = data?.error || data?.message || text || `HTTP ${res.status}`;
-    throw new Error(msg);
+  // True MOA inches-per-MOA at distance
+  function inchesPerMOAAtYards(yards) {
+    const y = Number(yards) || 100;
+    return (1.047 * y) / 100;
   }
 
-  return data;
-}
+  // 0.25 MOA/click default (2 decimals output handled in app.js)
+  const MOA_PER_CLICK = 0.25;
 
-window.clicksFromInches = clicksFromInches;
-window.postAnalyze = postAnalyze;
+  window.clicksFromInches = function clicksFromInches(inches, yards) {
+    const imp = inchesPerMOAAtYards(yards);
+    const moa = (Number(inches) || 0) / imp;
+    const clicks = moa / MOA_PER_CLICK;
+    return Math.round(clicks * 100) / 100;
+  };
+
+  // POST /api/analyze (multipart) — backend expects field name "image"
+  window.postAnalyze = async function postAnalyze(file, yards) {
+    const fd = new FormData();
+    fd.append("image", file);
+
+    const url = `${BACKEND_BASE}/api/analyze`;
+    const r = await fetch(url, { method: "POST", body: fd });
+
+    const text = await r.text();
+
+    // Hard fail on non-JSON responses (prevents silent “0.00”)
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `Analyze failed (non-JSON). URL: ${url} HTTP ${r.status}\n` +
+        `RAW: ${text.slice(0, 200)}`
+      );
+    }
+
+    if (!r.ok || !data.ok) {
+      throw new Error(
+        `Analyze failed. URL: ${url} HTTP ${r.status}\n` +
+        `ERR: ${(data && (data.error || data.message)) || "Unknown"}`
+      );
+    }
+
+    return data;
+  };
+})();
