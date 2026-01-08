@@ -1,16 +1,8 @@
 // frontend_new/app.js
-// MINIMAL SEC (PADLOCKED) — upload + yards + generate
-//
-// LOCK RULES (FRONTEND):
-// 1) Frontend does NOT reinterpret directions if backend sends them.
-// 2) If backend does NOT send directions, frontend derives them ONLY from LOCKED correction:
-//      correction = bull - POIB   (TARGET coords: +X RIGHT, +Y UP)
-// 3) If backend does NOT send correction, but DOES send poib_in, frontend computes correction using bull_in (default 0,0).
-// 4) Always display 2 decimals everywhere.
-//
+// Minimal SEC: upload + yards + generate
 // Output format:
 //   10.16 clicks RIGHT
-//   0.00 clicks UP
+//   0.00 clicks
 
 (function () {
   const el = (id) => document.getElementById(id);
@@ -27,16 +19,12 @@
   const elevText = el("elevText");
   const thumb = el("thumb");
   const again = el("again");
+  const debug = el("debug");
 
-  // -------------------
-  // Helpers
-  // -------------------
-  const num = (v, fallback = 0) => {
-    const x = Number(v);
-    return Number.isFinite(x) ? x : fallback;
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
   };
-
-  const f2 = (v) => (Math.round(num(v) * 100) / 100).toFixed(2);
 
   function setStatus(msg, isError = false) {
     status.textContent = msg || "";
@@ -62,106 +50,57 @@
     windageText.textContent = "—";
     elevText.textContent = "—";
     thumb.removeAttribute("src");
+    if (debug) debug.textContent = "";
   }
 
   function cleanDir(s) {
     return String(s || "").trim().toUpperCase();
   }
 
-  // LOCKED: directions come from correction = bull - POIB (TARGET coords)
-  // dx>0 RIGHT, dx<0 LEFT, dy>0 UP, dy<0 DOWN, 0 => ""
-  function dirFromCorrection(axis, value) {
-    const v = num(value, 0);
-    if (Object.is(v, 0)) return "";
+  // If backend didn't send direction, derive from sign
+  // dx: +RIGHT / -LEFT, dy: +UP / -DOWN
+  function dirFromSign(axis, value) {
+    const v = num(value);
+    if (v === 0) return "";
     if (axis === "x") return v > 0 ? "RIGHT" : "LEFT";
     return v > 0 ? "UP" : "DOWN";
   }
 
-  function formatLine(clicks, dirWord) {
-    const d = cleanDir(dirWord);
-    return d ? `${f2(clicks)} clicks ${d}` : `${f2(clicks)} clicks`;
-  }
+  // Robustly extract dx/dy and direction words from multiple possible backend shapes
+  function extractDxDyAndDirs(apiData) {
+    const c =
+      apiData?.correction_in ??
+      apiData?.correctionIn ??
+      apiData?.correction_inches ??
+      apiData?.correction ??
+      apiData?.delta_in ??
+      apiData ??
+      {};
 
-  // -------------------
-  // PADLOCKED extraction
-  // -------------------
-  function extractLockStamp(apiData) {
-    const lock =
-      apiData?.lock_version ??
-      apiData?.lockVersion ??
-      apiData?.lock ??
-      "";
-
-    const coord =
-      apiData?.coord_system ??
-      apiData?.coordSystem ??
-      apiData?.coord ??
-      "";
-
-    return { lock: String(lock || ""), coord: String(coord || "") };
-  }
-
-  function extractBullAndPoib(apiData) {
-    const bullX =
-      apiData?.bull_in?.x ??
-      apiData?.bullIn?.x ??
-      apiData?.bull?.x ??
-      0;
-
-    const bullY =
-      apiData?.bull_in?.y ??
-      apiData?.bullIn?.y ??
-      apiData?.bull?.y ??
-      0;
-
-    const poibX =
-      apiData?.poib_in?.x ??
-      apiData?.poibIn?.x ??
-      apiData?.poib?.x ??
-      apiData?.poibX_in ??
-      0;
-
-    const poibY =
-      apiData?.poib_in?.y ??
-      apiData?.poibIn?.y ??
-      apiData?.poib?.y ??
-      apiData?.poibY_in ??
-      0;
-
-    return {
-      bullX: num(bullX, 0),
-      bullY: num(bullY, 0),
-      poibX: num(poibX, 0),
-      poibY: num(poibY, 0),
-    };
-  }
-
-  function extractCorrection(apiData) {
+    // dx candidates
     const dx =
-      apiData?.correction_in?.dx ??
-      apiData?.correctionIn?.dx ??
-      apiData?.correction_inches?.dx ??
-      apiData?.correction?.dx ??
-      apiData?.delta_in?.dx ??
+      c?.dx ??
+      c?.x ??
+      c?.windage ??
+      c?.wind ??
       apiData?.dx ??
-      null;
+      apiData?.x ??
+      apiData?.windage_in ??
+      apiData?.wind_in ??
+      0;
 
+    // dy candidates
     const dy =
-      apiData?.correction_in?.dy ??
-      apiData?.correctionIn?.dy ??
-      apiData?.correction_inches?.dy ??
-      apiData?.correction?.dy ??
-      apiData?.delta_in?.dy ??
+      c?.dy ??
+      c?.y ??
+      c?.elevation ??
+      c?.elev ??
       apiData?.dy ??
-      null;
+      apiData?.y ??
+      apiData?.elevation_in ??
+      apiData?.elev_in ??
+      0;
 
-    return {
-      dx: dx == null ? null : num(dx, 0),
-      dy: dy == null ? null : num(dy, 0),
-    };
-  }
-
-  function extractDirections(apiData) {
     const windDir =
       apiData?.directions?.windage ??
       apiData?.direction?.windage ??
@@ -178,12 +117,21 @@
       apiData?.elevationDir ??
       "";
 
-    return { windDir: cleanDir(windDir), elevDir: cleanDir(elevDir) };
+    return {
+      dx: num(dx),
+      dy: num(dy),
+      windDir: cleanDir(windDir),
+      elevDir: cleanDir(elevDir),
+    };
   }
 
-  // -------------------
-  // Events
-  // -------------------
+  function formatLine(clicks, dirWord) {
+    const n = Number(clicks || 0).toFixed(2);
+    const d = cleanDir(dirWord);
+    return d ? `${n} clicks ${d}` : `${n} clicks`;
+  }
+
+  // File picker label behavior
   fileEl.addEventListener("change", () => {
     const f = fileEl.files && fileEl.files[0];
     fileName.textContent = f ? f.name : "No file selected";
@@ -193,71 +141,42 @@
   async function onGenerate() {
     try {
       setStatus("");
+
       const f = fileEl.files && fileEl.files[0];
       if (!f) {
         setStatus("Pick a photo first.", true);
         return;
       }
 
-      const yards = num(yardsEl.value, 100);
-
-      // Hard fail if required helpers are missing
-      if (typeof window.postAnalyze !== "function") {
-        throw new Error("Missing window.postAnalyze(file, yards). Check frontend_new/api.js (or where postAnalyze is defined).");
-      }
-      if (typeof window.clicksFromInches !== "function") {
-        throw new Error("Missing window.clicksFromInches(inches, yards). Check frontend_new/math.js (or where clicksFromInches is defined).");
-      }
+      const yards = Number(yardsEl.value) || 100;
 
       setBusy(true);
       resetOutput();
 
       // 1) Analyze image (backend)
-      const apiData = await window.postAnalyze(f, yards);
+      const apiData = await window.postAnalyze(f);
 
-      // 2) Padlock stamp check (warn if missing; optional hard-fail)
-      const { lock, coord } = extractLockStamp(apiData);
+      // DEBUG: show exactly what backend returned
+      if (debug) debug.textContent = JSON.stringify(apiData, null, 2);
 
-      // If you want this to be HARD REQUIRED, uncomment:
-      // if (!lock) throw new Error("Backend missing lock_version. Refusing to compute. (Prevents drift.)");
+      // 2) Extract dx/dy + directions (robust)
+      const { dx, dy, windDir, elevDir } = extractDxDyAndDirs(apiData);
 
-      // 3) Determine correction in inches (LOCKED priority)
-      // Priority: backend correction_in -> else compute from bull_in + poib_in
-      let { dx, dy } = extractCorrection(apiData);
-
-      if (dx == null || dy == null) {
-        const { bullX, bullY, poibX, poibY } = extractBullAndPoib(apiData);
-        // LOCKED: correction = bull - POIB
-        dx = bullX - poibX;
-        dy = bullY - poibY;
-      }
-
-      dx = num(dx, 0);
-      dy = num(dy, 0);
-
-      // 4) Directions: use backend directions ONLY if provided; else derive from LOCKED correction
-      const { windDir, elevDir } = extractDirections(apiData);
-
-      const finalWindDir = windDir || dirFromCorrection("x", dx);
-      const finalElevDir = elevDir || dirFromCorrection("y", dy);
-
-      // 5) Convert inches -> clicks (true MOA)
+      // 3) Convert inches -> clicks (True MOA, 0.25/click)
       const windClicks = window.clicksFromInches(Math.abs(dx), yards);
       const elevClicks = window.clicksFromInches(Math.abs(dy), yards);
 
-      // 6) Render
+      // 4) If backend didn’t send direction, derive from sign
+      const finalWindDir = windDir || dirFromSign("x", dx);
+      const finalElevDir = elevDir || dirFromSign("y", dy);
+
       windageText.textContent = formatLine(windClicks, finalWindDir);
       elevText.textContent = formatLine(elevClicks, finalElevDir);
 
-      // 7) Thumbnail preview
+      // 5) Thumbnail preview
       thumb.src = URL.createObjectURL(f);
 
-      // Optional: show lock stamp in status (helps detect drift instantly)
-      if (lock || coord) {
-        setStatus(`LOCK: ${lock || "—"} • ${coord || "—"}`);
-      }
-
-      // 8) Show output
+      // 6) Show output
       showOutput(true);
     } catch (err) {
       setStatus(String(err && err.message ? err.message : err), true);
@@ -274,7 +193,7 @@
     setStatus("");
   });
 
-  // Init
+  // Start state
   showOutput(false);
   setStatus("");
 })();
