@@ -1,8 +1,5 @@
 // frontend_new/app.js
-// Minimal SEC: upload + yards + generate
-// Output format:
-//   10.16 clicks RIGHT
-//   0.00 clicks
+// Minimal SEC: upload + yards + generate, then show Windage/Elevation + photo.
 
 (function () {
   const el = (id) => document.getElementById(id);
@@ -19,7 +16,7 @@
   const elevText = el("elevText");
   const thumb = el("thumb");
   const again = el("again");
-  const debug = el("debug");
+  const statusOut = el("statusOut");
 
   const num = (v) => {
     const n = Number(v);
@@ -29,6 +26,10 @@
   function setStatus(msg, isError = false) {
     status.textContent = msg || "";
     status.classList.toggle("err", !!isError);
+  }
+  function setStatusOut(msg, isError = false) {
+    statusOut.textContent = msg || "";
+    statusOut.classList.toggle("err", !!isError);
   }
 
   function setBusy(busy) {
@@ -50,14 +51,12 @@
     windageText.textContent = "—";
     elevText.textContent = "—";
     thumb.removeAttribute("src");
-    if (debug) debug.textContent = "";
   }
 
   function cleanDir(s) {
     return String(s || "").trim().toUpperCase();
   }
 
-  // If backend didn't send direction, derive from sign
   // dx: +RIGHT / -LEFT, dy: +UP / -DOWN
   function dirFromSign(axis, value) {
     const v = num(value);
@@ -66,37 +65,26 @@
     return v > 0 ? "UP" : "DOWN";
   }
 
-  // Robustly extract dx/dy and direction words from multiple possible backend shapes
+  // Accept multiple backend shapes (robust)
   function extractDxDyAndDirs(apiData) {
-    const c =
-      apiData?.correction_in ??
-      apiData?.correctionIn ??
-      apiData?.correction_inches ??
-      apiData?.correction ??
-      apiData?.delta_in ??
-      apiData ??
-      {};
-
-    // dx candidates
     const dx =
-      c?.dx ??
-      c?.x ??
-      c?.windage ??
-      c?.wind ??
+      apiData?.correction_in?.dx ??
+      apiData?.correctionIn?.dx ??
+      apiData?.correction_inches?.dx ??
+      apiData?.correction?.dx ??
+      apiData?.delta_in?.dx ??
       apiData?.dx ??
-      apiData?.x ??
       apiData?.windage_in ??
       apiData?.wind_in ??
       0;
 
-    // dy candidates
     const dy =
-      c?.dy ??
-      c?.y ??
-      c?.elevation ??
-      c?.elev ??
+      apiData?.correction_in?.dy ??
+      apiData?.correctionIn?.dy ??
+      apiData?.correction_inches?.dy ??
+      apiData?.correction?.dy ??
+      apiData?.delta_in?.dy ??
       apiData?.dy ??
-      apiData?.y ??
       apiData?.elevation_in ??
       apiData?.elev_in ??
       0;
@@ -126,21 +114,22 @@
   }
 
   function formatLine(clicks, dirWord) {
-    const n = Number(clicks || 0).toFixed(2);
+    const n = Number(clicks || 0).toFixed(2); // ✅ always 2 decimals
     const d = cleanDir(dirWord);
     return d ? `${n} clicks ${d}` : `${n} clicks`;
   }
 
-  // File picker label behavior
   fileEl.addEventListener("change", () => {
     const f = fileEl.files && fileEl.files[0];
     fileName.textContent = f ? f.name : "No file selected";
     setStatus("");
+    setStatusOut("");
   });
 
   async function onGenerate() {
     try {
       setStatus("");
+      setStatusOut("");
 
       const f = fileEl.files && fileEl.files[0];
       if (!f) {
@@ -156,17 +145,14 @@
       // 1) Analyze image (backend)
       const apiData = await window.postAnalyze(f);
 
-      // DEBUG: show exactly what backend returned
-      if (debug) debug.textContent = JSON.stringify(apiData, null, 2);
-
-      // 2) Extract dx/dy + directions (robust)
+      // 2) Pull dx/dy + directions
       const { dx, dy, windDir, elevDir } = extractDxDyAndDirs(apiData);
 
-      // 3) Convert inches -> clicks (True MOA, 0.25/click)
+      // 3) Inches -> clicks (True MOA)
       const windClicks = window.clicksFromInches(Math.abs(dx), yards);
       const elevClicks = window.clicksFromInches(Math.abs(dy), yards);
 
-      // 4) If backend didn’t send direction, derive from sign
+      // 4) Direction fallback from sign
       const finalWindDir = windDir || dirFromSign("x", dx);
       const finalElevDir = elevDir || dirFromSign("y", dy);
 
@@ -179,7 +165,9 @@
       // 6) Show output
       showOutput(true);
     } catch (err) {
-      setStatus(String(err && err.message ? err.message : err), true);
+      const msg = String(err && err.message ? err.message : err);
+      setStatus(msg, true);
+      setStatusOut(msg, true);
     } finally {
       setBusy(false);
     }
@@ -191,9 +179,12 @@
     showOutput(false);
     resetOutput();
     setStatus("");
+    setStatusOut("");
   });
 
-  // Start state
+  // Start
   showOutput(false);
+  resetOutput();
   setStatus("");
+  setStatusOut("");
 })();
