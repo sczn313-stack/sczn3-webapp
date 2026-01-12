@@ -1,38 +1,40 @@
-// frontend_new/app.js
-// Two-page SEC:
-//   - index.html (Upload SEC)
-//   - output.html (Output SEC)
-//
-// Pilot scoring: Offset-only (backend returns `score`)
-// Stores last/avg in localStorage (no login)
+// frontend_new/index.js
 
 (function () {
   const el = (id) => document.getElementById(id);
 
-  const STORAGE_KEY = "SEC_LAST_RESULT_V1";
-  const SCORE_HISTORY_KEY = "SEC_SCORE_HISTORY_V1";
+  const fileEl = el("file");
+  const yardsEl = el("yards");
+  const seeBtn = el("seeBtn");
+  const status = el("status");
+  const vendorBtn = el("vendorBtn");
 
-  const num = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  };
-
-  const f2 = (v) => (Math.round(num(v) * 100) / 100).toFixed(2);
-
-  function cleanDir(s) {
-    return String(s || "").trim().toUpperCase();
+  function setStatus(msg, isError = false) {
+    status.textContent = msg || "";
+    status.classList.toggle("err", !!isError);
   }
 
-  // dx: +RIGHT / -LEFT
-  // dy: +UP / -DOWN
-  function dirFromSign(axis, value) {
-    const v = num(value);
-    if (v === 0) return "";
-    if (axis === "x") return v > 0 ? "RIGHT" : "LEFT";
-    return v > 0 ? "UP" : "DOWN";
+  function setBusy(b) {
+    seeBtn.disabled = !!b;
+    seeBtn.textContent = b ? "PRESS TO SEE..." : "PRESS TO SEE";
   }
 
-  function extractDxDyAndDirs(apiData) {
+  // Placeholder vendor link (you can set per-printer later)
+  vendorBtn.addEventListener("click", (e) => {
+    if (vendorBtn.getAttribute("href") === "#") e.preventDefault();
+  });
+
+  async function fileToDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || ""));
+      fr.onerror = () => reject(new Error("File read failed"));
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // Robust dx/dy extraction (supports multiple response shapes)
+  function extractDxDy(apiData) {
     const dx =
       apiData?.correction_in?.dx ??
       apiData?.correctionIn?.dx ??
@@ -40,6 +42,8 @@
       apiData?.correction?.dx ??
       apiData?.delta_in?.dx ??
       apiData?.dx ??
+      apiData?.windage_in ??
+      apiData?.wind_in ??
       0;
 
     const dy =
@@ -49,253 +53,105 @@
       apiData?.correction?.dy ??
       apiData?.delta_in?.dy ??
       apiData?.dy ??
+      apiData?.elevation_in ??
+      apiData?.elev_in ??
       0;
 
-    const windDir =
-      apiData?.directions?.windage ??
-      apiData?.direction?.windage ??
-      apiData?.windage_direction ??
-      apiData?.windDir ??
-      apiData?.windageDir ??
-      "";
-
-    const elevDir =
-      apiData?.directions?.elevation ??
-      apiData?.direction?.elevation ??
-      apiData?.elevation_direction ??
-      apiData?.elevDir ??
-      apiData?.elevationDir ??
-      "";
-
-    return {
-      dx: num(dx),
-      dy: num(dy),
-      windDir: cleanDir(windDir),
-      elevDir: cleanDir(elevDir),
-    };
+    return { dx: Number(dx) || 0, dy: Number(dy) || 0 };
   }
 
-  // Pilot score returned by backend
-  function extractScore(apiData) {
-    const s =
-      apiData?.score ??
-      apiData?.smart_score ??
-      apiData?.smartScore ??
-      apiData?.result?.score ??
-      null;
-
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
+  // dx: +RIGHT / -LEFT
+  // dy: +UP / -DOWN
+  function dirFromSign(axis, value) {
+    const v = Number(value) || 0;
+    if (v === 0) return "";
+    if (axis === "x") return v > 0 ? "RIGHT" : "LEFT";
+    return v > 0 ? "UP" : "DOWN";
   }
 
-  function getHistory() {
+  // SEC-ID counter (3-digit padded)
+  function nextSecId() {
+    const key = "SEC_ID_COUNTER";
+    const n = Number(localStorage.getItem(key) || "0") + 1;
+    localStorage.setItem(key, String(n));
+    return String(n).padStart(3, "0");
+  }
+
+  // Offset-only scoring (pilot): smallest offset = best
+  // Score = clamp(100 - offsetInches * 10, 0..100)
+  function computeScore(dx, dy) {
+    const offset = Math.sqrt(dx * dx + dy * dy);
+    let score = 100 - offset * 10;
+    if (score < 0) score = 0;
+    if (score > 100) score = 100;
+    return Math.round(score * 100) / 100;
+  }
+
+  async function onPressToSee() {
     try {
-      const raw = localStorage.getItem(SCORE_HISTORY_KEY);
-      const arr = JSON.parse(raw || "[]");
-      return Array.isArray(arr) ? arr : [];
-    } catch {
-      return [];
-    }
-  }
+      setStatus("");
 
-  function setHistory(arr) {
-    try {
-      localStorage.setItem(SCORE_HISTORY_KEY, JSON.stringify(arr));
-    } catch {}
-  }
-
-  function pushScore(scoreNum) {
-    const hist = getHistory();
-    hist.push({ t: Date.now(), score: scoreNum });
-
-    while (hist.length > 50) hist.shift();
-
-    setHistory(hist);
-    return hist;
-  }
-
-  function avgScore(hist) {
-    if (!hist.length) return null;
-    let sum = 0;
-    let cnt = 0;
-    for (const it of hist) {
-      const s = Number(it?.score);
-      if (Number.isFinite(s)) {
-        sum += s;
-        cnt++;
-      }
-    }
-    if (!cnt) return null;
-    return sum / cnt;
-  }
-
-  function setStatus(statusEl, msg, isErr) {
-    if (!statusEl) return;
-    statusEl.textContent = msg || "";
-    statusEl.classList.toggle("err", !!isErr);
-  }
-
-  // SEC Identifier
-  function makeSecId() {
-    const d = new Date();
-    const yy = String(d.getFullYear()).slice(-2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-    return `SEC-${yy}${mm}${dd}-${hh}${mi}-${rand}`;
-  }
-
-  /* =========================
-     PAGE: UPLOAD (index.html)
-     ========================= */
-  async function initUploadPage() {
-    const fileEl = el("file");
-    const yardsEl = el("yards");
-    const pressBtn = el("pressBtn");
-    const thumb = el("thumb");
-    const status = el("status");
-
-    const barTop = document.querySelector(".barTop");
-    const thumbWrap = document.querySelector(".thumbWrap");
-
-    if (!fileEl || !pressBtn || !yardsEl) return;
-
-    // Click-to-upload zones
-    if (barTop) {
-      barTop.style.cursor = "pointer";
-      barTop.addEventListener("click", () => fileEl.click());
-    }
-    if (thumbWrap) {
-      thumbWrap.style.cursor = "pointer";
-      thumbWrap.addEventListener("click", () => fileEl.click());
-    }
-
-    fileEl.addEventListener("change", () => {
       const f = fileEl.files && fileEl.files[0];
-      if (f) {
-        thumb.src = URL.createObjectURL(f);
-        setStatus(status, "", false);
+      if (!f) {
+        setStatus("Pick a photo first.", true);
+        return;
       }
-    });
 
-    pressBtn.addEventListener("click", async () => {
-      try {
-        setStatus(status, "", false);
+      const yards = Number(yardsEl.value) || 100;
 
-        const f = fileEl.files && fileEl.files[0];
-        if (!f) {
-          setStatus(status, "Pick a photo first.", true);
-          fileEl.click();
-          return;
-        }
+      setBusy(true);
 
-        const yards = Number(yardsEl.value) || 100;
+      // 1) Call backend
+      const apiData = await window.SEC_API.postAnalyze(f, yards);
 
-        pressBtn.disabled = true;
+      // 2) Extract dx/dy
+      const { dx, dy } = extractDxDy(apiData);
 
-        // Analyze
-        const apiData = await window.postAnalyze(f, yards);
+      // 3) Convert inches -> clicks
+      const windClicks = window.SEC_API.clicksFromInches(Math.abs(dx), yards);
+      const elevClicks = window.SEC_API.clicksFromInches(Math.abs(dy), yards);
 
-        const secId = makeSecId();
-        const objectUrl = thumb?.src || URL.createObjectURL(f);
+      // 4) Directions (derived from sign)
+      const windDir = dirFromSign("x", dx) || "LEFT";
+      const elevDir = dirFromSign("y", dy) || "UP";
 
-        const payload = {
-          sec_id: secId,
-          yards,
-          objectUrl,
-          apiData,
-        };
+      // 5) Score (offset-only pilot)
+      const score = computeScore(dx, dy);
 
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-        window.location.href = "./output.html";
-      } catch (e) {
-        setStatus(status, e?.message || String(e), true);
-      } finally {
-        pressBtn.disabled = false;
-      }
-    });
+      // 6) Thumbnail (dataURL so it survives page switch)
+      const thumbDataUrl = await fileToDataURL(f);
+
+      // 7) SEC-ID
+      const secId = nextSecId();
+
+      // 8) Store payload for output.html
+      const payload = {
+        secId,
+        yards,
+        dx,
+        dy,
+        windClicks,
+        elevClicks,
+        windDir,
+        elevDir,
+        score,
+        thumbDataUrl,
+        // vendor placeholders (set later per printer)
+        vendorUrl: "#",
+        vendorLogoText: "Vendor logo",
+      };
+
+      sessionStorage.setItem("SEC_PAYLOAD", JSON.stringify(payload));
+      window.location.href = "./output.html";
+    } catch (err) {
+      setStatus(String(err && err.message ? err.message : err), true);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  /* =========================
-     PAGE: OUTPUT (output.html)
-     ========================= */
-  function initOutputPage() {
-    const secIdEl = el("secId");
-    const windDirEl = el("windDir");
-    const elevDirEl = el("elevDir");
-    const thumb = el("thumb");
-    const status = el("status");
-    const doAnother = el("doAnother");
+  seeBtn.addEventListener("click", onPressToSee);
 
-    const scoreBig = el("scoreBig");
-    const lastScoreVal = el("lastScoreVal");
-    const avgScoreVal = el("avgScoreVal");
-
-    let payload = null;
-    try {
-      payload = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "null");
-    } catch {
-      payload = null;
-    }
-
-    if (!payload) {
-      setStatus(status, "No SEC data found. Start over.", true);
-      if (doAnother) doAnother.addEventListener("click", () => (window.location.href = "./index.html"));
-      return;
-    }
-
-    const { sec_id, yards, objectUrl, apiData } = payload;
-
-    if (secIdEl) secIdEl.textContent = sec_id || "SEC-0000";
-    if (thumb && objectUrl) thumb.src = objectUrl;
-
-    // clicks
-    const { dx, dy, windDir, elevDir } = extractDxDyAndDirs(apiData);
-
-    const windClicks = window.clicksFromInches(Math.abs(dx), yards);
-    const elevClicks = window.clicksFromInches(Math.abs(dy), yards);
-
-    const finalWindDir = windDir || dirFromSign("x", dx);
-    const finalElevDir = elevDir || dirFromSign("y", dy);
-
-    if (windDirEl) windDirEl.textContent = `${f2(windClicks)} ${finalWindDir}`.trim();
-    if (elevDirEl) elevDirEl.textContent = `${f2(elevClicks)} ${finalElevDir}`.trim();
-
-    // scoring (pilot offset-only)
-    const currentScore = extractScore(apiData);
-
-    // last score is the previous score before pushing this one
-    const histBefore = getHistory();
-    const prevItem = histBefore.length ? histBefore[histBefore.length - 1] : null;
-    const prevScore = prevItem && Number.isFinite(Number(prevItem.score)) ? Number(prevItem.score) : null;
-
-    if (lastScoreVal) lastScoreVal.textContent = prevScore == null ? "—" : f2(prevScore);
-
-    if (currentScore != null) {
-      if (scoreBig) scoreBig.textContent = f2(currentScore);
-
-      const histAfter = pushScore(currentScore);
-      const a = avgScore(histAfter);
-      if (avgScoreVal) avgScoreVal.textContent = a == null ? "—" : f2(a);
-    } else {
-      if (scoreBig) scoreBig.textContent = "—";
-      if (avgScoreVal) avgScoreVal.textContent = "—";
-    }
-
-    if (doAnother) {
-      doAnother.addEventListener("click", () => {
-        sessionStorage.removeItem(STORAGE_KEY);
-        window.location.href = "./index.html";
-      });
-    }
-
-    setStatus(status, "", false);
-  }
-
-  window.addEventListener("DOMContentLoaded", () => {
-    if (document.querySelector(".stage-upload")) initUploadPage();
-    if (document.querySelector(".stage-output")) initOutputPage();
-  });
+  // start
+  setStatus("");
 })();
