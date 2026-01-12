@@ -8,66 +8,66 @@
 </head>
 
 <body class="secBody">
-  <main class="stage stage-upload">
-    <!-- Left title -->
-    <section class="leftTitle">
-      <div class="bigTitle">
-        <div class="tLine"><span class="redInitial">S</span>hooter</div>
-        <div class="tLine"><span class="redInitial">E</span>xperience</div>
-        <div class="tLine"><span class="redInitial">C</span>ard <span class="secRed">SEC</span></div>
+  <main class="stage stage-output">
+    <!-- Small SEC mark (top-left like your example) -->
+    <div class="secMark">
+      <div class="secMarkText">SEC</div>
+      <div id="secId" class="secIdText">SEC-0000</div>
+    </div>
+
+    <!-- Left score -->
+    <section class="scoreLeft">
+      <div class="scoreTitle">Score</div>
+      <div class="scoreMeta">last score</div>
+      <div class="scoreMeta">avg score</div>
+
+      <div class="tipsBox">
+        <div class="tipsText">TIPS</div>
       </div>
     </section>
 
-    <!-- Right controls -->
-    <section class="rightControls">
+    <!-- Right content -->
+    <section class="rightContent">
       <div class="barTop">
         <div class="barTopText">UPLOAD TARGET PHOTO <span class="orWord">or</span> TAKE PICTURE</div>
-        <div class="barTopSub">INSURE ALL 4 CORNERS</div>
       </div>
 
-      <div class="distanceBox">
-        <div class="distanceLabel">ADJUST DISTANCE (yards)</div>
-        <input id="yards" class="distanceInput" type="number" inputmode="numeric" value="100" min="1" step="1" />
-      </div>
+      <div class="scopeClicksBox">
+        <div class="scopeClicksTitle">SCOPE CLICKS</div>
 
-      <div class="midRow">
-        <div class="pressBox">
-          <div class="pressTop">PRESS TO SEE</div>
-
-          <button id="pressBtn" class="pressBtn" type="button">
-            <div class="pressSec">SEC</div>
-
-            <div class="pressLines">
-              <div class="pl"><span class="white">SHOOTER</span> <span class="yellow">SCORE</span></div>
-              <div class="pl"><span class="white">SCOPE</span> <span class="yellow">CLICKS</span></div>
-              <div class="pl"><span class="white">SHOOTER</span> <span class="yellow">TIP</span></div>
-            </div>
-          </button>
-
-          <div class="statusRow">
-            <div id="status" class="status"></div>
+        <div class="scopeGrid">
+          <div class="scopeRow">
+            <div class="scopeKey">WINDAGE</div>
+            <div id="windDir" class="scopeVal">—</div>
           </div>
-        </div>
-
-        <div class="thumbZone">
-          <div class="thumbLabel">
-            <div>TARGET</div>
-            <div>THUMBNAIL</div>
-          </div>
-
-          <div class="thumbWrap">
-            <img id="thumb" alt="Target thumbnail" />
-          </div>
-
-          <div class="buyBox">
-            <button class="buyBtn" type="button" id="buyBtn">BUY MORE TARGETS</button>
-            <div class="vendorLogo">Vendor logo</div>
+          <div class="scopeRow">
+            <div class="scopeKey">ELEVATION</div>
+            <div id="elevDir" class="scopeVal">—</div>
           </div>
         </div>
       </div>
 
-      <!-- Hidden file input (still uses your exact wording on the bar) -->
-      <input id="file" class="fileHidden" type="file" accept="image/*" />
+      <div class="thumbZone">
+        <div class="thumbLabel">
+          <div>TARGET</div>
+          <div>THUMBNAIL</div>
+        </div>
+
+        <div class="thumbWrap">
+          <img id="thumb" alt="Target thumbnail" />
+        </div>
+
+        <div class="buyBox">
+          <button class="buyBtn" type="button" id="buyBtn">BUY MORE TARGETS</button>
+          <div class="vendorLogo">Vendor logo</div>
+        </div>
+      </div>
+
+      <!-- Bottom action (not changing your wording on the mock; this is just a control) -->
+      <div class="bottomRow">
+        <button id="doAnother" class="doAnother" type="button">Do Another</button>
+        <div id="status" class="status"></div>
+      </div>
     </section>
   </main>
 
