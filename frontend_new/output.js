@@ -1,89 +1,101 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SEC</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body class="page outputPage">
-    <!-- Small SEC tag top-left -->
-    <div class="tinySec">SEC</div>
+// frontend_new/output.js
 
-    <!-- SEC brand top-left (cropped look like your mock) -->
-    <div class="secBrand secBrandOutput">
-      <div class="secBrandLine">
-        <span class="secRed">S</span><span class="secWhite">hooter</span>
-      </div>
-      <div class="secBrandLine">
-        <span class="secRed">E</span><span class="secWhite">xperience</span>
-      </div>
-      <div class="secBrandLine">
-        <span class="secRed">C</span><span class="secWhite">ard</span>
-        <span class="secRed secTag">SEC</span>
-      </div>
+(function () {
+  const el = (id) => document.getElementById(id);
 
-      <!-- SEC identifier code (red, under the red SEC) -->
-      <div id="secId" class="secId">SEC-ID 000</div>
-    </div>
+  const secIdEl = el("secId");
+  const windageDirEl = el("windageDir");
+  const elevDirEl = el("elevDir");
+  const thumbEl = el("thumb");
 
-    <!-- Top-right header -->
-    <div class="topRightHeader">
-      <a id="backToUpload" class="hdrBox linkBox" href="./index.html">UPLOAD TARGET PHOTO or TAKE PICTURE</a>
-    </div>
+  const windageText = el("windageText");
+  const elevText = el("elevText");
 
-    <!-- Left score column -->
-    <div class="scoreCol">
-      <div class="scoreTitle">Score</div>
-      <div class="scoreMeta">
-        <div>last score</div>
-        <div>avg score</div>
-      </div>
-    </div>
+  const scoreLast = el("scoreLast");
+  const scoreAvg = el("scoreAvg");
 
-    <!-- Scope clicks box -->
-    <div class="scopeClicksBox">
-      <div class="scopeClicksTitle">SCOPE CLICKS</div>
-      <div class="scopeClicksRow">
-        <div class="scopeLabel">WINDAGE</div>
-        <div id="windageDir" class="scopeDir">LEFT</div>
-      </div>
-      <div class="scopeClicksRow">
-        <div class="scopeLabel">ELEVATION</div>
-        <div id="elevDir" class="scopeDir">UP</div>
-      </div>
-    </div>
+  const vendorBtnOut = el("vendorBtnOut");
+  const status = el("status");
 
-    <!-- Target thumbnail label + image -->
-    <div class="targetArea">
-      <div class="targetThumbLabel">
-        <div>TARGEET</div>
-        <div>THUMBNAIL</div>
-      </div>
-      <img id="thumb" class="thumb" alt="target thumbnail" />
-      <div class="vendorStack vendorStackOutput">
-        <a id="vendorBtnOut" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
-        <div class="vendorLogo">Vendor logo</div>
-      </div>
-    </div>
+  function setStatus(msg) {
+    status.textContent = msg || "";
+  }
 
-    <!-- Tips box -->
-    <div class="tipsBox">
-      <div class="tipsInnerTitle">TIPS</div>
-      <div id="tipsText" class="tipsText"></div>
-    </div>
+  function two(n) {
+    return Number(n || 0).toFixed(2);
+  }
 
-    <!-- Hidden numeric results (used by you / later UI) -->
-    <div class="hiddenData">
-      <div id="windageText"></div>
-      <div id="elevText"></div>
-      <div id="scoreLast"></div>
-      <div id="scoreAvg"></div>
-    </div>
+  function clampText(s) {
+    return String(s || "").trim().toUpperCase();
+  }
 
-    <div id="status" class="status statusOutput"></div>
+  function loadHistoryScores() {
+    const key = "SEC_SCORE_HISTORY";
+    try {
+      return JSON.parse(localStorage.getItem(key) || "[]");
+    } catch {
+      return [];
+    }
+  }
 
-    <script src="./api.js"></script>
-    <script src="./output.js"></script>
-  </body>
-</html>
+  function saveHistoryScore(val) {
+    const key = "SEC_SCORE_HISTORY";
+    const arr = loadHistoryScores();
+    arr.push(Number(val) || 0);
+    // keep last 50
+    while (arr.length > 50) arr.shift();
+    localStorage.setItem(key, JSON.stringify(arr));
+    return arr;
+  }
+
+  function average(arr) {
+    if (!arr.length) return 0;
+    const s = arr.reduce((a, b) => a + (Number(b) || 0), 0);
+    return s / arr.length;
+  }
+
+  // render
+  try {
+    const raw = sessionStorage.getItem("SEC_PAYLOAD");
+    if (!raw) {
+      setStatus("No SEC data found.");
+      return;
+    }
+
+    const p = JSON.parse(raw);
+
+    // SEC-ID
+    secIdEl.textContent = `SEC-ID ${String(p.secId || "000")}`;
+
+    // Directions in the SCOPE CLICKS box
+    windageDirEl.textContent = clampText(p.windDir || "LEFT");
+    elevDirEl.textContent = clampText(p.elevDir || "UP");
+
+    // Thumbnail
+    if (p.thumbDataUrl) {
+      thumbEl.src = p.thumbDataUrl;
+    }
+
+    // Store numeric outputs (hidden for now, used later if you want)
+    windageText.textContent = `${two(p.windClicks)} clicks ${clampText(p.windDir)}`.trim();
+    elevText.textContent = `${two(p.elevClicks)} clicks ${clampText(p.elevDir)}`.trim();
+
+    // Score history (last score + avg score)
+    const scoreVal = Number(p.score) || 0;
+    const history = saveHistoryScore(scoreVal);
+    const avg = average(history);
+
+    scoreLast.textContent = two(scoreVal);
+    scoreAvg.textContent = two(avg);
+
+    // Vendor link placeholders
+    vendorBtnOut.href = p.vendorUrl || "#";
+    vendorBtnOut.addEventListener("click", (e) => {
+      if ((p.vendorUrl || "#") === "#") e.preventDefault();
+    });
+
+    setStatus("");
+  } catch (err) {
+    setStatus(String(err && err.message ? err.message : err));
+  }
+})();
