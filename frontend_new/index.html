@@ -1,110 +1,77 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shooter Experience Card</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SEC</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 
-  <body>
-    <main class="wrap">
-      <!-- HERO -->
-      <header class="hero">
-        <div class="heroLeft">
-          <div class="stackWord">
-            <span class="hot">S</span><span>hooter</span>
-          </div>
-          <div class="stackWord">
-            <span class="hot">E</span><span>xperience</span>
-          </div>
-          <div class="stackWord">
-            <span class="hot">C</span><span>ard</span> <span class="hot secTag">SEC</span>
+<body class="secBody">
+  <main class="stage stage-upload">
+    <!-- Left title -->
+    <section class="leftTitle">
+      <div class="bigTitle">
+        <div class="tLine"><span class="redInitial">S</span>hooter</div>
+        <div class="tLine"><span class="redInitial">E</span>xperience</div>
+        <div class="tLine"><span class="redInitial">C</span>ard <span class="secRed">SEC</span></div>
+      </div>
+    </section>
+
+    <!-- Right controls -->
+    <section class="rightControls">
+      <div class="barTop">
+        <div class="barTopText">UPLOAD TARGET PHOTO <span class="orWord">or</span> TAKE PICTURE</div>
+        <div class="barTopSub">INSURE ALL 4 CORNERS</div>
+      </div>
+
+      <div class="distanceBox">
+        <div class="distanceLabel">ADJUST DISTANCE (yards)</div>
+        <input id="yards" class="distanceInput" type="number" inputmode="numeric" value="100" min="1" step="1" />
+      </div>
+
+      <div class="midRow">
+        <div class="pressBox">
+          <div class="pressTop">PRESS TO SEE</div>
+
+          <button id="pressBtn" class="pressBtn" type="button">
+            <div class="pressSec">SEC</div>
+
+            <div class="pressLines">
+              <div class="pl"><span class="white">SHOOTER</span> <span class="yellow">SCORE</span></div>
+              <div class="pl"><span class="white">SCOPE</span> <span class="yellow">CLICKS</span></div>
+              <div class="pl"><span class="white">SHOOTER</span> <span class="yellow">TIP</span></div>
+            </div>
+          </button>
+
+          <div class="statusRow">
+            <div id="status" class="status"></div>
           </div>
         </div>
 
-        <div class="heroRight">
-          <div class="pill">Upload target photo <span class="muted">or</span> Take Picture</div>
-          <div class="hint">INSURE ALL 4 CORNERS</div>
-        </div>
-      </header>
-
-      <!-- INPUT PANEL -->
-      <section id="panel" class="panel">
-        <div class="grid">
-          <div class="leftCol">
-            <div class="bigButton">
-              <div class="labelTop">PRESS TO SEE</div>
-              <div class="bigTitle">SEC</div>
-              <div class="bigList">
-                <div>SHOOTER <b>SCORE</b></div>
-                <div>SCOPE <b>CLICKS</b></div>
-                <div>SHOOTER <b>TIP</b></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="rightCol">
-            <div class="cardBox">
-              <label class="fieldLabel" for="file">Upload target photo</label>
-              <div class="fileRow">
-                <input id="file" name="file" type="file" accept="image/*" capture="environment" />
-                <div id="fileName" class="fileName">No file selected</div>
-              </div>
-
-              <label class="fieldLabel" for="yards">Adjust distance (yards)</label>
-              <input id="yards" type="number" inputmode="numeric" min="1" step="1" value="100" />
-
-              <button id="btn" class="primary" type="button">Generate SEC</button>
-
-              <div id="status" class="status"></div>
-            </div>
-
-            <div class="vendorBox">
-              <button id="vendorBtn" class="vendorBtn" type="button">
-                BUY MORE TARGETS
-              </button>
-              <div class="vendorLogo">Vendor logo</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- OUTPUT (SEC VIEW) -->
-      <section id="secOut" class="secOut" style="display:none;">
-        <div class="secCard">
-          <div class="secTop">
-            <div class="secTitle">Shooter Experience Card (SEC)</div>
-          </div>
-
-          <div class="valsRow">
-            <div class="valBox">
-              <div class="valLabel">Windage</div>
-              <div id="windageText" class="valNum">—</div>
-            </div>
-            <div class="valBox">
-              <div class="valLabel">Elevation</div>
-              <div id="elevText" class="valNum">—</div>
-            </div>
+        <div class="thumbZone">
+          <div class="thumbLabel">
+            <div>TARGET</div>
+            <div>THUMBNAIL</div>
           </div>
 
           <div class="thumbWrap">
-            <img id="thumb" alt="Uploaded target preview" />
+            <img id="thumb" alt="Target thumbnail" />
           </div>
 
-          <!-- DEBUG (for fixing zeroing fast) -->
-          <details class="debug">
-            <summary>Debug</summary>
-            <pre id="debugText"></pre>
-          </details>
-
-          <button id="again" class="secondary" type="button">Do Another</button>
-          <div class="footer">Faith • Order • Precision</div>
+          <div class="buyBox">
+            <button class="buyBtn" type="button" id="buyBtn">BUY MORE TARGETS</button>
+            <div class="vendorLogo">Vendor logo</div>
+          </div>
         </div>
-      </section>
-    </main>
+      </div>
 
-    <script src="./api.js"></script>
-    <script src="./app.js"></script>
-  </body>
+      <!-- Hidden file input (still uses your exact wording on the bar) -->
+      <input id="file" class="fileHidden" type="file" accept="image/*" />
+    </section>
+  </main>
+
+  <script src="./api.js"></script>
+  <script src="./app.js"></script>
+</body>
 </html>
