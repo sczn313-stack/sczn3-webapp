@@ -1,7 +1,7 @@
 /**
  * backend_new/server.js
  *
- * SCZN3 BACKEND — PADLOCKED COORDS (LOCK_V1)
+ * SCZN3 BACKEND — PADLOCKED COORDS (LOCK_V1) + PILOT SCORE (OFFSET_ONLY_V1)
  *
  * LOCK RULES (DO NOT EDIT WITHOUT UPDATING LOCK_VERSION + TESTS):
  * 1) Target coordinate system is:
@@ -12,8 +12,11 @@
  *    where bull is in target coords (usually 0,0), POIB is target coords inches.
  * 4) Backend returns DIRECTIONS (frontend must display, not reinterpret).
  *
+ * PILOT SCORING (OFFSET ONLY):
+ *  - r = sqrt(poibX^2 + poibY^2)  (inches)
+ *  - score = clamp(100 * (1 - r/6), 0, 100)
+ *
  * Endpoints:
- *   GET  /
  *   GET  /health
  *   GET  /api/health
  *   POST /api/calc
@@ -30,6 +33,7 @@ const Jimp = require("jimp");
 // =====================
 const LOCK_VERSION = "LOCK_V1";
 const COORD_SYSTEM = "TARGET_INCHES_X_RIGHT_Y_UP";
+const SCORE_VERSION = "OFFSET_ONLY_V1";
 
 // =====================
 // APP
@@ -55,6 +59,24 @@ function n(v, fallback = 0) {
 function f2(v) {
   const x = n(v);
   return Math.round(x * 100) / 100;
+}
+
+function clamp(x, lo, hi) {
+  const xx = n(x);
+  return Math.max(lo, Math.min(hi, xx));
+}
+
+/**
+ * PILOT SCORE: offset-only
+ * r = distance from bull (0,0) to POIB in inches
+ * score = clamp(100 * (1 - r/6), 0, 100)
+ */
+function computeOffsetScore(poibX_in, poibY_in) {
+  const x = n(poibX_in);
+  const y = n(poibY_in);
+  const r = Math.sqrt(x * x + y * y); // inches
+  const score = clamp(100 * (1 - r / 6), 0, 100);
+  return { r_in: r, score };
 }
 
 /**
@@ -95,6 +117,10 @@ function pixelsToTargetInches(groupX_px, groupY_px, bullX_px, bullY_px, ppi) {
  * Rough heuristic analyzer (direction-safe):
  * - Finds bull center by locating the centroid of "dark" pixels in the image.
  * - Finds group center by locating centroid of "orange-ish" pixels (bullet holes).
+ *
+ * NOTE:
+ * - PPI is optional. If not provided and we can’t estimate reliably, we use a fallback.
+ * - Direction is still correct because it's based on relative position and the Y flip.
  */
 async function analyzeImage(buffer) {
   const img = await Jimp.read(buffer);
@@ -106,22 +132,24 @@ async function analyzeImage(buffer) {
   const w = img.bitmap.width;
   const h = img.bitmap.height;
 
-  // 1) Bull centroid (dark pixels)
+  // 1) Bull center = centroid of dark pixels
   let bullSumX = 0,
     bullSumY = 0,
     bullCount = 0;
 
-  // 2) Group centroid (orange pixels)
+  // 2) Group center = centroid of orange pixels
   let grpSumX = 0,
     grpSumY = 0,
     grpCount = 0;
 
+  // Sampling step (speed)
   const step = 2;
 
   for (let y = 0; y < h; y += step) {
     for (let x = 0; x < w; x += step) {
       const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
 
+      // Dark pixel heuristic
       const brightness = (r + g + b) / 3;
       const isDark = brightness < 70;
 
@@ -131,6 +159,7 @@ async function analyzeImage(buffer) {
         bullCount++;
       }
 
+      // Orange splatter heuristic (synthetic orange cluster targets)
       const isOrange =
         r > 140 && g > 70 && g < 200 && b < 120 && r > g && g > b;
 
@@ -142,16 +171,16 @@ async function analyzeImage(buffer) {
     }
   }
 
+  let groupX_px, groupY_px;
+
   const bullX_px = bullCount > 0 ? bullSumX / bullCount : w / 2;
   const bullY_px = bullCount > 0 ? bullSumY / bullCount : h / 2;
-
-  let groupX_px, groupY_px;
 
   if (grpCount > 50) {
     groupX_px = grpSumX / grpCount;
     groupY_px = grpSumY / grpCount;
   } else {
-    // fallback: far-from-bull dark centroid
+    // Fallback: dark centroid far from bull
     let farSumX = 0,
       farSumY = 0,
       farCount = 0;
@@ -198,39 +227,23 @@ async function analyzeImage(buffer) {
 // =====================
 // ROUTES
 // =====================
-
-// ✅ PADLOCK: root route so visiting the base URL never shows "Cannot GET /"
-app.get("/", (req, res) => {
-  res
-    .status(200)
-    .type("text/plain")
-    .send(
-      [
-        "SCZN3 backend_new is running.",
-        "",
-        "Padlock:",
-        `lock_version: ${LOCK_VERSION}`,
-        `coord_system: ${COORD_SYSTEM}`,
-        "",
-        "Endpoints:",
-        "GET  /health",
-        "GET  /api/health",
-        "POST /api/calc",
-        "POST /api/analyze (multipart form-data: image)",
-      ].join("\n")
-    );
-});
-
 app.get(["/health", "/api/health"], (req, res) => {
   res.json({
     ok: true,
     service: "sczn3-backend-new",
     lock_version: LOCK_VERSION,
     coord_system: COORD_SYSTEM,
+    score_version: SCORE_VERSION,
     time: new Date().toISOString(),
   });
 });
 
+/**
+ * POST /api/calc
+ * body:
+ *   bull_in: {x,y} (optional, default 0,0)
+ *   poib_in: {x,y} (required)
+ */
 app.post("/api/calc", (req, res) => {
   const bullX = n(req.body?.bull_in?.x, 0);
   const bullY = n(req.body?.bull_in?.y, 0);
@@ -240,32 +253,55 @@ app.post("/api/calc", (req, res) => {
 
   const corr = computeCorrection(bullX, bullY, poibX, poibY);
 
+  // Pilot score uses POIB relative to bull (bull defaults to 0,0 in our system)
+  const scoreObj = computeOffsetScore(poibX, poibY);
+
   res.json({
     ok: true,
     lock_version: LOCK_VERSION,
     coord_system: COORD_SYSTEM,
+    score_version: SCORE_VERSION,
+
     bull_in: { x: bullX, y: bullY },
     poib_in: { x: poibX, y: poibY },
-    correction_in: { dx: corr.dx, dy: corr.dy },
+
+    correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
     directions: {
       windage: corr.windageDirection,
       elevation: corr.elevationDirection,
     },
+
+    // Pilot score fields
+    offset_in: f2(scoreObj.r_in),
+    score: f2(scoreObj.score),
   });
 });
 
+/**
+ * POST /api/analyze
+ * multipart form-data:
+ *   image: file
+ *
+ * Returns (LOCKED):
+ *   poib_in in TARGET coords (+X right, +Y up)
+ *   directions computed from correction = bull - POIB
+ *   pilot scoring: offset-only
+ */
 app.post("/api/analyze", upload.single("image"), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "No image uploaded (field name: image)" });
+      return res.status(400).json({
+        ok: false,
+        error: "No image uploaded (field name: image)",
+      });
     }
 
     const a = await analyzeImage(req.file.buffer);
 
+    // Bull in target coords is defined as 0,0 for our standard.
     const bull_in = { x: 0, y: 0 };
 
+    // Convert pixels -> inches in TARGET coords (LOCKED Y flip)
     const conv = pixelsToTargetInches(
       a.group_px.x,
       a.group_px.y,
@@ -279,20 +315,37 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       y: f2(conv.poibY_in),
     };
 
+    // LOCKED correction and directions
     const corr = computeCorrection(bull_in.x, bull_in.y, poib_in.x, poib_in.y);
+
+    // PILOT SCORE (offset-only)
+    const scoreObj = computeOffsetScore(poib_in.x, poib_in.y);
 
     return res.json({
       ok: true,
+
+      // Padlock stamp
       lock_version: LOCK_VERSION,
       coord_system: COORD_SYSTEM,
+      score_version: SCORE_VERSION,
+
+      // Canonical values
       bull_in,
       poib_in,
+
       correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
       directions: {
         windage: corr.windageDirection,
         elevation: corr.elevationDirection,
       },
-      note: "LOCKED: target coords +X right +Y up; poibY uses Y flip; correction = bull - POIB",
+
+      // Pilot scoring fields
+      offset_in: f2(scoreObj.r_in),
+      score: f2(scoreObj.score),
+
+      // Debug info (safe)
+      note:
+        "LOCKED: target coords +X right +Y up; poibY uses Y flip; correction = bull - POIB; score = OffsetOnly",
       debug: {
         method: a.method,
         resizedW: a.resizedW,
@@ -310,6 +363,7 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       ok: false,
       lock_version: LOCK_VERSION,
       coord_system: COORD_SYSTEM,
+      score_version: SCORE_VERSION,
       error: String(err),
     });
   }
@@ -322,4 +376,5 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`[sczn3-backend-new] listening on :${PORT}`);
   console.log(`[LOCK] ${LOCK_VERSION} — ${COORD_SYSTEM}`);
+  console.log(`[SCORE] ${SCORE_VERSION}`);
 });
