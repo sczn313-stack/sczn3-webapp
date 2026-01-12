@@ -1,82 +1,80 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SEC</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-
-<body class="secBody">
-  <main class="stage stage-output">
-    <div class="secMark">
-      <div class="secMarkText">SEC</div>
-      <div id="secId" class="secIdText">SEC-0000</div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SEC</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="page uploadPage">
+    <!-- Top-left SEC brand -->
+    <div class="secBrand">
+      <div class="secBrandLine">
+        <span class="secRed">S</span><span class="secWhite">hooter</span>
+      </div>
+      <div class="secBrandLine">
+        <span class="secRed">E</span><span class="secWhite">xperience</span>
+      </div>
+      <div class="secBrandLine">
+        <span class="secRed">C</span><span class="secWhite">ard</span>
+        <span class="secRed secTag">SEC</span>
+      </div>
     </div>
 
-    <section class="scoreLeft">
-      <div class="scoreTitle">Score</div>
-      <div id="scoreBig" class="scoreBig">—</div>
+    <!-- Top-right header -->
+    <div class="topRightHeader">
+      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+      <div class="hdrSub">INSURE ALL 4 CORNERS</div>
+    </div>
 
-      <div class="scoreMeta">
-        <span>last score</span>
-        <span id="lastScoreVal">—</span>
+    <!-- Right-side controls -->
+    <div class="rightControls">
+      <div class="ctlBox">
+        <label class="ctlLabel">ADJUST DISTANCE (yards)</label>
+        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
       </div>
 
-      <div class="scoreMeta">
-        <span>avg score</span>
-        <span id="avgScoreVal">—</span>
+      <div class="targetThumbLabel">
+        <div>TARGEET</div>
+        <div>THUMBNAIL</div>
       </div>
 
-      <div class="tipsBox">
-        <div class="tipsText">TIPS</div>
+      <div class="vendorStack">
+        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
+        <div class="vendorLogo">Vendor logo</div>
       </div>
-    </section>
+    </div>
 
-    <section class="rightContent">
-      <div class="barTop">
-        <div class="barTopText">UPLOAD TARGET PHOTO <span class="orWord">or</span> TAKE PICTURE</div>
-      </div>
+    <!-- Center action box -->
+    <div class="centerBox">
+      <div class="pressTitle">PRESS TO SEE</div>
 
-      <div class="scopeClicksBox">
-        <div class="scopeClicksTitle">SCOPE CLICKS</div>
-
-        <div class="scopeGrid">
-          <div class="scopeRow">
-            <div class="scopeKey">WINDAGE</div>
-            <div id="windDir" class="scopeVal">—</div>
-          </div>
-          <div class="scopeRow">
-            <div class="scopeKey">ELEVATION</div>
-            <div id="elevDir" class="scopeVal">—</div>
-          </div>
+      <div class="pressInner">
+        <div class="pressSEC">SEC</div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">SCORE</div>
+        </div>
+        <div class="pressRow">
+          <div class="pressLeft">SCOPE</div>
+          <div class="pressRight pressYellow">CLICKS</div>
+        </div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">TIP</div>
         </div>
       </div>
 
-      <div class="thumbZone">
-        <div class="thumbLabel">
-          <div>TARGET</div>
-          <div>THUMBNAIL</div>
-        </div>
-
-        <div class="thumbWrap">
-          <img id="thumb" alt="Target thumbnail" />
-        </div>
-
-        <div class="buyBox">
-          <button class="buyBtn" type="button" id="buyBtn">BUY MORE TARGETS</button>
-          <div class="vendorLogo">Vendor logo</div>
-        </div>
+      <div class="fileRow">
+        <label class="fileBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
+        <input id="file" class="fileInput" type="file" accept="image/*" />
       </div>
 
-      <div class="bottomRow">
-        <button id="doAnother" class="doAnother" type="button">Do Another</button>
-        <div id="status" class="status"></div>
-      </div>
-    </section>
-  </main>
+      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
+      <div id="status" class="status"></div>
+    </div>
 
-  <script src="./api.js"></script>
-  <script src="./app.js"></script>
-</body>
+    <script src="./api.js"></script>
+    <script src="./index.js"></script>
+  </body>
 </html>
