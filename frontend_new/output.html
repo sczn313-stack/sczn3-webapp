@@ -1,1 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SEC Output</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 
+<body class="outputPage">
+  <!-- Output SEC page (HTML) -->
+  <!-- output.js will fill these fields by id -->
+
+  <!-- top-left SEC and SEC-ID should already be in your CSS/layout;
+       keep your exact layout. This is the hook. -->
+  <div id="secId" class="secId"></div>
+
+  <div id="lastScore" class="lastScore"></div>
+  <div id="avgScore" class="avgScore"></div>
+
+  <div id="windLine" class="windLine"></div>
+  <div id="elevLine" class="elevLine"></div>
+
+  <img id="thumb" class="thumb" alt="TARGET THUMBNAIL" />
+
+  <div id="tipsBox" class="tipsBox"></div>
+
+  <button id="backBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
+  <button id="vendorBtn" type="button">BUY MORE TARGETS</button>
+
+  <script src="./api.js"></script>
+  <script src="./output.js"></script>
+</body>
+</html>
