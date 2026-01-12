@@ -6,12 +6,9 @@
     <title>SEC</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="page outputPage">
-    <!-- Small SEC tag top-left -->
-    <div class="tinySec">SEC</div>
-
-    <!-- SEC brand top-left (cropped look like your mock) -->
-    <div class="secBrand secBrandOutput">
+  <body class="page uploadPage">
+    <!-- Top-left SEC brand -->
+    <div class="secBrand">
       <div class="secBrandLine">
         <span class="secRed">S</span><span class="secWhite">hooter</span>
       </div>
@@ -22,68 +19,62 @@
         <span class="secRed">C</span><span class="secWhite">ard</span>
         <span class="secRed secTag">SEC</span>
       </div>
-
-      <!-- SEC identifier code (red, under the red SEC) -->
-      <div id="secId" class="secId">SEC-ID 000</div>
     </div>
 
     <!-- Top-right header -->
     <div class="topRightHeader">
-      <a id="backToUpload" class="hdrBox linkBox" href="./index.html">UPLOAD TARGET PHOTO or TAKE PICTURE</a>
+      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+      <div class="hdrSub">INSURE ALL 4 CORNERS</div>
     </div>
 
-    <!-- Left score column -->
-    <div class="scoreCol">
-      <div class="scoreTitle">Score</div>
-      <div class="scoreMeta">
-        <div>last score</div>
-        <div>avg score</div>
+    <!-- Right-side controls -->
+    <div class="rightControls">
+      <div class="ctlBox">
+        <label class="ctlLabel">ADJUST DISTANCE (yards)</label>
+        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
       </div>
-    </div>
 
-    <!-- Scope clicks box -->
-    <div class="scopeClicksBox">
-      <div class="scopeClicksTitle">SCOPE CLICKS</div>
-      <div class="scopeClicksRow">
-        <div class="scopeLabel">WINDAGE</div>
-        <div id="windageDir" class="scopeDir">LEFT</div>
-      </div>
-      <div class="scopeClicksRow">
-        <div class="scopeLabel">ELEVATION</div>
-        <div id="elevDir" class="scopeDir">UP</div>
-      </div>
-    </div>
-
-    <!-- Target thumbnail label + image -->
-    <div class="targetArea">
       <div class="targetThumbLabel">
         <div>TARGEET</div>
         <div>THUMBNAIL</div>
       </div>
-      <img id="thumb" class="thumb" alt="target thumbnail" />
-      <div class="vendorStack vendorStackOutput">
-        <a id="vendorBtnOut" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
+
+      <div class="vendorStack">
+        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
         <div class="vendorLogo">Vendor logo</div>
       </div>
     </div>
 
-    <!-- Tips box -->
-    <div class="tipsBox">
-      <div class="tipsInnerTitle">TIPS</div>
-      <div id="tipsText" class="tipsText"></div>
-    </div>
+    <!-- Center action box -->
+    <div class="centerBox">
+      <div class="pressTitle">PRESS TO SEE</div>
 
-    <!-- Hidden numeric results (used by you / later UI) -->
-    <div class="hiddenData">
-      <div id="windageText"></div>
-      <div id="elevText"></div>
-      <div id="scoreLast"></div>
-      <div id="scoreAvg"></div>
-    </div>
+      <div class="pressInner">
+        <div class="pressSEC">SEC</div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">SCORE</div>
+        </div>
+        <div class="pressRow">
+          <div class="pressLeft">SCOPE</div>
+          <div class="pressRight pressYellow">CLICKS</div>
+        </div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">TIP</div>
+        </div>
+      </div>
 
-    <div id="status" class="status statusOutput"></div>
+      <div class="fileRow">
+        <label class="fileBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
+        <input id="file" class="fileInput" type="file" accept="image/*" />
+      </div>
+
+      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
+      <div id="status" class="status"></div>
+    </div>
 
     <script src="./api.js"></script>
-    <script src="./output.js"></script>
+    <script src="./index.js"></script>
   </body>
 </html>
