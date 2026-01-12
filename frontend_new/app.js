@@ -1,17 +1,23 @@
 // frontend_new/app.js
-// Two pages:
+// Two-page SEC:
 //   - index.html (Upload SEC)
 //   - output.html (Output SEC)
+//
+// Pilot scoring: Offset-only (backend returns `score`)
+// Stores last/avg in localStorage (no login)
 
 (function () {
   const el = (id) => document.getElementById(id);
 
   const STORAGE_KEY = "SEC_LAST_RESULT_V1";
+  const SCORE_HISTORY_KEY = "SEC_SCORE_HISTORY_V1";
 
   const num = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   };
+
+  const f2 = (v) => (Math.round(num(v) * 100) / 100).toFixed(2);
 
   function cleanDir(s) {
     return String(s || "").trim().toUpperCase();
@@ -26,7 +32,6 @@
     return v > 0 ? "UP" : "DOWN";
   }
 
-  // Accept multiple backend response shapes
   function extractDxDyAndDirs(apiData) {
     const dx =
       apiData?.correction_in?.dx ??
@@ -35,8 +40,6 @@
       apiData?.correction?.dx ??
       apiData?.delta_in?.dx ??
       apiData?.dx ??
-      apiData?.windage_in ??
-      apiData?.wind_in ??
       0;
 
     const dy =
@@ -46,8 +49,6 @@
       apiData?.correction?.dy ??
       apiData?.delta_in?.dy ??
       apiData?.dy ??
-      apiData?.elevation_in ??
-      apiData?.elev_in ??
       0;
 
     const windDir =
@@ -74,8 +75,67 @@
     };
   }
 
-  // Create SEC Identifier (simple, stable)
-  // Example: SEC-250111-1432-7K3P
+  // Pilot score returned by backend
+  function extractScore(apiData) {
+    const s =
+      apiData?.score ??
+      apiData?.smart_score ??
+      apiData?.smartScore ??
+      apiData?.result?.score ??
+      null;
+
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function getHistory() {
+    try {
+      const raw = localStorage.getItem(SCORE_HISTORY_KEY);
+      const arr = JSON.parse(raw || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function setHistory(arr) {
+    try {
+      localStorage.setItem(SCORE_HISTORY_KEY, JSON.stringify(arr));
+    } catch {}
+  }
+
+  function pushScore(scoreNum) {
+    const hist = getHistory();
+    hist.push({ t: Date.now(), score: scoreNum });
+
+    while (hist.length > 50) hist.shift();
+
+    setHistory(hist);
+    return hist;
+  }
+
+  function avgScore(hist) {
+    if (!hist.length) return null;
+    let sum = 0;
+    let cnt = 0;
+    for (const it of hist) {
+      const s = Number(it?.score);
+      if (Number.isFinite(s)) {
+        sum += s;
+        cnt++;
+      }
+    }
+    if (!cnt) return null;
+    return sum / cnt;
+  }
+
+  function setStatus(statusEl, msg, isErr) {
+    if (!statusEl) return;
+    statusEl.textContent = msg || "";
+    statusEl.classList.toggle("err", !!isErr);
+  }
+
+  // SEC Identifier
   function makeSecId() {
     const d = new Date();
     const yy = String(d.getFullYear()).slice(-2);
@@ -87,12 +147,6 @@
     return `SEC-${yy}${mm}${dd}-${hh}${mi}-${rand}`;
   }
 
-  function setStatus(statusEl, msg, isErr) {
-    if (!statusEl) return;
-    statusEl.textContent = msg || "";
-    statusEl.classList.toggle("err", !!isErr);
-  }
-
   /* =========================
      PAGE: UPLOAD (index.html)
      ========================= */
@@ -102,19 +156,17 @@
     const pressBtn = el("pressBtn");
     const thumb = el("thumb");
     const status = el("status");
-    const buyBtn = el("buyBtn");
+
     const barTop = document.querySelector(".barTop");
+    const thumbWrap = document.querySelector(".thumbWrap");
 
     if (!fileEl || !pressBtn || !yardsEl) return;
 
-    // Clicking the top bar opens the file picker (keeps your wording on the UI)
+    // Click-to-upload zones
     if (barTop) {
       barTop.style.cursor = "pointer";
       barTop.addEventListener("click", () => fileEl.click());
     }
-
-    // Also allow clicking thumbnail area to choose file
-    const thumbWrap = document.querySelector(".thumbWrap");
     if (thumbWrap) {
       thumbWrap.style.cursor = "pointer";
       thumbWrap.addEventListener("click", () => fileEl.click());
@@ -123,20 +175,10 @@
     fileEl.addEventListener("change", () => {
       const f = fileEl.files && fileEl.files[0];
       if (f) {
-        const u = URL.createObjectURL(f);
-        thumb.src = u;
-        // Don’t revoke yet; we need it on output page
+        thumb.src = URL.createObjectURL(f);
         setStatus(status, "", false);
       }
     });
-
-    // “BUY MORE TARGETS” placeholder
-    if (buyBtn) {
-      buyBtn.addEventListener("click", () => {
-        // Pilot behavior: do nothing or open later.
-        // For now: no-op.
-      });
-    }
 
     pressBtn.addEventListener("click", async () => {
       try {
@@ -156,22 +198,17 @@
         // Analyze
         const apiData = await window.postAnalyze(f, yards);
 
-        // Save result for output page
         const secId = makeSecId();
-
-        // Keep the SAME object URL so output can render it
         const objectUrl = thumb?.src || URL.createObjectURL(f);
 
         const payload = {
           sec_id: secId,
           yards,
           objectUrl,
-          apiData
+          apiData,
         };
 
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-
-        // Go to output
         window.location.href = "./output.html";
       } catch (e) {
         setStatus(status, e?.message || String(e), true);
@@ -191,13 +228,15 @@
     const thumb = el("thumb");
     const status = el("status");
     const doAnother = el("doAnother");
-    const buyBtn = el("buyBtn");
 
-    // Load saved payload
+    const scoreBig = el("scoreBig");
+    const lastScoreVal = el("lastScoreVal");
+    const avgScoreVal = el("avgScoreVal");
+
     let payload = null;
     try {
       payload = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "null");
-    } catch (e) {
+    } catch {
       payload = null;
     }
 
@@ -212,30 +251,41 @@
     if (secIdEl) secIdEl.textContent = sec_id || "SEC-0000";
     if (thumb && objectUrl) thumb.src = objectUrl;
 
-    // Extract correction
+    // clicks
     const { dx, dy, windDir, elevDir } = extractDxDyAndDirs(apiData);
 
-    // Convert inches -> clicks (True MOA, 0.25 per click)
     const windClicks = window.clicksFromInches(Math.abs(dx), yards);
     const elevClicks = window.clicksFromInches(Math.abs(dy), yards);
 
-    // Direction words
-    const finalWindDir = windDir || dirFromSign("x", dx) || "—";
-    const finalElevDir = elevDir || dirFromSign("y", dy) || "—";
+    const finalWindDir = windDir || dirFromSign("x", dx);
+    const finalElevDir = elevDir || dirFromSign("y", dy);
 
-    // Display exactly like your output mock: direction only in the box
-    if (windDirEl) windDirEl.textContent = `${windClicks.toFixed(2)} ${finalWindDir}`.trim();
-    if (elevDirEl) elevDirEl.textContent = `${elevClicks.toFixed(2)} ${finalElevDir}`.trim();
+    if (windDirEl) windDirEl.textContent = `${f2(windClicks)} ${finalWindDir}`.trim();
+    if (elevDirEl) elevDirEl.textContent = `${f2(elevClicks)} ${finalElevDir}`.trim();
 
-    if (buyBtn) {
-      buyBtn.addEventListener("click", () => {
-        // Pilot behavior: no-op for now.
-      });
+    // scoring (pilot offset-only)
+    const currentScore = extractScore(apiData);
+
+    // last score is the previous score before pushing this one
+    const histBefore = getHistory();
+    const prevItem = histBefore.length ? histBefore[histBefore.length - 1] : null;
+    const prevScore = prevItem && Number.isFinite(Number(prevItem.score)) ? Number(prevItem.score) : null;
+
+    if (lastScoreVal) lastScoreVal.textContent = prevScore == null ? "—" : f2(prevScore);
+
+    if (currentScore != null) {
+      if (scoreBig) scoreBig.textContent = f2(currentScore);
+
+      const histAfter = pushScore(currentScore);
+      const a = avgScore(histAfter);
+      if (avgScoreVal) avgScoreVal.textContent = a == null ? "—" : f2(a);
+    } else {
+      if (scoreBig) scoreBig.textContent = "—";
+      if (avgScoreVal) avgScoreVal.textContent = "—";
     }
 
     if (doAnother) {
       doAnother.addEventListener("click", () => {
-        // Clear last result but keep nothing visible
         sessionStorage.removeItem(STORAGE_KEY);
         window.location.href = "./index.html";
       });
@@ -244,9 +294,8 @@
     setStatus(status, "", false);
   }
 
-  // Auto-detect page by DOM
   window.addEventListener("DOMContentLoaded", () => {
-    if (document.body && document.querySelector(".stage-upload")) initUploadPage();
-    if (document.body && document.querySelector(".stage-output")) initOutputPage();
+    if (document.querySelector(".stage-upload")) initUploadPage();
+    if (document.querySelector(".stage-output")) initOutputPage();
   });
 })();
