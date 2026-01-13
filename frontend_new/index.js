@@ -1,101 +1,112 @@
 // frontend_new/index.js
+// Wires the "UPLOAD TARGET PHOTO or TAKE PICTURE" button/label to the hidden file input,
+// shows the thumbnail preview, and persists the chosen image so it can be reused after navigation.
 
-(() => {
+document.addEventListener("DOMContentLoaded", () => {
   const fileInput = document.getElementById("targetPhoto");
-  const uploadBtn = document.getElementById("uploadBtn");
   const thumb = document.getElementById("thumb");
-  const thumbText = document.getElementById("thumbText");
-  const yardsInput = document.getElementById("yards");
-  const generateBtn = document.getElementById("generateBtn");
-  const pressToSee = document.getElementById("pressToSee");
 
-  if (!fileInput || !uploadBtn || !thumb || !yardsInput || !generateBtn || !pressToSee) {
-    console.error("Missing required elements. Check index.html IDs.");
-    return;
+  // Your upload control might be a <button id="uploadBtn"> OR a <label for="targetPhoto">
+  const uploadBtn = document.getElementById("uploadBtn");
+  const uploadLabel = document.querySelector('label[for="targetPhoto"]');
+
+  // Sometimes iOS gets forced into camera mode if capture is present.
+  // Make sure it's NOT set.
+  if (fileInput) {
+    fileInput.removeAttribute("capture");
   }
 
-  // Start state
-  generateBtn.disabled = true;
+  // Helper: show preview
+  function showPreview(dataUrl) {
+    if (!thumb) return;
+    thumb.src = dataUrl;
+    thumb.style.display = "block";
+  }
 
-  // Helper: store/retrieve
-  const save = (key, val) => localStorage.setItem(key, val);
-  const load = (key) => localStorage.getItem(key);
+  // Helper: persist preview so it survives refresh / "PRESS TO SEE"
+  const LS_KEY = "sczn3_target_thumb_dataurl";
+  function savePreview(dataUrl) {
+    try {
+      localStorage.setItem(LS_KEY, dataUrl);
+    } catch (_) {}
+  }
+  function loadPreview() {
+    try {
+      return localStorage.getItem(LS_KEY);
+    } catch (_) {
+      return null;
+    }
+  }
 
-  // Restore yards if present
-  const savedYards = load("sczn3_yards");
-  if (savedYards) yardsInput.value = savedYards;
+  // Restore preview if we already have one
+  const existing = loadPreview();
+  if (existing) showPreview(existing);
 
-  // Clicking the big "UPLOAD..." button triggers the hidden file input
-  uploadBtn.addEventListener("click", () => {
+  // Clicking the visible upload button should open the real file picker
+  function openPicker() {
+    if (!fileInput) return;
+    // Some browsers require this to be directly in a user gesture; this is (button click).
     fileInput.click();
-  });
+  }
 
-  // When a file is selected, show thumbnail + enable Generate
-  fileInput.addEventListener("change", () => {
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) return;
-
-    // Optional: basic guard
-    if (!file.type || !file.type.startsWith("image/")) {
-      alert("Please select an image file.");
-      fileInput.value = "";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target && e.target.result ? e.target.result : "";
-      if (!dataUrl) return;
-
-      // Show thumbnail
-      thumb.src = dataUrl;
-      thumb.style.display = "block";
-      if (thumbText) thumbText.style.display = "none";
-
-      // Save image for output page
-      save("sczn3_target_image", dataUrl);
-
-      // Enable generate
-      generateBtn.disabled = false;
-    };
-
-    reader.readAsDataURL(file);
-  });
-
-  // Save yards live
-  yardsInput.addEventListener("input", () => {
-    const yards = String(yardsInput.value || "100").trim();
-    save("sczn3_yards", yards);
-  });
-
-  // Generate: lock in yards + go to output
-  generateBtn.addEventListener("click", () => {
-    const yards = String(yardsInput.value || "100").trim();
-    save("sczn3_yards", yards);
-
-    const img = load("sczn3_target_image");
-    if (!img) {
-      alert("Upload a target photo first.");
-      return;
-    }
-
-    // (Optional) set a simple SEC id for display later
-    if (!load("sczn3_sec_id")) {
-      const secId = String(Math.floor(100 + Math.random() * 900)); // 3-digit quick id
-      save("sczn3_sec_id", secId);
-    }
-
-    // Go to output page
-    window.location.href = "./output.html";
-  });
-
-  // "PRESS TO SEE" should NOT go anywhere until you have an image
-  pressToSee.addEventListener("click", (e) => {
-    const img = load("sczn3_target_image");
-    if (!img) {
+  if (uploadBtn) {
+    uploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      alert("Upload a target photo first.");
-      return;
-    }
+      openPicker();
+    });
+  }
+
+  // If you’re using a label instead, clicking it already opens the picker.
+  // But some CSS/overlays can block it; this keeps it reliable.
+  if (uploadLabel) {
+    uploadLabel.addEventListener("click", () => {
+      // Let the label do its default behavior, but if it’s blocked, this still helps.
+      // (No preventDefault here.)
+      if (fileInput && fileInput.disabled !== true) {
+        // Small delay helps on iOS Safari sometimes
+        setTimeout(() => {
+          // If nothing happened, force it
+          // (If it already opened, this is harmless)
+          try { fileInput.click(); } catch (_) {}
+        }, 50);
+      }
+    });
+  }
+
+  // When a file is selected, preview it
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+
+      // Only images
+      if (!file.type || !file.type.startsWith("image/")) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target && e.target.result;
+        if (!dataUrl) return;
+
+        showPreview(dataUrl);
+        savePreview(dataUrl);
+
+        // Optional: tiny status line if you have an element for it
+        const status = document.getElementById("photoStatus");
+        if (status) status.textContent = "Photo loaded.";
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // If you have duplicate upload controls on an output page,
+  // this makes ANY element with class "goUpload" take you back to the upload area.
+  document.querySelectorAll(".goUpload").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      // If your output page is a separate route/page, set this to your real upload page path:
+      // window.location.href = "/";
+      // If it's same page with sections, just scroll to top:
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   });
-})();
+});
