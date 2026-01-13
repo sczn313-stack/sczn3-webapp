@@ -1,69 +1,83 @@
-// frontend_new/index.js
-// Upload photo -> save payload in sessionStorage -> redirect to output.html
+// index.js (SEC upload page)
+// Uses IDs from your index.html:
+// file, seeBtn, yards, status, vendorBtn
+// Writes payload to localStorage under: sczn3_sec_payload
+// Then navigates to output.html
 
-function nextSecId() {
-  const key = "sczn3_sec_id_counter";
-  const current = Number(sessionStorage.getItem(key) || "0") + 1;
-  sessionStorage.setItem(key, String(current));
-  return String(current).padStart(3, "0"); // "001", "002", ...
-}
+(function () {
+  const fileInput = document.getElementById("file");
+  const seeBtn = document.getElementById("seeBtn");
+  const yardsInput = document.getElementById("yards");
+  const statusEl = document.getElementById("status");
+  const vendorBtn = document.getElementById("vendorBtn");
 
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  // REQUIRED in index.html:
-  // <button id="uploadBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
-  // <input id="fileInput" type="file" accept="image/*" style="display:none;" />
-
-  const uploadBtn = document.getElementById("uploadBtn");
-  const fileInput = document.getElementById("fileInput");
-
-  // OPTIONAL in index.html (only if you have it):
-  // <input id="distanceInput" ... />
-  const distanceInput = document.getElementById("distanceInput");
-
-  if (!uploadBtn || !fileInput) {
-    console.warn("Missing #uploadBtn or #fileInput in index.html");
-    return;
+  // Set vendor link (placeholder for now)
+  if (vendorBtn) {
+    vendorBtn.href = "https://example.com";
+    vendorBtn.target = "_blank";
+    vendorBtn.rel = "noopener";
   }
 
-  uploadBtn.addEventListener("click", () => fileInput.click());
+  function setStatus(msg) {
+    if (statusEl) statusEl.textContent = msg || "";
+  }
 
-  fileInput.addEventListener("change", async (e) => {
+  function fileToDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error("Could not read image"));
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function handleSee() {
     try {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
+      setStatus("");
 
-      const thumbDataUrl = await readFileAsDataURL(file);
-      const distanceYards = distanceInput ? Number(distanceInput.value || 100) : 100;
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        setStatus("Please choose a target photo first.");
+        return;
+      }
 
-      const secIdNum = nextSecId();
+      const yardsRaw = yardsInput ? Number(yardsInput.value) : 100;
+      const yards = Number.isFinite(yardsRaw) && yardsRaw > 0 ? yardsRaw : 100;
 
-      // TEMP placeholders for Step 2 verification
+      setStatus("Loading image...");
+
+      const dataUrl = await fileToDataURL(file);
+
+      // Minimal payload for Output page to render thumbnail + distance
       const payload = {
-        secId: `SEC-ID ${secIdNum}`,
-        distanceYards,
-        lastScore: "Last Score: (pending)",
-        avgScore: "Avg Score: (pending)",
-        windLine: "Windage: (pending)",
-        elevLine: "Elevation: (pending)",
-        tips: "Tip: (pending)",
-        vendorUrl: "https://example.com",
-        thumbDataUrl
+        createdAt: new Date().toISOString(),
+        yards,
+        thumbDataUrl: dataUrl,
+
+        // placeholders for now (backend will fill later)
+        lastScore: "",
+        avgScore: "",
+        windLine: "",
+        elevLine: "",
+        tips: ""
       };
 
-      sessionStorage.setItem("sczn3_sec_payload", JSON.stringify(payload));
+      localStorage.setItem("sczn3_sec_payload", JSON.stringify(payload));
+
+      // go to output page
       window.location.href = "./output.html";
     } catch (err) {
-      console.error("Upload flow error:", err);
-      alert("Upload failed. Try again.");
+      console.error(err);
+      setStatus("Error. Try again.");
     }
-  });
-});
+  }
+
+  if (seeBtn) {
+    seeBtn.addEventListener("click", handleSee);
+  }
+
+  // Nice UX: if they pick a file, clear status
+  if (fileInput) {
+    fileInput.addEventListener("change", () => setStatus(""));
+  }
+})();
