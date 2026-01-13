@@ -1,118 +1,58 @@
-<!DOCTYPE html>
+<!-- sczn3-webapp/frontend_new/index.html -->
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Shooter Experience Card</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <style>
-    body {
-      font-family: serif;
-      padding: 20px;
-    }
-
-    .uploadBlock {
-      width: 100%;
-      margin: 20px 0;
-      text-align: center;
-    }
-
-    /* Clickable button */
-    .uploadBtn {
-      display: inline-block;
-      background: #2f5f73;
-      color: #fff;
-      padding: 14px 18px;
-      border-radius: 10px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    /* Hide the actual file input */
-    #targetPhoto {
-      display: none;
-    }
-
-    .uploadHint {
-      margin-top: 8px;
-      color: #b00000;
-      font-style: italic;
-    }
-
-    #thumb {
-      display: none;
-      margin-top: 15px;
-      max-width: 100%;
-      border-radius: 10px;
-    }
-
-    .pillBtn {
-      display: inline-block;
-      margin-top: 16px;
-      padding: 10px 16px;
-      background: #e6eef2;
-      border-radius: 20px;
-      color: #0b66c3;
-      font-weight: 600;
-      text-decoration: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    /* Optional: show disabled look until photo picked */
-    .pillBtn.disabled {
-      opacity: 0.6;
-      pointer-events: none;
-    }
-  </style>
+  <link rel="stylesheet" href="./styles.css?v=1" />
 </head>
 
-<body>
+<body class="page upload-page">
 
-  <h1>Shooter<br>Experience<br>Card SEC</h1>
+  <h1 class="h1">
+    Shooter<br>Experience<br>Card SEC
+  </h1>
 
   <!-- UPLOAD -->
-  <div class="uploadBlock">
+  <section class="panel">
+    <div class="uploadBlock">
 
-    <!-- LABEL IS THE BUTTON (iOS SAFE) -->
-    <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
-      UPLOAD TARGET PHOTO or TAKE PICTURE
-    </label>
+      <!-- iOS-safe: label triggers the input -->
+      <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
+        UPLOAD TARGET PHOTO or TAKE PICTURE
+      </label>
 
-    <!-- REAL FILE INPUT -->
-    <input
-      id="targetPhoto"
-      type="file"
-      accept="image/*"
-      name="targetPhoto"
-    />
+      <!-- IMPORTANT:
+           Don't use display:none on iOS file inputs.
+           Keep it "visually hidden" but still present/clickable. -->
+      <input
+        id="targetPhoto"
+        type="file"
+        accept="image/*"
+        name="targetPhoto"
+        class="fileInput"
+      />
 
-    <div class="uploadHint">INSURE ALL 4 CORNERS</div>
+      <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 
-    <!-- PREVIEW -->
-    <img id="thumb" alt="Target thumbnail" />
-  </div>
+      <!-- PREVIEW -->
+      <img id="thumb" class="thumb" alt="Target thumbnail" />
+    </div>
+  </section>
 
-  <br>
+  <!-- DISTANCE -->
+  <section class="panel">
+    <label class="fieldLabel" for="distanceYards">ADJUST DISTANCE (yards)</label>
+    <input id="distanceYards" class="fieldInput" type="number" value="100" />
+  </section>
 
-  <label for="distanceYards">
-    ADJUST DISTANCE (yards)
-  </label>
-  <input id="distanceYards" type="number" value="100" />
+  <!-- ACTIONS -->
+  <section class="actions">
+    <a href="#" class="pillBtn" id="buyMoreBtn">BUY MORE TARGETS</a>
+    <a href="#" class="pillBtn disabled" id="pressToSee">PRESS TO SEE</a>
+  </section>
 
-  <br><br>
-
-  <a href="#" class="pillBtn" id="buyMoreBtn">BUY MORE TARGETS</a>
-  <br><br>
-  <a href="#" class="pillBtn disabled" id="pressToSee">PRESS TO SEE</a>
-
-  <!-- SCRIPT -->
-  <script src="index.js"></script>
-
+  <script src="./index.js?v=1"></script>
 </body>
 </html>
