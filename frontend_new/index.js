@@ -1,53 +1,41 @@
-/* sczn3-webapp/frontend_new/index.js
-   PURPOSE:
-   - Make the big "UPLOAD TARGET PHOTO or TAKE PICTURE" control open the file picker
-   - Allow iPhone/iPad Safari to choose Camera OR Photo Library (no forced camera)
-   - Show thumbnail preview + status text
-   - Save selected image + yards so output.html can read it (localStorage)
-   - Optional: try backend analyze call if you have an endpoint (won’t crash if missing)
-*/
+// frontend_new/index.js
 
-(function () {
-  // Elements (support both your older label version and your newer button version)
+(() => {
   const fileInput = document.getElementById("targetPhoto");
+  const uploadBtn = document.getElementById("uploadBtn");
   const thumb = document.getElementById("thumb");
-  const thumbText = document.getElementById("thumbText") || null;
-
-  const uploadBtn =
-    document.getElementById("uploadBtn") || // if you used <button id="uploadBtn">
-    document.querySelector('label[for="targetPhoto"]') || // if you used <label for="targetPhoto">
-    null;
-
+  const thumbText = document.getElementById("thumbText");
   const yardsInput = document.getElementById("yards");
   const generateBtn = document.getElementById("generateBtn");
   const pressToSee = document.getElementById("pressToSee");
 
-  // Basic guards
-  if (!fileInput) {
-    console.warn("index.js: #targetPhoto not found");
+  if (!fileInput || !uploadBtn || !thumb || !yardsInput || !generateBtn || !pressToSee) {
+    console.error("Missing required elements. Check index.html IDs.");
     return;
   }
 
-  // IMPORTANT: do NOT force camera capture.
-  // If any old HTML had capture="environment", removing it in HTML is best,
-  // but this also helps if it sneaks in.
-  fileInput.removeAttribute("capture");
+  // Start state
+  generateBtn.disabled = true;
 
-  // Make the big upload control open the picker
-  if (uploadBtn) {
-    uploadBtn.addEventListener("click", (e) => {
-      // If it's a label, default is fine, but button needs this.
-      e.preventDefault();
-      fileInput.click();
-    });
-  }
+  // Helper: store/retrieve
+  const save = (key, val) => localStorage.setItem(key, val);
+  const load = (key) => localStorage.getItem(key);
 
-  // Handle file selection + thumbnail preview
+  // Restore yards if present
+  const savedYards = load("sczn3_yards");
+  if (savedYards) yardsInput.value = savedYards;
+
+  // Clicking the big "UPLOAD..." button triggers the hidden file input
+  uploadBtn.addEventListener("click", () => {
+    fileInput.click();
+  });
+
+  // When a file is selected, show thumbnail + enable Generate
   fileInput.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
 
-    // Basic type safety
+    // Optional: basic guard
     if (!file.type || !file.type.startsWith("image/")) {
       alert("Please select an image file.");
       fileInput.value = "";
@@ -56,110 +44,58 @@
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target && e.target.result ? String(e.target.result) : "";
+      const dataUrl = e.target && e.target.result ? e.target.result : "";
       if (!dataUrl) return;
 
       // Show thumbnail
-      if (thumb) {
-        thumb.src = dataUrl;
-        thumb.style.display = "block";
-      }
-      if (thumbText) {
-        thumbText.textContent = "Photo loaded. Press PRESS TO SEE.";
-      }
+      thumb.src = dataUrl;
+      thumb.style.display = "block";
+      if (thumbText) thumbText.style.display = "none";
 
-      // Save to localStorage so output.html can read it
-      try {
-        localStorage.setItem("sczn3_target_image", dataUrl);
-        localStorage.setItem(
-          "sczn3_yards",
-          yardsInput ? String(yardsInput.value || "100") : "100"
-        );
-        localStorage.setItem("sczn3_file_name", file.name || "target.jpg");
-      } catch (err) {
-        console.warn("localStorage write failed:", err);
-      }
+      // Save image for output page
+      save("sczn3_target_image", dataUrl);
 
-      // Enable generate if present
-      if (generateBtn) {
-        generateBtn.disabled = false;
-        generateBtn.style.opacity = "1";
-        generateBtn.style.pointerEvents = "auto";
-      }
+      // Enable generate
+      generateBtn.disabled = false;
     };
 
     reader.readAsDataURL(file);
   });
 
-  // Keep yards synced in storage
-  if (yardsInput) {
-    yardsInput.addEventListener("input", () => {
-      try {
-        localStorage.setItem("sczn3_yards", String(yardsInput.value || "100"));
-      } catch (_) {}
-    });
-  }
+  // Save yards live
+  yardsInput.addEventListener("input", () => {
+    const yards = String(yardsInput.value || "100").trim();
+    save("sczn3_yards", yards);
+  });
 
-  // GENERATE behavior:
-  // - If you have a backend endpoint, we try it.
-  // - Regardless, we send you to output.html (where we’ll render from localStorage next).
-  if (generateBtn) {
-    generateBtn.addEventListener("click", async () => {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) {
-        alert("Pick a target photo first.");
-        return;
-      }
+  // Generate: lock in yards + go to output
+  generateBtn.addEventListener("click", () => {
+    const yards = String(yardsInput.value || "100").trim();
+    save("sczn3_yards", yards);
 
-      const yards = yardsInput ? Number(yardsInput.value || 100) : 100;
+    const img = load("sczn3_target_image");
+    if (!img) {
+      alert("Upload a target photo first.");
+      return;
+    }
 
-      // Optional backend call (safe if your backend is not ready)
-      // If you DO have an endpoint, set window.SCZN3_API_BASE in HTML (optional),
-      // or it will try same-origin "/api/analyze".
-      const API_BASE = window.SCZN3_API_BASE || "";
-      const analyzeUrl = `${API_BASE}/api/analyze`;
+    // (Optional) set a simple SEC id for display later
+    if (!load("sczn3_sec_id")) {
+      const secId = String(Math.floor(100 + Math.random() * 900)); // 3-digit quick id
+      save("sczn3_sec_id", secId);
+    }
 
-      try {
-        const form = new FormData();
-        form.append("targetPhoto", file);
-        form.append("yards", String(yards));
+    // Go to output page
+    window.location.href = "./output.html";
+  });
 
-        const res = await fetch(analyzeUrl, {
-          method: "POST",
-          body: form,
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          // Save result so output.html can show scores/clicks
-          localStorage.setItem("sczn3_result", JSON.stringify(data));
-        } else {
-          // Not fatal — output page can still show the photo
-          console.warn("Analyze failed:", res.status);
-        }
-      } catch (err) {
-        // Not fatal
-        console.warn("Analyze request skipped/failed:", err);
-      }
-
-      // Go to output page
-      if (pressToSee && pressToSee.getAttribute("href")) {
-        window.location.href = pressToSee.getAttribute("href");
-      } else {
-        window.location.href = "./output.html";
-      }
-    });
-  }
-
-  // PRESS TO SEE should always work (even if generate not clicked yet)
-  if (pressToSee) {
-    pressToSee.addEventListener("click", (e) => {
-      // If no photo selected, still allow navigation, but warn
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) {
-        // let it navigate anyway
-        return;
-      }
-    });
-  }
+  // "PRESS TO SEE" should NOT go anywhere until you have an image
+  pressToSee.addEventListener("click", (e) => {
+    const img = load("sczn3_target_image");
+    if (!img) {
+      e.preventDefault();
+      alert("Upload a target photo first.");
+      return;
+    }
+  });
 })();
