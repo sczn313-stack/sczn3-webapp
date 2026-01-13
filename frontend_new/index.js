@@ -1,5 +1,6 @@
-// frontend_new/index.js
+// sczn3-webapp/frontend_new/index.js
 // Upload page logic:
+// - Upload button opens file picker (or camera) on iPhone
 // - Show thumbnail preview
 // - Save image + distance to sessionStorage
 // - PRESS TO SEE -> output.html
@@ -11,16 +12,39 @@
 
   const fileInput = $("targetPhoto");
   const thumb = $("thumb");
-  const distanceInput = $("distanceYards") || document.querySelector('input[type="number"]');
 
-  // Find PRESS TO SEE link/button (works even if it has no id)
+  // Your distance input should have id="distanceYards" (recommended)
+  const distanceInput =
+    $("distanceYards") ||
+    document.querySelector('input[type="number"]');
+
+  // Your upload button can be either:
+  // 1) <label for="targetPhoto" ...> (best)
+  // OR 2) a <button id="uploadBtn" ...>
+  const uploadBtn = $("uploadBtn");
+
+  // Find PRESS TO SEE link/button (even if it has no id)
   const pressToSee =
     $("pressToSee") ||
     Array.from(document.querySelectorAll("a,button")).find((el) =>
-      (el.textContent || "").trim().toUpperCase().includes("PRESS TO SEE")
+      (el.textContent || "")
+        .trim()
+        .toUpperCase()
+        .includes("PRESS TO SEE")
     );
 
-  if (!fileInput) return;
+  if (!fileInput) {
+    console.warn("Missing #targetPhoto input");
+    return;
+  }
+
+  // If you are using a BUTTON (not a LABEL), wire it to open the picker
+  // NOTE: This MUST be directly in a user click handler to work on iOS.
+  if (uploadBtn) {
+    uploadBtn.addEventListener("click", () => {
+      fileInput.click();
+    });
+  }
 
   // Save distance any time it changes
   if (distanceInput) {
@@ -46,7 +70,7 @@
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target && e.target.result ? String(e.target.result) : "";
+      const dataUrl = e && e.target && e.target.result ? String(e.target.result) : "";
       if (!dataUrl) return;
 
       if (thumb) {
