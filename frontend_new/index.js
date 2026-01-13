@@ -1,103 +1,81 @@
 // index.js
-const els = {
-  uploadHeaderBtn: document.getElementById("uploadHeaderBtn"),
-  file: document.getElementById("file"),
-  yards: document.getElementById("yards"),
-  thumbPreview: document.getElementById("thumbPreview"),
-  thumbEmpty: document.getElementById("thumbEmpty"),
-  seeBtn: document.getElementById("seeBtn"),
-  status: document.getElementById("status"),
-  vendorBtn: document.getElementById("vendorBtn"),
-};
+(function () {
+  const fileInput = document.getElementById("file");
+  const topUploadBtn = document.getElementById("topUploadBtn");
+  const seeBtn = document.getElementById("seeBtn");
+  const yardsInput = document.getElementById("yards");
+  const statusEl = document.getElementById("status");
 
-let selectedFile = null;
-let selectedThumbDataUrl = null;
+  const thumbPreview = document.getElementById("thumbPreview");
+  const thumbHint = document.getElementById("thumbHint");
 
-// Example vendor link (replace later from config or response)
-els.vendorBtn.href = "https://example.com";
+  let selectedFile = null;
 
-function setStatus(msg) {
-  els.status.textContent = msg || "";
-}
+  // Top button triggers file picker
+  topUploadBtn.addEventListener("click", () => fileInput.click());
 
-function showThumb(dataUrl) {
-  if (!dataUrl) {
-    els.thumbPreview.style.display = "none";
-    els.thumbEmpty.style.display = "flex";
-    return;
-  }
-  els.thumbPreview.src = dataUrl;
-  els.thumbPreview.style.display = "block";
-  els.thumbEmpty.style.display = "none";
-}
+  // When file chosen, show thumbnail + store it (so output page can show it too)
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
 
-function enableSee(enabled) {
-  els.seeBtn.disabled = !enabled;
-}
+    selectedFile = f;
 
-// Clicking the header button opens the picker
-els.uploadHeaderBtn.addEventListener("click", () => {
-  els.file.click();
-});
+    const url = URL.createObjectURL(f);
+    thumbPreview.src = url;
+    thumbPreview.style.display = "block";
+    thumbHint.style.display = "none";
 
-// When file chosen, show thumbnail + enable Press to see
-els.file.addEventListener("change", async () => {
-  const file = els.file.files && els.file.files[0];
-  selectedFile = file || null;
-
-  if (!selectedFile) {
-    selectedThumbDataUrl = null;
-    showThumb(null);
-    enableSee(false);
-    setStatus("");
-    return;
-  }
-
-  // Create a local preview
-  const reader = new FileReader();
-  reader.onload = () => {
-    selectedThumbDataUrl = String(reader.result || "");
-    showThumb(selectedThumbDataUrl);
-    enableSee(true);
-    setStatus("Photo selected. Press to see.");
-  };
-  reader.readAsDataURL(selectedFile);
-});
-
-// Press to see -> call backend -> store results -> go output
-els.seeBtn.addEventListener("click", async () => {
-  if (!selectedFile) {
-    setStatus("Pick a photo first.");
-    return;
-  }
-
-  try {
-    setStatus("Analyzing…");
-    enableSee(false);
-
-    const yards = Number(els.yards.value || 100);
-
-    const result = await postAnalyzeTarget({ file: selectedFile, yards });
-
-    // Store everything output page needs
-    const payload = {
-      ts: Date.now(),
-      yards,
-      thumbDataUrl: selectedThumbDataUrl, // local thumbnail preview
-      result, // backend JSON
+    // Also store a smaller-ish dataURL for output page
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        localStorage.setItem("sec_last_thumb", reader.result);
+      } catch (e) {
+        // if storage full, just skip
+      }
     };
+    reader.readAsDataURL(f);
 
-    localStorage.setItem("SEC_LAST_RESULT", JSON.stringify(payload));
+    statusEl.textContent = "Photo selected.";
+  });
 
-    // Go to output page
-    window.location.href = "./output.html";
-  } catch (err) {
-    setStatus(`Error: ${err.message || err}`);
-    enableSee(true);
-  }
-});
+  // Press to see -> call backend -> store results -> go to output
+  seeBtn.addEventListener("click", async () => {
+    if (!selectedFile) {
+      statusEl.textContent = "Pick a photo first.";
+      return;
+    }
 
-// Initial state
-showThumb(null);
-enableSee(false);
-setStatus("");
+    const yards = Number(yardsInput.value || 100);
+    statusEl.textContent = "Analyzing…";
+
+    try {
+      const fd = new FormData();
+      fd.append("image", selectedFile);
+      fd.append("yards", String(yards));
+
+      const res = await fetch(window.SEC_API.analyzeUrl, {
+        method: "POST",
+        body: fd
+      });
+
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`Analyze failed (${res.status}). ${t}`);
+      }
+
+      const data = await res.json();
+
+      // Store for output page to render
+      localStorage.setItem("sec_last_result", JSON.stringify(data));
+      localStorage.setItem("sec_last_yards", String(yards));
+
+      // Go output
+      window.location.href = "./output.html";
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = err.message || "Analyze failed.";
+    }
+  });
+})();
