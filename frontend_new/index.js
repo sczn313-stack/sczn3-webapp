@@ -1,149 +1,165 @@
-// frontend_new/index.js
-// Upload SEC logic (Upload page)
-//
-// What this file does:
-// 1) iOS-safe upload button behavior (button click -> file input click)
-// 2) Shows thumbnail preview
-// 3) Stores target photo + yards in sessionStorage
-// 4) PRESS TO SEE routes to output.html
+/* sczn3-webapp/frontend_new/index.js
+   PURPOSE:
+   - Make the big "UPLOAD TARGET PHOTO or TAKE PICTURE" control open the file picker
+   - Allow iPhone/iPad Safari to choose Camera OR Photo Library (no forced camera)
+   - Show thumbnail preview + status text
+   - Save selected image + yards so output.html can read it (localStorage)
+   - Optional: try backend analyze call if you have an endpoint (won’t crash if missing)
+*/
 
 (function () {
-  const el = (id) => document.getElementById(id);
+  // Elements (support both your older label version and your newer button version)
+  const fileInput = document.getElementById("targetPhoto");
+  const thumb = document.getElementById("thumb");
+  const thumbText = document.getElementById("thumbText") || null;
 
-  // Elements from index.html
-  const yardsEl = el("yards");
-  const uploadBtn = el("uploadBtn");
-  const fileInput = el("file");
-  const seeBtn = el("seeBtn");
-  const statusEl = el("status");
-  const thumbEl = el("thumb");
+  const uploadBtn =
+    document.getElementById("uploadBtn") || // if you used <button id="uploadBtn">
+    document.querySelector('label[for="targetPhoto"]') || // if you used <label for="targetPhoto">
+    null;
 
-  // -----------------------
-  // Helpers
-  // -----------------------
-  function setStatus(msg, isErr = false) {
-    if (!statusEl) return;
-    statusEl.textContent = msg || "";
-    statusEl.classList.toggle("err", !!isErr);
+  const yardsInput = document.getElementById("yards");
+  const generateBtn = document.getElementById("generateBtn");
+  const pressToSee = document.getElementById("pressToSee");
+
+  // Basic guards
+  if (!fileInput) {
+    console.warn("index.js: #targetPhoto not found");
+    return;
   }
 
-  function n(v, fallback = 0) {
-    const x = Number(v);
-    return Number.isFinite(x) ? x : fallback;
-  }
+  // IMPORTANT: do NOT force camera capture.
+  // If any old HTML had capture="environment", removing it in HTML is best,
+  // but this also helps if it sneaks in.
+  fileInput.removeAttribute("capture");
 
-  function getYards() {
-    const y = n(yardsEl && yardsEl.value, 100);
-    return y > 0 ? y : 100;
-  }
-
-  function fileToDataURL(file) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result || ""));
-      r.onerror = () => reject(new Error("File read failed"));
-      r.readAsDataURL(file);
-    });
-  }
-
-  // -----------------------
-  // State
-  // -----------------------
-  let selectedFile = null;
-
-  // -----------------------
-  // Wire upload button (iOS-safe)
-  // -----------------------
-  if (uploadBtn && fileInput) {
-    uploadBtn.addEventListener("click", () => {
-      // iOS requires the picker to open inside a direct user gesture
+  // Make the big upload control open the picker
+  if (uploadBtn) {
+    uploadBtn.addEventListener("click", (e) => {
+      // If it's a label, default is fine, but button needs this.
+      e.preventDefault();
       fileInput.click();
     });
   }
 
-  // -----------------------
-  // When file changes, show thumbnail + store in sessionStorage
-  // -----------------------
-  if (fileInput) {
-    fileInput.addEventListener("change", async () => {
-      try {
-        setStatus("");
+  // Handle file selection + thumbnail preview
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
 
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) {
-          selectedFile = null;
-          if (thumbEl) {
-            thumbEl.removeAttribute("src");
-            thumbEl.style.display = "none";
-          }
-          return;
-        }
+    // Basic type safety
+    if (!file.type || !file.type.startsWith("image/")) {
+      alert("Please select an image file.");
+      fileInput.value = "";
+      return;
+    }
 
-        selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target && e.target.result ? String(e.target.result) : "";
+      if (!dataUrl) return;
 
-        // Thumbnail preview
-        if (thumbEl) {
-          thumbEl.src = URL.createObjectURL(file);
-          thumbEl.style.display = "block";
-        }
-
-        // Persist for output page (store base64 so output page can render same image)
-        const dataUrl = await fileToDataURL(file);
-        sessionStorage.setItem("SEC_TARGET_DATAURL", dataUrl);
-        sessionStorage.setItem("SEC_YARDS", String(getYards()));
-
-        // Clear any previous output values (fresh run)
-        sessionStorage.removeItem("SEC_RESULT_JSON");
-        sessionStorage.removeItem("SEC_LAST_SCORE");
-        sessionStorage.removeItem("SEC_AVG_SCORE");
-        sessionStorage.removeItem("SEC_WIND_LINE");
-        sessionStorage.removeItem("SEC_ELEV_LINE");
-        sessionStorage.removeItem("SEC_TIP");
-
-        setStatus("Photo loaded. Press PRESS TO SEE.");
-      } catch (err) {
-        setStatus(String(err && err.message ? err.message : err), true);
+      // Show thumbnail
+      if (thumb) {
+        thumb.src = dataUrl;
+        thumb.style.display = "block";
       }
+      if (thumbText) {
+        thumbText.textContent = "Photo loaded. Press PRESS TO SEE.";
+      }
+
+      // Save to localStorage so output.html can read it
+      try {
+        localStorage.setItem("sczn3_target_image", dataUrl);
+        localStorage.setItem(
+          "sczn3_yards",
+          yardsInput ? String(yardsInput.value || "100") : "100"
+        );
+        localStorage.setItem("sczn3_file_name", file.name || "target.jpg");
+      } catch (err) {
+        console.warn("localStorage write failed:", err);
+      }
+
+      // Enable generate if present
+      if (generateBtn) {
+        generateBtn.disabled = false;
+        generateBtn.style.opacity = "1";
+        generateBtn.style.pointerEvents = "auto";
+      }
+    };
+
+    reader.readAsDataURL(file);
+  });
+
+  // Keep yards synced in storage
+  if (yardsInput) {
+    yardsInput.addEventListener("input", () => {
+      try {
+        localStorage.setItem("sczn3_yards", String(yardsInput.value || "100"));
+      } catch (_) {}
     });
   }
 
-  // -----------------------
-  // Keep yards in sessionStorage whenever changed
-  // -----------------------
-  if (yardsEl) {
-    yardsEl.addEventListener("input", () => {
-      sessionStorage.setItem("SEC_YARDS", String(getYards()));
-    });
-    // Initialize stored value
-    sessionStorage.setItem("SEC_YARDS", String(getYards()));
-  }
-
-  // -----------------------
-  // PRESS TO SEE: validate + go to output page
-  // -----------------------
-  if (seeBtn) {
-    seeBtn.addEventListener("click", () => {
-      setStatus("");
-
-      const hasImage =
-        !!sessionStorage.getItem("SEC_TARGET_DATAURL") ||
-        (fileInput && fileInput.files && fileInput.files.length > 0);
-
-      if (!hasImage) {
-        setStatus("Upload target photo first.", true);
+  // GENERATE behavior:
+  // - If you have a backend endpoint, we try it.
+  // - Regardless, we send you to output.html (where we’ll render from localStorage next).
+  if (generateBtn) {
+    generateBtn.addEventListener("click", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        alert("Pick a target photo first.");
         return;
       }
 
-      // ensure yards stored
-      sessionStorage.setItem("SEC_YARDS", String(getYards()));
+      const yards = yardsInput ? Number(yardsInput.value || 100) : 100;
 
-      // go to output page
-      window.location.href = "./output.html";
+      // Optional backend call (safe if your backend is not ready)
+      // If you DO have an endpoint, set window.SCZN3_API_BASE in HTML (optional),
+      // or it will try same-origin "/api/analyze".
+      const API_BASE = window.SCZN3_API_BASE || "";
+      const analyzeUrl = `${API_BASE}/api/analyze`;
+
+      try {
+        const form = new FormData();
+        form.append("targetPhoto", file);
+        form.append("yards", String(yards));
+
+        const res = await fetch(analyzeUrl, {
+          method: "POST",
+          body: form,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Save result so output.html can show scores/clicks
+          localStorage.setItem("sczn3_result", JSON.stringify(data));
+        } else {
+          // Not fatal — output page can still show the photo
+          console.warn("Analyze failed:", res.status);
+        }
+      } catch (err) {
+        // Not fatal
+        console.warn("Analyze request skipped/failed:", err);
+      }
+
+      // Go to output page
+      if (pressToSee && pressToSee.getAttribute("href")) {
+        window.location.href = pressToSee.getAttribute("href");
+      } else {
+        window.location.href = "./output.html";
+      }
     });
   }
 
-  // -----------------------
-  // Init
-  // -----------------------
-  setStatus("");
+  // PRESS TO SEE should always work (even if generate not clicked yet)
+  if (pressToSee) {
+    pressToSee.addEventListener("click", (e) => {
+      // If no photo selected, still allow navigation, but warn
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        // let it navigate anyway
+        return;
+      }
+    });
+  }
 })();
