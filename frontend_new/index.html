@@ -4,78 +4,88 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>SEC</title>
-    <link rel="stylesheet" href="./styles.css?v=20260112_2215" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
 
-  <body class="page uploadPage">
-    <!-- Top-left SEC brand -->
-    <div class="secBrand">
-      <div class="secBrandLine">
-        <span class="secRed">S</span><span class="secWhite">hooter</span>
+  <body class="secPage inputPage">
+    <!-- LEFT: Brand -->
+    <section class="brandBlock" aria-label="SEC Brand">
+      <div class="brandLine"><span class="brandRed">S</span><span class="brandLight">hooter</span></div>
+      <div class="brandLine"><span class="brandRed">E</span><span class="brandLight">xperience</span></div>
+      <div class="brandLine">
+        <span class="brandRed">C</span><span class="brandLight">ard</span>
+        <span class="brandRed brandTag">SEC</span>
       </div>
-      <div class="secBrandLine">
-        <span class="secRed">E</span><span class="secWhite">xperience</span>
-      </div>
-      <div class="secBrandLine">
-        <span class="secRed">C</span><span class="secWhite">ard</span>
-        <span class="secRed secTag">SEC</span>
-      </div>
-    </div>
+    </section>
 
-    <!-- Top-right header -->
-    <div class="topRightHeader">
-      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+    <!-- TOP RIGHT: Upload header (THIS is the only upload trigger) -->
+    <header class="topHeader" aria-label="Upload Header">
+      <button id="uploadHeaderBtn" class="hdrBtn" type="button">
+        UPLOAD TARGET PHOTO or TAKE PICTURE
+      </button>
       <div class="hdrSub">INSURE ALL 4 CORNERS</div>
-    </div>
 
-    <!-- Right-side controls -->
-    <div class="rightControls">
-      <div class="ctlBox">
-        <label class="ctlLabel">ADJUST DISTANCE (yards)</label>
-        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
+      <!-- hidden file input -->
+      <input id="file" class="fileHidden" type="file" accept="image/*" />
+    </header>
+
+    <!-- RIGHT COLUMN: Distance + Thumb + Vendor -->
+    <aside class="rightCol" aria-label="Controls">
+      <div class="panel">
+        <div class="panelTitle">ADJUST DISTANCE (yards)</div>
+        <input id="yards" class="yardsInput" type="number" value="100" min="1" step="1" />
       </div>
 
-      <div class="targetThumbLabel">
-        <div>TARGEET</div>
+      <div class="thumbLabel">
+        <div>TARGET</div>
         <div>THUMBNAIL</div>
       </div>
 
-      <div class="vendorStack">
-        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
-        <div class="vendorLogo">Vendor logo</div>
-      </div>
-    </div>
-
-    <!-- Center action box -->
-    <div class="centerBox">
-      <div class="pressTitle">PRESS TO SEE</div>
-
-      <div class="pressInner">
-        <div class="pressSEC">SEC</div>
-        <div class="pressRow">
-          <div class="pressLeft">SHOOTER</div>
-          <div class="pressRight pressYellow">SCORE</div>
-        </div>
-        <div class="pressRow">
-          <div class="pressLeft">SCOPE</div>
-          <div class="pressRight pressYellow">CLICKS</div>
-        </div>
-        <div class="pressRow">
-          <div class="pressLeft">SHOOTER</div>
-          <div class="pressRight pressYellow">TIP</div>
-        </div>
+      <div class="thumbBox">
+        <img id="thumbPreview" alt="Target thumbnail preview" />
+        <div id="thumbEmpty" class="thumbEmpty">No photo selected</div>
       </div>
 
-      <div class="fileRow">
-        <label class="fileBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
-        <input id="file" class="fileInput" type="file" accept="image/*" />
+      <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">
+        BUY MORE TARGETS
+      </a>
+
+      <div class="vendorLogo">Vendor logo</div>
+    </aside>
+
+    <!-- CENTER: Press to see box -->
+    <main class="centerCol" aria-label="SEC Action">
+      <div class="secCard">
+        <div class="secCardTop">PRESS TO SEE</div>
+
+        <div class="secCardMid">
+          <div class="secCardTitle">SEC</div>
+
+          <div class="secRow">
+            <div class="secLeft">SHOOTER</div>
+            <div class="secRight">SCORE</div>
+          </div>
+
+          <div class="secRow">
+            <div class="secLeft">SCOPE</div>
+            <div class="secRight">CLICKS</div>
+          </div>
+
+          <div class="secRow">
+            <div class="secLeft">SHOOTER</div>
+            <div class="secRight">TIP</div>
+          </div>
+        </div>
+
+        <button id="seeBtn" class="seeBtn" type="button" disabled>
+          PRESS TO SEE
+        </button>
+
+        <div id="status" class="status"></div>
       </div>
+    </main>
 
-      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
-      <div id="status" class="status"></div>
-    </div>
-
-    <script src="./api.js?v=20260112_2215"></script>
-    <script src="./index.js?v=20260112_2215"></script>
+    <script src="./api.js"></script>
+    <script src="./index.js"></script>
   </body>
 </html>
