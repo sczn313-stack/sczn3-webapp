@@ -5,17 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SEC Upload</title>
 
-    <!-- CSS -->
     <link rel="stylesheet" href="./styles.css" />
-
-    <!-- JS -->
     <script defer src="./index.js"></script>
   </head>
 
   <body>
     <div class="page">
 
-      <!-- Header / Branding -->
       <div class="secHeader">
         <div class="secTitle">Shooter Experience Card</div>
         <div class="secSubTitle">SEC</div>
@@ -23,16 +19,18 @@
 
       <!-- UPLOAD TARGET PHOTO -->
       <div class="uploadBlock">
+        <!-- THIS is what the user taps -->
         <button type="button" id="uploadBtn" class="uploadBtn">
           UPLOAD TARGET PHOTO or TAKE PICTURE
         </button>
 
-        <!-- IMPORTANT: NO "capture" attribute here -->
+        <!-- Hidden real file input (NO capture attribute) -->
         <input
           id="targetPhoto"
           type="file"
           accept="image/*"
           name="targetPhoto"
+          style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;"
         />
 
         <div class="uploadHint">INSURE ALL 4 CORNERS</div>
