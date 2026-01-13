@@ -1,73 +1,15 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Upload SEC</title>
+<!-- UPLOAD TARGET PHOTO -->
+<div class="uploadBlock">
+  <label for="targetPhoto" class="uploadBtn">
+    UPLOAD TARGET PHOTO or TAKE PICTURE
+  </label>
 
-  <!-- IMPORTANT: relative path (NO leading /) -->
-  <link rel="stylesheet" href="styles.css?v=1" />
-</head>
+  <input
+    id="targetPhoto"
+    type="file"
+    accept="image/*"
+    name="targetPhoto"
+  />
 
-<body>
-  <main class="page">
-    <header class="brand">
-      <div class="brand-col">
-        <div class="brand-vertical">
-          <span class="brand-big red">S</span>
-          <span class="brand-big white">h</span>
-          <span class="brand-big white">o</span>
-          <span class="brand-big red">E</span>
-          <span class="brand-big white">x</span>
-          <span class="brand-big white">p</span>
-          <span class="brand-big red">C</span>
-          <span class="brand-big white">a</span>
-          <span class="brand-big white">r</span>
-          <span class="brand-big red">d</span>
-        </div>
-      </div>
-
-      <div class="brand-right">
-        <div class="brand-title">
-          <span class="brand-sec">SEC</span>
-        </div>
-
-        <div class="hero-actions">
-          <label class="btn btn-wide">
-            UPLOAD TARGET PHOTO or TAKE PICTURE
-            <input id="fileInput" type="file" accept="image/*" capture="environment" />
-          </label>
-
-          <div class="hint">INSURE ALL 4 CORNERS</div>
-
-          <section class="distance">
-            <div class="distance-title">ADJUST DISTANCE (yards)</div>
-            <input id="distanceInput" class="distance-input" type="number" min="1" step="1" value="100" />
-          </section>
-
-          <section class="thumb">
-            <div class="thumb-title">TARGET<br/>THUMBNAIL</div>
-            <div class="thumb-box">
-              <img id="thumbImg" alt="Target thumbnail preview" />
-              <div id="thumbEmpty" class="thumb-empty">No photo selected</div>
-            </div>
-          </section>
-
-          <button id="generateBtn" class="btn btn-generate" disabled>GENERATE SEC</button>
-
-          <a id="pressToSee" class="press-to-see" href="output.html">PRESS TO SEE</a>
-
-          <button id="buyBtn" class="btn btn-buy" type="button">BUY MORE TARGETS</button>
-
-          <div id="status" class="status"></div>
-        </div>
-      </div>
-    </header>
-  </main>
-
-  <!-- IMPORTANT: relative path (NO leading /) -->
-  <script src="api.js?v=1"></script>
-  <script src="app.js?v=1"></script>
-  <script src="index.js?v=1"></script>
-</body>
-</html>
+  <div class="uploadHint">INSURE ALL 4 CORNERS</div>
+</div>
