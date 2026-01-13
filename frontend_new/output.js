@@ -1,76 +1,53 @@
 // output.js
-const els = {
-  secId: document.getElementById("secId"),
-  lastScore: document.getElementById("lastScore"),
-  avgScore: document.getElementById("avgScore"),
-  windLine: document.getElementById("windLine"),
-  elevLine: document.getElementById("elevLine"),
-  thumb: document.getElementById("thumb"),
-  thumbMissing: document.getElementById("thumbMissing"),
-  tipsBox: document.getElementById("tipsBox"),
-  backBtn: document.getElementById("backBtn"),
-  vendorBtn: document.getElementById("vendorBtn"),
-};
+(function () {
+  const secIdEl = document.getElementById("secId");
+  const lastScoreEl = document.getElementById("lastScore");
+  const avgScoreEl = document.getElementById("avgScore");
+  const windLineEl = document.getElementById("windLine");
+  const elevLineEl = document.getElementById("elevLine");
+  const tipsBoxEl = document.getElementById("tipsBox");
+  const thumbEl = document.getElementById("thumb");
 
-function showThumb(dataUrl) {
-  if (!dataUrl) {
-    els.thumb.style.display = "none";
-    if (els.thumbMissing) els.thumbMissing.style.display = "flex";
-    return;
-  }
-  els.thumb.src = dataUrl;
-  els.thumb.style.display = "block";
-  if (els.thumbMissing) els.thumbMissing.style.display = "none";
-}
+  const backBtn = document.getElementById("backBtn");
+  const vendorBtn = document.getElementById("vendorBtn");
 
-// Basic mapping: adapt to your backend response shape
-function renderFromResult(result) {
-  // These are safe defaults if fields are missing
-  const secId = result?.secId ?? result?.sec_id ?? result?.id ?? null;
-  const lastScore = result?.lastScore ?? result?.score ?? "--";
-  const avgScore = result?.avgScore ?? result?.avg ?? "--";
-  const wind = result?.windage ?? result?.windLine ?? "--";
-  const elev = result?.elevation ?? result?.elevLine ?? "--";
-  const tip = result?.tip ?? result?.tips ?? "";
+  // Load stored result
+  const raw = localStorage.getItem("sec_last_result");
+  const result = raw ? JSON.parse(raw) : null;
 
-  if (secId) els.secId.textContent = `SEC-ID ${String(secId).padStart(3, "0")}`;
-  else els.secId.textContent = "SEC-ID ---";
+  // Thumbnail
+  const thumbDataUrl = localStorage.getItem("sec_last_thumb");
+  if (thumbDataUrl) thumbEl.src = thumbDataUrl;
 
-  els.lastScore.textContent = `Last Score: ${lastScore}`;
-  els.avgScore.textContent = `Average Score: ${avgScore}`;
-  els.windLine.textContent = `Windage: ${wind}`;
-  els.elevLine.textContent = `Elevation: ${elev}`;
-  els.tipsBox.textContent = tip ? String(tip) : "";
-}
+  // Render
+  const secId = (result && (result.secId || result.sec_id || result.id)) || "—";
+  secIdEl.textContent = `SEC-ID ${String(secId).toUpperCase()}`;
 
-function load() {
-  let payload = null;
-  try {
-    payload = JSON.parse(localStorage.getItem("SEC_LAST_RESULT") || "null");
-  } catch {}
+  // These field names are flexible—map whatever your backend returns:
+  const lastScore = result?.lastScore ?? result?.score ?? "—";
+  const avgScore = result?.avgScore ?? result?.avg ?? "—";
 
-  if (!payload) {
-    els.secId.textContent = "SEC-ID ---";
-    els.lastScore.textContent = "Last Score: --";
-    els.avgScore.textContent = "Average Score: --";
-    els.windLine.textContent = "Windage: --";
-    els.elevLine.textContent = "Elevation: --";
-    els.tipsBox.textContent = "No result found. Go back and upload a target photo.";
-    showThumb(null);
-    return;
-  }
+  // Wind/Elev lines should already be correct if your backend math is fixed
+  const wind = result?.wind ?? result?.windage ?? result?.windLine ?? "—";
+  const elev = result?.elev ?? result?.elevation ?? result?.elevLine ?? "—";
 
-  showThumb(payload.thumbDataUrl);
-  renderFromResult(payload.result);
-}
+  lastScoreEl.textContent = `LAST SCORE: ${lastScore}`;
+  avgScoreEl.textContent = `AVG SCORE: ${avgScore}`;
 
-els.backBtn.addEventListener("click", () => {
-  window.location.href = "./index.html";
-});
+  windLineEl.textContent = `WINDAGE: ${wind}`;
+  elevLineEl.textContent = `ELEVATION: ${elev}`;
 
-els.vendorBtn.addEventListener("click", () => {
-  // replace later with printer/vendor link coming from result or config
-  window.open("https://example.com", "_blank", "noopener");
-});
+  const tips = result?.tip ?? result?.tips ?? "TIP: —";
+  tipsBoxEl.textContent = tips;
 
-load();
+  // Buttons
+  backBtn.addEventListener("click", () => {
+    window.location.href = "./index.html";
+  });
+
+  vendorBtn.addEventListener("click", () => {
+    // set your vendor URL here (or from result.vendorUrl)
+    const url = result?.vendorUrl || "https://example.com";
+    window.open(url, "_blank", "noopener");
+  });
+})();
