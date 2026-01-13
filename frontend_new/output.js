@@ -1,63 +1,76 @@
-/* output.js
-   Output page logic:
-   - reads the fields stored by index.js / backend
-   - displays the thumbnail from sessionStorage
-   - back button returns to index.html
-   - vendor button opens vendor url
-*/
+// output.js
+const els = {
+  secId: document.getElementById("secId"),
+  lastScore: document.getElementById("lastScore"),
+  avgScore: document.getElementById("avgScore"),
+  windLine: document.getElementById("windLine"),
+  elevLine: document.getElementById("elevLine"),
+  thumb: document.getElementById("thumb"),
+  thumbMissing: document.getElementById("thumbMissing"),
+  tipsBox: document.getElementById("tipsBox"),
+  backBtn: document.getElementById("backBtn"),
+  vendorBtn: document.getElementById("vendorBtn"),
+};
 
-(() => {
-  const secIdEl = document.getElementById("secId");
-  const lastScoreEl = document.getElementById("lastScore");
-  const avgScoreEl = document.getElementById("avgScore");
-  const windLineEl = document.getElementById("windLine");
-  const elevLineEl = document.getElementById("elevLine");
-  const tipsBoxEl = document.getElementById("tipsBox");
-  const thumbEl = document.getElementById("thumb");
-  const backBtn = document.getElementById("backBtn");
-  const vendorBtn = document.getElementById("vendorBtn");
+function showThumb(dataUrl) {
+  if (!dataUrl) {
+    els.thumb.style.display = "none";
+    if (els.thumbMissing) els.thumbMissing.style.display = "flex";
+    return;
+  }
+  els.thumb.src = dataUrl;
+  els.thumb.style.display = "block";
+  if (els.thumbMissing) els.thumbMissing.style.display = "none";
+}
 
-  function setText(el, txt) {
-    if (!el) return;
-    el.textContent = txt || "";
+// Basic mapping: adapt to your backend response shape
+function renderFromResult(result) {
+  // These are safe defaults if fields are missing
+  const secId = result?.secId ?? result?.sec_id ?? result?.id ?? null;
+  const lastScore = result?.lastScore ?? result?.score ?? "--";
+  const avgScore = result?.avgScore ?? result?.avg ?? "--";
+  const wind = result?.windage ?? result?.windLine ?? "--";
+  const elev = result?.elevation ?? result?.elevLine ?? "--";
+  const tip = result?.tip ?? result?.tips ?? "";
+
+  if (secId) els.secId.textContent = `SEC-ID ${String(secId).padStart(3, "0")}`;
+  else els.secId.textContent = "SEC-ID ---";
+
+  els.lastScore.textContent = `Last Score: ${lastScore}`;
+  els.avgScore.textContent = `Average Score: ${avgScore}`;
+  els.windLine.textContent = `Windage: ${wind}`;
+  els.elevLine.textContent = `Elevation: ${elev}`;
+  els.tipsBox.textContent = tip ? String(tip) : "";
+}
+
+function load() {
+  let payload = null;
+  try {
+    payload = JSON.parse(localStorage.getItem("SEC_LAST_RESULT") || "null");
+  } catch {}
+
+  if (!payload) {
+    els.secId.textContent = "SEC-ID ---";
+    els.lastScore.textContent = "Last Score: --";
+    els.avgScore.textContent = "Average Score: --";
+    els.windLine.textContent = "Windage: --";
+    els.elevLine.textContent = "Elevation: --";
+    els.tipsBox.textContent = "No result found. Go back and upload a target photo.";
+    showThumb(null);
+    return;
   }
 
-  function get(key, fallback = "") {
-    const v = sessionStorage.getItem(key);
-    return v == null ? fallback : v;
-  }
+  showThumb(payload.thumbDataUrl);
+  renderFromResult(payload.result);
+}
 
-  // Fill text fields
-  setText(secIdEl, get("sczn3_secId", "SEC-ID 000"));
-  setText(lastScoreEl, get("sczn3_lastScore", ""));
-  setText(avgScoreEl, get("sczn3_avgScore", ""));
-  setText(windLineEl, get("sczn3_windLine", ""));
-  setText(elevLineEl, get("sczn3_elevLine", ""));
-  setText(tipsBoxEl, get("sczn3_tips", ""));
+els.backBtn.addEventListener("click", () => {
+  window.location.href = "./index.html";
+});
 
-  // Thumbnail
-  const thumb = get("sczn3_thumb", "");
-  if (thumbEl) {
-    if (thumb) {
-      thumbEl.src = thumb;
-    } else {
-      // Keep placeholder text visible if your CSS uses alt text area
-      thumbEl.removeAttribute("src");
-    }
-  }
+els.vendorBtn.addEventListener("click", () => {
+  // replace later with printer/vendor link coming from result or config
+  window.open("https://example.com", "_blank", "noopener");
+});
 
-  // Buttons
-  if (backBtn) {
-    backBtn.addEventListener("click", () => {
-      window.location.href = "./index.html";
-    });
-  }
-
-  if (vendorBtn) {
-    vendorBtn.addEventListener("click", () => {
-      const url = get("sczn3_vendorUrl", "#");
-      if (!url || url === "#") return;
-      window.open(url, "_blank", "noopener");
-    });
-  }
-})();
+load();
