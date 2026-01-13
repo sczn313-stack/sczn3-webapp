@@ -1,68 +1,95 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SEC Upload</title>
-
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SEC</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script defer src="./index.js"></script>
   </head>
 
-  <body>
-    <div class="page">
+  <body class="page uploadPage">
+    <!-- Top-left SEC brand -->
+    <div class="secBrand">
+      <div class="secBrandLine">
+        <span class="secRed">S</span><span class="secWhite">hooter</span>
+      </div>
+      <div class="secBrandLine">
+        <span class="secRed">E</span><span class="secWhite">xperience</span>
+      </div>
+      <div class="secBrandLine">
+        <span class="secRed">C</span><span class="secWhite">ard</span>
+        <span class="secRed secTag">SEC</span>
+      </div>
+    </div>
 
-      <div class="secHeader">
-        <div class="secTitle">Shooter Experience Card</div>
-        <div class="secSubTitle">SEC</div>
+    <!-- Top-right header -->
+    <div class="topRightHeader">
+      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+      <div class="hdrSub">INSURE ALL 4 CORNERS</div>
+    </div>
+
+    <!-- Right-side controls -->
+    <div class="rightControls">
+      <div class="ctlBox">
+        <label class="ctlLabel">ADJUST DISTANCE (yards)</label>
+        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
       </div>
 
-      <!-- UPLOAD TARGET PHOTO -->
-      <div class="uploadBlock">
-        <!-- THIS is what the user taps -->
-        <button type="button" id="uploadBtn" class="uploadBtn">
+      <div class="targetThumbLabel">
+        <div>TARGEET</div>
+        <div>THUMBNAIL</div>
+      </div>
+
+      <img id="thumb" class="thumb" alt="TARGET THUMBNAIL" style="display:none;" />
+
+      <div class="vendorStack">
+        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
+        <div class="vendorLogo">Vendor logo</div>
+      </div>
+    </div>
+
+    <!-- Center action box -->
+    <div class="centerBox">
+      <div class="pressTitle">PRESS TO SEE</div>
+
+      <div class="pressInner">
+        <div class="pressSEC">SEC</div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">SCORE</div>
+        </div>
+        <div class="pressRow">
+          <div class="pressLeft">SCOPE</div>
+          <div class="pressRight pressYellow">CLICKS</div>
+        </div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">TIP</div>
+        </div>
+      </div>
+
+      <!-- ONE upload trigger ONLY (button/label) -->
+      <div class="fileRow">
+        <button id="uploadBtn" class="fileBtn" type="button">
           UPLOAD TARGET PHOTO or TAKE PICTURE
         </button>
 
-        <!-- Hidden real file input (NO capture attribute) -->
+        <!-- real input (hidden off-screen, NOT display:none, and NO capture attr) -->
         <input
-          id="targetPhoto"
+          id="file"
+          class="fileInput"
           type="file"
           accept="image/*"
           name="targetPhoto"
-          style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;"
+          style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;"
         />
-
-        <div class="uploadHint">INSURE ALL 4 CORNERS</div>
       </div>
 
-      <!-- Distance -->
-      <div class="distanceBlock">
-        <div class="distanceLabel">ADJUST DISTANCE (yards)</div>
-        <input id="distanceYards" class="distanceInput" type="number" value="100" min="1" />
-      </div>
-
-      <!-- Thumbnail -->
-      <div class="thumbBlock">
-        <div class="thumbLabel">TARGET THUMBNAIL</div>
-
-        <img
-          id="thumb"
-          alt="Target thumbnail"
-          style="display:none; max-width:100%; border-radius:10px;"
-        />
-
-        <div id="thumbEmpty" class="thumbEmpty">No photo selected</div>
-      </div>
-
-      <!-- Actions -->
-      <div class="btnRow">
-        <button id="generateBtn" class="primaryBtn" type="button">GENERATE SEC</button>
-        <a id="pressToSee" class="pressToSee" href="./output.html">PRESS TO SEE</a>
-        <button id="buyBtn" class="secondaryBtn" type="button">BUY MORE TARGETS</button>
-      </div>
-
-      <div id="statusLine" class="statusLine"></div>
+      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
+      <div id="status" class="status"></div>
     </div>
+
+    <script src="./api.js"></script>
+    <script src="./index.js"></script>
   </body>
 </html>
