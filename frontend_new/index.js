@@ -1,51 +1,103 @@
-let selectedFile = null;
+// index.js
+const els = {
+  uploadHeaderBtn: document.getElementById("uploadHeaderBtn"),
+  file: document.getElementById("file"),
+  yards: document.getElementById("yards"),
+  thumbPreview: document.getElementById("thumbPreview"),
+  thumbEmpty: document.getElementById("thumbEmpty"),
+  seeBtn: document.getElementById("seeBtn"),
+  status: document.getElementById("status"),
+  vendorBtn: document.getElementById("vendorBtn"),
+};
 
-const fileInput = document.getElementById("file");
-const thumbImg = document.getElementById("thumbPreview");
-const seeBtn = document.getElementById("seeBtn");
-const statusEl = document.getElementById("status");
+let selectedFile = null;
+let selectedThumbDataUrl = null;
+
+// Example vendor link (replace later from config or response)
+els.vendorBtn.href = "https://example.com";
 
 function setStatus(msg) {
-  if (statusEl) statusEl.textContent = msg || "";
+  els.status.textContent = msg || "";
 }
 
-fileInput.addEventListener("change", () => {
-  const f = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-  selectedFile = f;
+function showThumb(dataUrl) {
+  if (!dataUrl) {
+    els.thumbPreview.style.display = "none";
+    els.thumbEmpty.style.display = "flex";
+    return;
+  }
+  els.thumbPreview.src = dataUrl;
+  els.thumbPreview.style.display = "block";
+  els.thumbEmpty.style.display = "none";
+}
 
-  if (!f) {
-    if (thumbImg) thumbImg.removeAttribute("src");
-    seeBtn.disabled = true;
-    setStatus("Pick a photo first.");
+function enableSee(enabled) {
+  els.seeBtn.disabled = !enabled;
+}
+
+// Clicking the header button opens the picker
+els.uploadHeaderBtn.addEventListener("click", () => {
+  els.file.click();
+});
+
+// When file chosen, show thumbnail + enable Press to see
+els.file.addEventListener("change", async () => {
+  const file = els.file.files && els.file.files[0];
+  selectedFile = file || null;
+
+  if (!selectedFile) {
+    selectedThumbDataUrl = null;
+    showThumb(null);
+    enableSee(false);
+    setStatus("");
     return;
   }
 
-  // Thumbnail preview
-  if (thumbImg) {
-    const url = URL.createObjectURL(f);
-    thumbImg.src = url;
-
-    // Optional: release old objectURL after load
-    thumbImg.onload = () => URL.revokeObjectURL(url);
-  }
-
-  seeBtn.disabled = false;
-  setStatus("");
+  // Create a local preview
+  const reader = new FileReader();
+  reader.onload = () => {
+    selectedThumbDataUrl = String(reader.result || "");
+    showThumb(selectedThumbDataUrl);
+    enableSee(true);
+    setStatus("Photo selected. Press to see.");
+  };
+  reader.readAsDataURL(selectedFile);
 });
 
-// If you already have upload logic, plug it here.
-// This is a safe placeholder that won’t break your existing code.
-seeBtn.addEventListener("click", async () => {
+// Press to see -> call backend -> store results -> go output
+els.seeBtn.addEventListener("click", async () => {
   if (!selectedFile) {
     setStatus("Pick a photo first.");
     return;
   }
 
-  // Keep your existing submit/upload call here.
-  // Example pattern:
-  // const yards = document.getElementById("yards").value || "100";
-  // await window.ScznApi.uploadAndProcess(selectedFile, yards);
-  // window.location.href = "./output.html";
+  try {
+    setStatus("Analyzing…");
+    enableSee(false);
 
-  setStatus("Ready (wire your existing upload call here).");
+    const yards = Number(els.yards.value || 100);
+
+    const result = await postAnalyzeTarget({ file: selectedFile, yards });
+
+    // Store everything output page needs
+    const payload = {
+      ts: Date.now(),
+      yards,
+      thumbDataUrl: selectedThumbDataUrl, // local thumbnail preview
+      result, // backend JSON
+    };
+
+    localStorage.setItem("SEC_LAST_RESULT", JSON.stringify(payload));
+
+    // Go to output page
+    window.location.href = "./output.html";
+  } catch (err) {
+    setStatus(`Error: ${err.message || err}`);
+    enableSee(true);
+  }
 });
+
+// Initial state
+showThumb(null);
+enableSee(false);
+setStatus("");
