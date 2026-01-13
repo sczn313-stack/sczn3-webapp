@@ -1,157 +1,69 @@
 // frontend_new/index.js
+// Upload photo -> save payload in sessionStorage -> redirect to output.html
 
-(function () {
-  const el = (id) => document.getElementById(id);
+function nextSecId() {
+  const key = "sczn3_sec_id_counter";
+  const current = Number(sessionStorage.getItem(key) || "0") + 1;
+  sessionStorage.setItem(key, String(current));
+  return String(current).padStart(3, "0"); // "001", "002", ...
+}
 
-  const fileEl = el("file");
-  const yardsEl = el("yards");
-  const seeBtn = el("seeBtn");
-  const status = el("status");
-  const vendorBtn = el("vendorBtn");
-
-  function setStatus(msg, isError = false) {
-    status.textContent = msg || "";
-    status.classList.toggle("err", !!isError);
-  }
-
-  function setBusy(b) {
-    seeBtn.disabled = !!b;
-    seeBtn.textContent = b ? "PRESS TO SEE..." : "PRESS TO SEE";
-  }
-
-  // Placeholder vendor link (you can set per-printer later)
-  vendorBtn.addEventListener("click", (e) => {
-    if (vendorBtn.getAttribute("href") === "#") e.preventDefault();
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
+}
 
-  async function fileToDataURL(file) {
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(String(fr.result || ""));
-      fr.onerror = () => reject(new Error("File read failed"));
-      fr.readAsDataURL(file);
-    });
+document.addEventListener("DOMContentLoaded", () => {
+  // REQUIRED in index.html:
+  // <button id="uploadBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
+  // <input id="fileInput" type="file" accept="image/*" style="display:none;" />
+
+  const uploadBtn = document.getElementById("uploadBtn");
+  const fileInput = document.getElementById("fileInput");
+
+  // OPTIONAL in index.html (only if you have it):
+  // <input id="distanceInput" ... />
+  const distanceInput = document.getElementById("distanceInput");
+
+  if (!uploadBtn || !fileInput) {
+    console.warn("Missing #uploadBtn or #fileInput in index.html");
+    return;
   }
 
-  // Robust dx/dy extraction (supports multiple response shapes)
-  function extractDxDy(apiData) {
-    const dx =
-      apiData?.correction_in?.dx ??
-      apiData?.correctionIn?.dx ??
-      apiData?.correction_inches?.dx ??
-      apiData?.correction?.dx ??
-      apiData?.delta_in?.dx ??
-      apiData?.dx ??
-      apiData?.windage_in ??
-      apiData?.wind_in ??
-      0;
+  uploadBtn.addEventListener("click", () => fileInput.click());
 
-    const dy =
-      apiData?.correction_in?.dy ??
-      apiData?.correctionIn?.dy ??
-      apiData?.correction_inches?.dy ??
-      apiData?.correction?.dy ??
-      apiData?.delta_in?.dy ??
-      apiData?.dy ??
-      apiData?.elevation_in ??
-      apiData?.elev_in ??
-      0;
-
-    return { dx: Number(dx) || 0, dy: Number(dy) || 0 };
-  }
-
-  // dx: +RIGHT / -LEFT
-  // dy: +UP / -DOWN
-  function dirFromSign(axis, value) {
-    const v = Number(value) || 0;
-    if (v === 0) return "";
-    if (axis === "x") return v > 0 ? "RIGHT" : "LEFT";
-    return v > 0 ? "UP" : "DOWN";
-  }
-
-  // SEC-ID counter (3-digit padded)
-  function nextSecId() {
-    const key = "SEC_ID_COUNTER";
-    const n = Number(localStorage.getItem(key) || "0") + 1;
-    localStorage.setItem(key, String(n));
-    return String(n).padStart(3, "0");
-  }
-
-  // Offset-only scoring (pilot): smallest offset = best
-  // Score = clamp(100 - offsetInches * 10, 0..100)
-  function computeScore(dx, dy) {
-    const offset = Math.sqrt(dx * dx + dy * dy);
-    let score = 100 - offset * 10;
-    if (score < 0) score = 0;
-    if (score > 100) score = 100;
-    return Math.round(score * 100) / 100;
-  }
-
-  async function onPressToSee() {
+  fileInput.addEventListener("change", async (e) => {
     try {
-      setStatus("");
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
 
-      const f = fileEl.files && fileEl.files[0];
-      if (!f) {
-        setStatus("Pick a photo first.", true);
-        return;
-      }
+      const thumbDataUrl = await readFileAsDataURL(file);
+      const distanceYards = distanceInput ? Number(distanceInput.value || 100) : 100;
 
-      const yards = Number(yardsEl.value) || 100;
+      const secIdNum = nextSecId();
 
-      setBusy(true);
-
-      // 1) Call backend
-      const apiData = await window.SEC_API.postAnalyze(f, yards);
-
-      // 2) Extract dx/dy
-      const { dx, dy } = extractDxDy(apiData);
-
-      // 3) Convert inches -> clicks
-      const windClicks = window.SEC_API.clicksFromInches(Math.abs(dx), yards);
-      const elevClicks = window.SEC_API.clicksFromInches(Math.abs(dy), yards);
-
-      // 4) Directions (derived from sign)
-      const windDir = dirFromSign("x", dx) || "LEFT";
-      const elevDir = dirFromSign("y", dy) || "UP";
-
-      // 5) Score (offset-only pilot)
-      const score = computeScore(dx, dy);
-
-      // 6) Thumbnail (dataURL so it survives page switch)
-      const thumbDataUrl = await fileToDataURL(f);
-
-      // 7) SEC-ID
-      const secId = nextSecId();
-
-      // 8) Store payload for output.html
+      // TEMP placeholders for Step 2 verification
       const payload = {
-        secId,
-        yards,
-        dx,
-        dy,
-        windClicks,
-        elevClicks,
-        windDir,
-        elevDir,
-        score,
-        thumbDataUrl,
-        // vendor placeholders (set later per printer)
-        vendorUrl: "#",
-        vendorLogoText: "Vendor logo",
+        secId: `SEC-ID ${secIdNum}`,
+        distanceYards,
+        lastScore: "Last Score: (pending)",
+        avgScore: "Avg Score: (pending)",
+        windLine: "Windage: (pending)",
+        elevLine: "Elevation: (pending)",
+        tips: "Tip: (pending)",
+        vendorUrl: "https://example.com",
+        thumbDataUrl
       };
 
-      sessionStorage.setItem("SEC_PAYLOAD", JSON.stringify(payload));
+      sessionStorage.setItem("sczn3_sec_payload", JSON.stringify(payload));
       window.location.href = "./output.html";
     } catch (err) {
-      setStatus(String(err && err.message ? err.message : err), true);
-    } finally {
-      setBusy(false);
+      console.error("Upload flow error:", err);
+      alert("Upload failed. Try again.");
     }
-  }
-
-  seeBtn.addEventListener("click", onPressToSee);
-
-  // start
-  setStatus("");
-})();
+  });
+});
