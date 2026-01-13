@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>SEC</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260112_2215" />
   </head>
 
   <body class="page uploadPage">
@@ -24,16 +24,9 @@
 
     <!-- Top-right header -->
     <div class="topRightHeader">
-      <!-- SINGLE upload trigger (label clicks hidden input) -->
-      <label class="hdrBox" for="file" id="uploadTopBtn">
-        UPLOAD TARGET PHOTO or TAKE PICTURE
-      </label>
-
+      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
       <div class="hdrSub">INSURE ALL 4 CORNERS</div>
     </div>
-
-    <!-- Hidden file input -->
-    <input id="file" class="fileInputHidden" type="file" accept="image/*" />
 
     <!-- Right-side controls -->
     <div class="rightControls">
@@ -43,13 +36,8 @@
       </div>
 
       <div class="targetThumbLabel">
-        <div>TARGET</div>
+        <div>TARGEET</div>
         <div>THUMBNAIL</div>
-      </div>
-
-      <!-- Thumbnail preview -->
-      <div class="thumbWrap">
-        <img id="thumbPreview" class="thumbPreview" alt="TARGET THUMBNAIL" />
       </div>
 
       <div class="vendorStack">
@@ -78,12 +66,16 @@
         </div>
       </div>
 
-      <!-- REMOVE the duplicate upload bar from here -->
-      <button id="seeBtn" class="seeBtn" type="button" disabled>PRESS TO SEE</button>
+      <div class="fileRow">
+        <label class="fileBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
+        <input id="file" class="fileInput" type="file" accept="image/*" />
+      </div>
+
+      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
       <div id="status" class="status"></div>
     </div>
 
-    <script src="./api.js"></script>
-    <script src="./index.js"></script>
+    <script src="./api.js?v=20260112_2215"></script>
+    <script src="./index.js?v=20260112_2215"></script>
   </body>
 </html>
