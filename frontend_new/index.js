@@ -1,6 +1,6 @@
 /* index.js (LOCKED UI ROUTE)
    - ONLY active upload trigger = top-right header bar
-   - center upload label is DISABLED (no click)
+   - center upload label is VISIBLE but DISABLED (no click)
    - PRESS TO SEE sends to output.html after file selected
    - thumbnail preview stored in sessionStorage
 */
@@ -19,12 +19,10 @@
   const statusEl = el("status");
   const yardsEl = el("yards");
 
-  // In your upload page HTML, this is the top-right box:
-  // <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+  // Top-right header upload box:
   const topRightUploadBox = $(".hdrBox");
 
   // Center upload label:
-  // <label class="fileBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
   const centerUploadLabel = $(".fileBtn");
 
   let thumbPreview = el("thumbPreview"); // optional if you add it later
@@ -92,13 +90,11 @@
 
     setStatus("Photo selected.");
 
-    // Create + store thumb for output.html
     try {
       const thumbDataUrl = await fileToThumbDataUrl(file);
       sessionStorage.setItem("sczn3_thumb", thumbDataUrl);
       sessionStorage.setItem("sczn3_thumb_ts", String(Date.now()));
 
-      // show preview
       const img = ensureThumbPreviewEl();
       img.src = thumbDataUrl;
     } catch (err) {
@@ -119,11 +115,10 @@
     topRightUploadBox.addEventListener("click", openFilePicker);
   }
 
-  // Disable center upload label (remove click + prevent opening picker)
+  // Disable center upload label (keep visible)
   if (centerUploadLabel) {
-    // Remove the default "for=file" behavior by blocking clicks
+    // Remove default "for=file" behavior and block clicks
     centerUploadLabel.removeAttribute("for");
-    centerUploadLabel.style.opacity = "0.55";
     centerUploadLabel.style.cursor = "not-allowed";
     centerUploadLabel.addEventListener("click", (e) => {
       e.preventDefault();
