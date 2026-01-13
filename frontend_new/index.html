@@ -1,95 +1,105 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SEC</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <title>Shooter Experience Card</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <body class="page uploadPage">
-    <!-- Top-left SEC brand -->
-    <div class="secBrand">
-      <div class="secBrandLine">
-        <span class="secRed">S</span><span class="secWhite">hooter</span>
-      </div>
-      <div class="secBrandLine">
-        <span class="secRed">E</span><span class="secWhite">xperience</span>
-      </div>
-      <div class="secBrandLine">
-        <span class="secRed">C</span><span class="secWhite">ard</span>
-        <span class="secRed secTag">SEC</span>
-      </div>
-    </div>
+  <style>
+    body {
+      font-family: serif;
+      padding: 20px;
+    }
 
-    <!-- Top-right header -->
-    <div class="topRightHeader">
-      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
-      <div class="hdrSub">INSURE ALL 4 CORNERS</div>
-    </div>
+    .uploadBlock {
+      width: 100%;
+      margin: 20px 0;
+      text-align: center;
+    }
 
-    <!-- Right-side controls -->
-    <div class="rightControls">
-      <div class="ctlBox">
-        <label class="ctlLabel">ADJUST DISTANCE (yards)</label>
-        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
-      </div>
+    /* THIS is the real clickable button */
+    .uploadBtn {
+      display: inline-block;
+      background: #2f5f73;
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
 
-      <div class="targetThumbLabel">
-        <div>TARGEET</div>
-        <div>THUMBNAIL</div>
-      </div>
+    /* Hide the actual file input */
+    #targetPhoto {
+      display: none;
+    }
 
-      <img id="thumb" class="thumb" alt="TARGET THUMBNAIL" style="display:none;" />
+    .uploadHint {
+      margin-top: 8px;
+      color: #b00000;
+      font-style: italic;
+    }
 
-      <div class="vendorStack">
-        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
-        <div class="vendorLogo">Vendor logo</div>
-      </div>
-    </div>
+    #thumb {
+      display: none;
+      margin-top: 15px;
+      max-width: 100%;
+      border-radius: 10px;
+    }
 
-    <!-- Center action box -->
-    <div class="centerBox">
-      <div class="pressTitle">PRESS TO SEE</div>
+    .pillBtn {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 8px 14px;
+      background: #e6eef2;
+      border-radius: 20px;
+      color: #0b66c3;
+      font-weight: 600;
+      text-decoration: none;
+    }
+  </style>
+</head>
 
-      <div class="pressInner">
-        <div class="pressSEC">SEC</div>
-        <div class="pressRow">
-          <div class="pressLeft">SHOOTER</div>
-          <div class="pressRight pressYellow">SCORE</div>
-        </div>
-        <div class="pressRow">
-          <div class="pressLeft">SCOPE</div>
-          <div class="pressRight pressYellow">CLICKS</div>
-        </div>
-        <div class="pressRow">
-          <div class="pressLeft">SHOOTER</div>
-          <div class="pressRight pressYellow">TIP</div>
-        </div>
-      </div>
+<body>
 
-      <!-- ONE upload trigger ONLY (button/label) -->
-      <div class="fileRow">
-        <button id="uploadBtn" class="fileBtn" type="button">
-          UPLOAD TARGET PHOTO or TAKE PICTURE
-        </button>
+  <h1>Shooter<br>Experience<br>Card SEC</h1>
 
-        <!-- real input (hidden off-screen, NOT display:none, and NO capture attr) -->
-        <input
-          id="file"
-          class="fileInput"
-          type="file"
-          accept="image/*"
-          name="targetPhoto"
-          style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;"
-        />
-      </div>
+  <!-- UPLOAD -->
+  <div class="uploadBlock">
 
-      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
-      <div id="status" class="status"></div>
-    </div>
+    <!-- LABEL IS THE BUTTON (iOS SAFE) -->
+    <label for="targetPhoto" class="uploadBtn">
+      UPLOAD TARGET PHOTO or TAKE PICTURE
+    </label>
 
-    <script src="./api.js"></script>
-    <script src="./index.js"></script>
-  </body>
+    <!-- REAL FILE INPUT -->
+    <input
+      id="targetPhoto"
+      type="file"
+      accept="image/*"
+    />
+
+    <div class="uploadHint">INSURE ALL 4 CORNERS</div>
+
+    <!-- PREVIEW -->
+    <img id="thumb" alt="Target thumbnail" />
+  </div>
+
+  <br>
+
+  <label>
+    ADJUST DISTANCE (yards)
+    <input type="number" value="100" />
+  </label>
+
+  <br><br>
+
+  <a href="#" class="pillBtn">BUY MORE TARGETS</a>
+  <br><br>
+  <a href="#" class="pillBtn">PRESS TO SEE</a>
+
+  <!-- SCRIPT -->
+  <script src="index.js"></script>
+
+</body>
 </html>
