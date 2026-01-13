@@ -4,58 +4,72 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SEC Output</title>
-
-  <!-- IMPORTANT: relative path (NO leading /) -->
-  <link rel="stylesheet" href="styles.css?v=1" />
+  <link rel="stylesheet" href="./styles.css?v=1" />
 </head>
 
-<body>
-  <main class="output-page">
-    <div class="output-wrap">
-      <h1 class="sec-id" id="secId">SEC-ID ---</h1>
-
-      <section class="output-top">
-        <div class="out-thumb">
-          <div class="out-thumb-title">TARGET THUMBNAIL</div>
-          <div class="out-thumb-box">
-            <img id="outThumbImg" alt="Target thumbnail" />
-            <div id="outThumbEmpty" class="thumb-empty">No photo</div>
-          </div>
-        </div>
-
-        <div class="out-actions">
-          <a class="btn btn-wide" href="index.html">UPLOAD TARGET PHOTO or TAKE PICTURE</a>
-          <button id="buyBtn2" class="btn btn-wide" type="button">BUY MORE TARGETS</button>
-        </div>
-      </section>
-
-      <section class="sec-card">
-        <div class="sec-card-head">PRESS TO SEE</div>
-
-        <div class="sec-card-body">
-          <div class="sec-left">
-            <div class="sec-title">SEC</div>
-            <div class="sec-row">SHOOTER</div>
-            <div class="sec-row">SCOPE</div>
-            <div class="sec-row">SHOOTER</div>
-          </div>
-
-          <div class="sec-right">
-            <div class="sec-col">SCORE</div>
-            <div class="sec-col">CLICKS</div>
-            <div class="sec-col">TIP</div>
-          </div>
-        </div>
-
-        <div class="sec-card-footer">
-          <a class="btn btn-press" href="index.html">PRESS TO SEE</a>
-          <div id="outError" class="out-error"></div>
-        </div>
-      </section>
+<body class="page output-page">
+  <header class="topbar">
+    <div class="brand">
+      <div class="secid" id="secIdText">SEC-ID —</div>
+      <div class="sub">SEC Output</div>
     </div>
+
+    <div class="top-actions">
+      <a class="btn small" href="./index.html">Back</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel">
+      <div class="panel-title">TARGET THUMBNAIL</div>
+      <div class="thumb-row">
+        <img id="targetThumb" class="thumb" alt="Target thumbnail" />
+        <div class="thumb-meta">
+          <div class="meta-line"><span class="k">Distance:</span> <span id="distanceText">—</span> yards</div>
+          <div class="meta-line"><span class="k">Adjustment:</span> <span id="adjText">—</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">RESULTS</div>
+
+      <div id="noDataBanner" class="nodata">
+        No results found yet. Generate SEC first, then press “PRESS TO SEE”.
+      </div>
+
+      <div id="resultsGrid" class="results-grid hidden">
+        <div class="result-card">
+          <div class="result-label">SCORE</div>
+          <div class="result-value" id="scoreText">—</div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-label">CLICKS</div>
+          <div class="clicks">
+            <div class="click-line">
+              <span class="k">Elevation:</span>
+              <span class="v" id="elevClicksText">—</span>
+              <span class="dir" id="elevDirText"></span>
+            </div>
+            <div class="click-line">
+              <span class="k">Windage:</span>
+              <span class="v" id="windClicksText">—</span>
+              <span class="dir" id="windDirText"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-label">TIP</div>
+          <div class="tip" id="tipText">—</div>
+        </div>
+      </div>
+
+      <div id="debugBox" class="debug hidden"></div>
+    </section>
   </main>
 
-  <!-- IMPORTANT: relative path (NO leading /) -->
-  <script src="output.js?v=1"></script>
+  <script src="./output.js?v=1"></script>
 </body>
 </html>
