@@ -1,24 +1,22 @@
-<!-- UPLOAD TARGET PHOTO (FULL REPLACEMENT) -->
+<!-- UPLOAD TARGET PHOTO -->
 <div class="uploadBlock">
-  <!-- Button-style label that opens the picker -->
-  <label for="targetPhoto" class="uploadBtn">
+  <button type="button" id="uploadBtn" class="uploadBtn">
     UPLOAD TARGET PHOTO or TAKE PICTURE
-  </label>
+  </button>
 
-  <!-- IMPORTANT: NO 'capture' attribute anywhere -->
   <input
     id="targetPhoto"
-    name="targetPhoto"
     type="file"
     accept="image/*"
+    name="targetPhoto"
   />
 
   <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 </div>
 
-<!-- OPTIONAL: hide the native file input so only the button shows -->
-<style>
-  #targetPhoto {
-    display: none;
-  }
-</style>
+<!-- TARGET THUMBNAIL -->
+<img
+  id="thumb"
+  alt="Target thumbnail"
+  style="display:none; max-width:100%; border-radius:10px;"
+/>
