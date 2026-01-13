@@ -17,7 +17,7 @@
       text-align: center;
     }
 
-    /* THIS is the real clickable button */
+    /* Clickable button */
     .uploadBtn {
       display: inline-block;
       background: #2f5f73;
@@ -27,6 +27,9 @@
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     /* Hide the actual file input */
@@ -50,12 +53,21 @@
     .pillBtn {
       display: inline-block;
       margin-top: 16px;
-      padding: 8px 14px;
+      padding: 10px 16px;
       background: #e6eef2;
       border-radius: 20px;
       color: #0b66c3;
       font-weight: 600;
       text-decoration: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    /* Optional: show disabled look until photo picked */
+    .pillBtn.disabled {
+      opacity: 0.6;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -68,7 +80,7 @@
   <div class="uploadBlock">
 
     <!-- LABEL IS THE BUTTON (iOS SAFE) -->
-    <label for="targetPhoto" class="uploadBtn">
+    <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
       UPLOAD TARGET PHOTO or TAKE PICTURE
     </label>
 
@@ -77,6 +89,7 @@
       id="targetPhoto"
       type="file"
       accept="image/*"
+      name="targetPhoto"
     />
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
@@ -87,16 +100,16 @@
 
   <br>
 
-  <label>
+  <label for="distanceYards">
     ADJUST DISTANCE (yards)
-    <input type="number" value="100" />
   </label>
+  <input id="distanceYards" type="number" value="100" />
 
   <br><br>
 
-  <a href="#" class="pillBtn">BUY MORE TARGETS</a>
+  <a href="#" class="pillBtn" id="buyMoreBtn">BUY MORE TARGETS</a>
   <br><br>
-  <a href="#" class="pillBtn">PRESS TO SEE</a>
+  <a href="#" class="pillBtn disabled" id="pressToSee">PRESS TO SEE</a>
 
   <!-- SCRIPT -->
   <script src="index.js"></script>
