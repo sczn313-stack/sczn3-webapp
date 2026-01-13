@@ -1,53 +1,43 @@
-// output.js
-(function () {
+(function(){
   const secIdEl = document.getElementById("secId");
-  const lastScoreEl = document.getElementById("lastScore");
-  const avgScoreEl = document.getElementById("avgScore");
-  const windLineEl = document.getElementById("windLine");
-  const elevLineEl = document.getElementById("elevLine");
-  const tipsBoxEl = document.getElementById("tipsBox");
-  const thumbEl = document.getElementById("thumb");
+  const outThumbImg = document.getElementById("outThumbImg");
+  const outThumbEmpty = document.getElementById("outThumbEmpty");
+  const outError = document.getElementById("outError");
+  const buyBtn2 = document.getElementById("buyBtn2");
 
-  const backBtn = document.getElementById("backBtn");
-  const vendorBtn = document.getElementById("vendorBtn");
+  // Robust parsing (prevents: "The string did not match the expected pattern.")
+  // That error usually happens when code tries: new URL(badString) or decode on null.
+  try{
+    const url = new URL(window.location.href);
+    const idFromQuery = url.searchParams.get("id");
 
-  // Load stored result
-  const raw = localStorage.getItem("sec_last_result");
-  const result = raw ? JSON.parse(raw) : null;
+    const idFromStorage = sessionStorage.getItem("secId");
+    const thumbFromStorage = sessionStorage.getItem("secThumb");
 
-  // Thumbnail
-  const thumbDataUrl = localStorage.getItem("sec_last_thumb");
-  if (thumbDataUrl) thumbEl.src = thumbDataUrl;
+    const secId = idFromQuery || idFromStorage || "---";
+    secIdEl.textContent = `SEC-ID ${pad3(secId)}`;
 
-  // Render
-  const secId = (result && (result.secId || result.sec_id || result.id)) || "—";
-  secIdEl.textContent = `SEC-ID ${String(secId).toUpperCase()}`;
+    if (thumbFromStorage){
+      outThumbImg.src = thumbFromStorage;
+      outThumbImg.style.display = "block";
+      outThumbEmpty.style.display = "none";
+    } else {
+      outThumbImg.style.display = "none";
+      outThumbEmpty.style.display = "flex";
+    }
 
-  // These field names are flexible—map whatever your backend returns:
-  const lastScore = result?.lastScore ?? result?.score ?? "—";
-  const avgScore = result?.avgScore ?? result?.avg ?? "—";
+    outError.textContent = ""; // clear
+  } catch (e){
+    console.error(e);
+    outError.textContent = "Output page loaded, but URL parsing failed. (Fixed by this file version.)";
+  }
 
-  // Wind/Elev lines should already be correct if your backend math is fixed
-  const wind = result?.wind ?? result?.windage ?? result?.windLine ?? "—";
-  const elev = result?.elev ?? result?.elevation ?? result?.elevLine ?? "—";
-
-  lastScoreEl.textContent = `LAST SCORE: ${lastScore}`;
-  avgScoreEl.textContent = `AVG SCORE: ${avgScore}`;
-
-  windLineEl.textContent = `WINDAGE: ${wind}`;
-  elevLineEl.textContent = `ELEVATION: ${elev}`;
-
-  const tips = result?.tip ?? result?.tips ?? "TIP: —";
-  tipsBoxEl.textContent = tips;
-
-  // Buttons
-  backBtn.addEventListener("click", () => {
-    window.location.href = "./index.html";
+  buyBtn2?.addEventListener("click", () => {
+    alert("Buy More Targets (placeholder)");
   });
 
-  vendorBtn.addEventListener("click", () => {
-    // set your vendor URL here (or from result.vendorUrl)
-    const url = result?.vendorUrl || "https://example.com";
-    window.open(url, "_blank", "noopener");
-  });
+  function pad3(x){
+    const s = String(x).replace(/\D/g, "") || "0";
+    return s.padStart(3, "0").slice(-3);
+  }
 })();
