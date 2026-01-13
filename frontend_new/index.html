@@ -1,91 +1,65 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SEC</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SCZN3 — Upload SEC</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 
-  <body class="page uploadPage">
-    <!-- Top-left SEC brand -->
-    <div class="secBrand">
-      <div class="secBrandLine">
-        <span class="secRed">S</span><span class="secWhite">hooter</span>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="heroLeft">
+        <div class="secLetters">
+          <div class="secLetter">S</div>
+          <div class="secLetter">E</div>
+          <div class="secLetter">C</div>
+        </div>
+        <div class="heroTitle">
+          <div class="heroWord">Shooter</div>
+          <div class="heroWord">Experience</div>
+          <div class="heroWord">Card</div>
+          <div class="heroSec">SEC</div>
+        </div>
       </div>
-      <div class="secBrandLine">
-        <span class="secRed">E</span><span class="secWhite">xperience</span>
-      </div>
-      <div class="secBrandLine">
-        <span class="secRed">C</span><span class="secWhite">ard</span>
-        <span class="secRed secTag">SEC</span>
-      </div>
-    </div>
+    </header>
 
-    <!-- Top-right header (THIS is the ONLY upload trigger) -->
-    <div class="topRightHeader">
-      <button id="topUploadBtn" class="hdrBoxBtn" type="button">
+    <section class="card">
+      <button id="btnPick" class="btn btnPrimary" type="button">
         UPLOAD TARGET PHOTO or TAKE PICTURE
       </button>
-      <div class="hdrSub">INSURE ALL 4 CORNERS</div>
-    </div>
+      <input id="fileInput" class="hidden" type="file" accept="image/*" capture="environment" />
 
-    <!-- Hidden file input (triggered by topUploadBtn) -->
-    <input id="file" class="fileHidden" type="file" accept="image/*" />
+      <div class="hint">INSURE ALL 4 CORNERS</div>
 
-    <!-- Right-side controls -->
-    <div class="rightControls">
-      <div class="ctlBox">
-        <label class="ctlLabel" for="yards">ADJUST DISTANCE (yards)</label>
-        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
+      <div class="distanceBox">
+        <div class="distanceLabel">ADJUST DISTANCE (yards)</div>
+        <input id="distance" class="distanceInput" type="number" min="1" step="1" value="100" />
       </div>
 
-      <div class="targetThumbLabel">
-        <div>TARGET</div>
-        <div>THUMBNAIL</div>
+      <div class="thumbLabel">TARGET<br/>THUMBNAIL</div>
+      <div class="thumbFrame">
+        <img id="thumbImg" alt="Target thumbnail preview" />
+        <div id="thumbEmpty" class="thumbEmpty">No photo selected</div>
       </div>
 
-      <!-- Thumbnail box -->
-      <div class="thumbBox">
-        <img id="thumbPreview" alt="TARGET THUMBNAIL" />
-        <div id="thumbHint" class="thumbHint">No photo selected</div>
+      <div class="actions">
+        <button id="btnGenerate" class="btn btnWide" type="button" disabled>
+          GENERATE SEC
+        </button>
       </div>
 
-      <div class="vendorStack">
-        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">
-          BUY MORE TARGETS
+      <div class="actions">
+        <a class="btn btnWide btnSecondary" href="./output.html">
+          PRESS TO SEE
         </a>
-        <div class="vendorLogo">Vendor logo</div>
-      </div>
-    </div>
-
-    <!-- Center action box -->
-    <div class="centerBox">
-      <div class="pressTitle">PRESS TO SEE</div>
-
-      <div class="pressInner">
-        <div class="pressSEC">SEC</div>
-        <div class="pressRow">
-          <div class="pressLeft">SHOOTER</div>
-          <div class="pressRight pressYellow">SCORE</div>
-        </div>
-        <div class="pressRow">
-          <div class="pressLeft">SCOPE</div>
-          <div class="pressRight pressYellow">CLICKS</div>
-        </div>
-        <div class="pressRow">
-          <div class="pressLeft">SHOOTER</div>
-          <div class="pressRight pressYellow">TIP</div>
-        </div>
       </div>
 
-      <!-- NO second upload button down here anymore -->
-
-      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
       <div id="status" class="status"></div>
-    </div>
+    </section>
+  </main>
 
-    <script src="./api.js"></script>
-    <script src="./index.js"></script>
-  </body>
+  <script src="./index.js"></script>
+</body>
 </html>
