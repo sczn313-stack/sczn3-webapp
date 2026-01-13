@@ -4,29 +4,47 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SEC Output</title>
-  <link rel="stylesheet" href="./styles.css?v=20260112_2215" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 
-<body class="outputPage">
-  <!-- Output SEC page (HTML) -->
-  <!-- output.js will fill these fields by id -->
+<body class="secPage outputPage">
+  <header class="outTop">
+    <div id="secId" class="secId">SEC-ID ---</div>
+  </header>
 
-  <div id="secId" class="secId"></div>
+  <main class="outGrid">
+    <section class="outLeft">
+      <div class="outLabel">TARGET THUMBNAIL</div>
+      <div class="outThumbBox">
+        <img id="thumb" alt="Target thumbnail" />
+        <div id="thumbMissing" class="thumbEmpty">No thumbnail found</div>
+      </div>
 
-  <div id="lastScore" class="lastScore"></div>
-  <div id="avgScore" class="avgScore"></div>
+      <div class="outBtns">
+        <button id="backBtn" class="outBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
+        <button id="vendorBtn" class="outBtn" type="button">BUY MORE TARGETS</button>
+      </div>
+    </section>
 
-  <div id="windLine" class="windLine"></div>
-  <div id="elevLine" class="elevLine"></div>
+    <section class="outRight">
+      <div class="outPanel">
+        <div id="lastScore" class="outLine">Last Score: --</div>
+        <div id="avgScore" class="outLine">Average Score: --</div>
+      </div>
 
-  <img id="thumb" class="thumb" alt="TARGET THUMBNAIL" />
+      <div class="outPanel">
+        <div id="windLine" class="outLine">Windage: --</div>
+        <div id="elevLine" class="outLine">Elevation: --</div>
+      </div>
 
-  <div id="tipsBox" class="tipsBox"></div>
+      <div class="outPanel">
+        <div class="outLabelSmall">TIP</div>
+        <div id="tipsBox" class="tipsBox"></div>
+      </div>
+    </section>
+  </main>
 
-  <button id="backBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
-  <button id="vendorBtn" type="button">BUY MORE TARGETS</button>
-
-  <script src="./api.js?v=20260112_2215"></script>
-  <script src="./output.js?v=20260112_2215"></script>
+  <script src="./api.js"></script>
+  <script src="./output.js"></script>
 </body>
 </html>
