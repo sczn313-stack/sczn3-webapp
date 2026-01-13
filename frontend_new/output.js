@@ -1,54 +1,71 @@
-// frontend_new/output.js
-// Read payload from sessionStorage -> fill output.html placeholders
+// output.js (SEC output page)
+// Reads localStorage key: sczn3_sec_payload
+// Increments SEC counter: sczn3_sec_counter
+// Fills fields by id: secId, lastScore, avgScore, windLine, elevLine, thumb, tipsBox
+// Wires buttons: backBtn, vendorBtn
 
-document.addEventListener("DOMContentLoaded", () => {
-  const raw = sessionStorage.getItem("sczn3_sec_payload");
-
-  if (!raw) {
-    console.warn("No payload found in sessionStorage. Redirecting to index.html");
-    window.location.href = "./index.html";
-    return;
-  }
-
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    console.error("Bad payload JSON:", err);
-    window.location.href = "./index.html";
-    return;
-  }
-
-  const setText = (id, value) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value ?? "";
-  };
-
-  setText("secId", data.secId);
-  setText("lastScore", data.lastScore);
-  setText("avgScore", data.avgScore);
-  setText("windLine", data.windLine);
-  setText("elevLine", data.elevLine);
-  setText("tipsBox", data.tips);
-
-  const thumb = document.getElementById("thumb");
-  if (thumb) {
-    thumb.src = data.thumbDataUrl || "";
-    if (!data.thumbDataUrl) thumb.alt = "NO THUMBNAIL";
-  }
+(function () {
+  const secIdEl = document.getElementById("secId");
+  const lastScoreEl = document.getElementById("lastScore");
+  const avgScoreEl = document.getElementById("avgScore");
+  const windLineEl = document.getElementById("windLine");
+  const elevLineEl = document.getElementById("elevLine");
+  const thumbEl = document.getElementById("thumb");
+  const tipsBoxEl = document.getElementById("tipsBox");
 
   const backBtn = document.getElementById("backBtn");
+  const vendorBtn = document.getElementById("vendorBtn");
+
+  function pad3(n) {
+    const s = String(n);
+    return s.length === 1 ? "00" + s : s.length === 2 ? "0" + s : s;
+  }
+
+  // Increment SEC-ID
+  const counterKey = "sczn3_sec_counter";
+  const prev = Number(localStorage.getItem(counterKey) || "0");
+  const next = prev + 1;
+  localStorage.setItem(counterKey, String(next));
+
+  if (secIdEl) {
+    secIdEl.textContent = `SEC-ID ${pad3(next)}`;
+  }
+
+  // Load payload
+  let payload = null;
+  try {
+    const raw = localStorage.getItem("sczn3_sec_payload");
+    payload = raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    payload = null;
+  }
+
+  // Populate fields
+  if (payload) {
+    if (lastScoreEl) lastScoreEl.textContent = payload.lastScore || "";
+    if (avgScoreEl) avgScoreEl.textContent = payload.avgScore || "";
+    if (windLineEl) windLineEl.textContent = payload.windLine || "";
+    if (elevLineEl) elevLineEl.textContent = payload.elevLine || "";
+    if (tipsBoxEl) tipsBoxEl.textContent = payload.tips || "";
+
+    if (thumbEl) {
+      thumbEl.src = payload.thumbDataUrl || "";
+      thumbEl.alt = "TARGET THUMBNAIL";
+    }
+  } else {
+    if (tipsBoxEl) tipsBoxEl.textContent = "No data found. Go back and upload a target photo.";
+  }
+
+  // Buttons
   if (backBtn) {
     backBtn.addEventListener("click", () => {
       window.location.href = "./index.html";
     });
   }
 
-  const vendorBtn = document.getElementById("vendorBtn");
   if (vendorBtn) {
     vendorBtn.addEventListener("click", () => {
-      const url = data.vendorUrl || "https://example.com";
-      window.open(url, "_blank");
+      window.open("https://example.com", "_blank", "noopener");
     });
   }
-});
+})();
