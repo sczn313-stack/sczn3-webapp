@@ -6,6 +6,7 @@
     <title>SEC</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
+
   <body class="page uploadPage">
     <!-- Top-left SEC brand -->
     <div class="secBrand">
@@ -21,11 +22,18 @@
       </div>
     </div>
 
-    <!-- Top-right header (THIS is the upload trigger) -->
+    <!-- Top-right header -->
     <div class="topRightHeader">
-      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+      <!-- SINGLE upload trigger (label clicks hidden input) -->
+      <label class="hdrBox" for="file" id="uploadTopBtn">
+        UPLOAD TARGET PHOTO or TAKE PICTURE
+      </label>
+
       <div class="hdrSub">INSURE ALL 4 CORNERS</div>
     </div>
+
+    <!-- Hidden file input -->
+    <input id="file" class="fileInputHidden" type="file" accept="image/*" />
 
     <!-- Right-side controls -->
     <div class="rightControls">
@@ -35,8 +43,13 @@
       </div>
 
       <div class="targetThumbLabel">
-        <div>TARGEET</div>
+        <div>TARGET</div>
         <div>THUMBNAIL</div>
+      </div>
+
+      <!-- Thumbnail preview -->
+      <div class="thumbWrap">
+        <img id="thumbPreview" class="thumbPreview" alt="TARGET THUMBNAIL" />
       </div>
 
       <div class="vendorStack">
@@ -65,11 +78,8 @@
         </div>
       </div>
 
-      <!-- REMOVE the center upload row entirely (matches your mock) -->
-      <!-- Hidden file input stays, triggered ONLY by the top-right hdrBox -->
-      <input id="file" class="fileInput" type="file" accept="image/*" style="display:none" />
-
-      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
+      <!-- REMOVE the duplicate upload bar from here -->
+      <button id="seeBtn" class="seeBtn" type="button" disabled>PRESS TO SEE</button>
       <div id="status" class="status"></div>
     </div>
 
