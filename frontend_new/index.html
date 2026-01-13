@@ -1,4 +1,3 @@
-<!-- index.html (UPLOAD / SEC page) -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -7,96 +6,72 @@
     <title>SEC</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
+  <body class="page uploadPage">
+    <!-- Top-left SEC brand -->
+    <div class="secBrand">
+      <div class="secBrandLine">
+        <span class="secRed">S</span><span class="secWhite">hooter</span>
+      </div>
+      <div class="secBrandLine">
+        <span class="secRed">E</span><span class="secWhite">xperience</span>
+      </div>
+      <div class="secBrandLine">
+        <span class="secRed">C</span><span class="secWhite">ard</span>
+        <span class="secRed secTag">SEC</span>
+      </div>
+    </div>
 
-  <body class="secPage secUpload">
-    <main class="secStage">
-      <!-- Top row -->
-      <section class="secTop">
-        <div class="brandBlock">
-          <div class="brandLine"><span class="brandRed">S</span><span class="brandWhite">hooter</span></div>
-          <div class="brandLine"><span class="brandRed">E</span><span class="brandWhite">xperience</span></div>
-          <div class="brandLine">
-            <span class="brandRed">C</span><span class="brandWhite">ard</span>
-            <span class="brandRed brandTag">SEC</span>
-          </div>
+    <!-- Top-right header (THIS is the upload trigger) -->
+    <div class="topRightHeader">
+      <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+      <div class="hdrSub">INSURE ALL 4 CORNERS</div>
+    </div>
+
+    <!-- Right-side controls -->
+    <div class="rightControls">
+      <div class="ctlBox">
+        <label class="ctlLabel">ADJUST DISTANCE (yards)</label>
+        <input id="yards" class="ctlInput" type="number" value="100" min="1" step="1" />
+      </div>
+
+      <div class="targetThumbLabel">
+        <div>TARGEET</div>
+        <div>THUMBNAIL</div>
+      </div>
+
+      <div class="vendorStack">
+        <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
+        <div class="vendorLogo">Vendor logo</div>
+      </div>
+    </div>
+
+    <!-- Center action box -->
+    <div class="centerBox">
+      <div class="pressTitle">PRESS TO SEE</div>
+
+      <div class="pressInner">
+        <div class="pressSEC">SEC</div>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">SCORE</div>
         </div>
-
-        <div class="headerBlock">
-          <div class="headerBar">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
-          <div class="headerSub">INSURE ALL 4 CORNERS</div>
+        <div class="pressRow">
+          <div class="pressLeft">SCOPE</div>
+          <div class="pressRight pressYellow">CLICKS</div>
         </div>
-      </section>
+        <div class="pressRow">
+          <div class="pressLeft">SHOOTER</div>
+          <div class="pressRight pressYellow">TIP</div>
+        </div>
+      </div>
 
-      <!-- Main row -->
-      <section class="secMain">
-        <!-- Left column -->
-        <aside class="leftCol">
-          <div class="panel">
-            <div class="panelTitle">STATUS</div>
-            <div id="status" class="panelBody statusText">Pick a photo first.</div>
-          </div>
+      <!-- REMOVE the center upload row entirely (matches your mock) -->
+      <!-- Hidden file input stays, triggered ONLY by the top-right hdrBox -->
+      <input id="file" class="fileInput" type="file" accept="image/*" style="display:none" />
 
-          <div class="panel">
-            <div class="panelTitle">NOTES</div>
-            <div class="panelBody">
-              Keep the target flat.<br />
-              Fill the frame with the target.<br />
-              Avoid glare/shadows.
-            </div>
-          </div>
-        </aside>
-
-        <!-- Center column -->
-        <section class="centerCol">
-          <div class="heroCard">
-            <div class="heroTitle">PRESS TO SEE</div>
-
-            <div class="heroInner">
-              <div class="heroSec">SEC</div>
-
-              <div class="heroRow">
-                <div class="heroLeft">SHOOTER</div>
-                <div class="heroRight heroYellow">SCORE</div>
-              </div>
-
-              <div class="heroRow">
-                <div class="heroLeft">SCOPE</div>
-                <div class="heroRight heroYellow">CLICKS</div>
-              </div>
-
-              <div class="heroRow">
-                <div class="heroLeft">SHOOTER</div>
-                <div class="heroRight heroYellow">TIP</div>
-              </div>
-            </div>
-
-            <div class="heroActions">
-              <label class="actionBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
-              <input id="file" class="fileInput" type="file" accept="image/*" />
-              <button id="seeBtn" class="actionBtn actionBtnPrimary" type="button">PRESS TO SEE</button>
-            </div>
-          </div>
-        </section>
-
-        <!-- Right column -->
-        <aside class="rightCol">
-          <div class="panel">
-            <div class="panelTitle">ADJUST DISTANCE (yards)</div>
-            <input id="yards" class="yardsInput" type="number" value="100" min="1" step="1" />
-          </div>
-
-          <div class="panel">
-            <div class="panelTitle">TARGET THUMBNAIL</div>
-            <div class="thumbPlaceholder">Preview appears after upload</div>
-          </div>
-
-          <div class="panel">
-            <a id="vendorBtn" class="vendorBtn" href="#" target="_blank" rel="noopener">BUY MORE TARGETS</a>
-            <div class="vendorLogo">Vendor logo</div>
-          </div>
-        </aside>
-      </section>
-    </main>
+      <button id="seeBtn" class="seeBtn" type="button">PRESS TO SEE</button>
+      <div id="status" class="status"></div>
+    </div>
 
     <script src="./api.js"></script>
     <script src="./index.js"></script>
