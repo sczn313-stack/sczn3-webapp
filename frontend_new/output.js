@@ -1,102 +1,54 @@
 // frontend_new/output.js
+// Read payload from sessionStorage -> fill output.html placeholders
 
-(function () {
-  const el = (id) => document.getElementById(id);
+document.addEventListener("DOMContentLoaded", () => {
+  const raw = sessionStorage.getItem("sczn3_sec_payload");
 
-  const secIdEl = el("secId");
-  const windageDirEl = el("windageDir");
-  const elevDirEl = el("elevDir");
-  const thumbEl = el("thumb");
-
-  const windageText = el("windageText");
-  const elevText = el("elevText");
-
-  const scoreLast = el("scoreLast");
-  const scoreAvg = el("scoreAvg");
-
-  const vendorBtnOut = el("vendorBtnOut");
-  const status = el("status");
-
-  function setStatus(msg) {
-    status.textContent = msg || "";
+  if (!raw) {
+    console.warn("No payload found in sessionStorage. Redirecting to index.html");
+    window.location.href = "./index.html";
+    return;
   }
 
-  function two(n) {
-    return Number(n || 0).toFixed(2);
-  }
-
-  function clampText(s) {
-    return String(s || "").trim().toUpperCase();
-  }
-
-  function loadHistoryScores() {
-    const key = "SEC_SCORE_HISTORY";
-    try {
-      return JSON.parse(localStorage.getItem(key) || "[]");
-    } catch {
-      return [];
-    }
-  }
-
-  function saveHistoryScore(val) {
-    const key = "SEC_SCORE_HISTORY";
-    const arr = loadHistoryScores();
-    arr.push(Number(val) || 0);
-    // keep last 50
-    while (arr.length > 50) arr.shift();
-    localStorage.setItem(key, JSON.stringify(arr));
-    return arr;
-  }
-
-  function average(arr) {
-    if (!arr.length) return 0;
-    const s = arr.reduce((a, b) => a + (Number(b) || 0), 0);
-    return s / arr.length;
-  }
-
-  // render
+  let data;
   try {
-    const raw = sessionStorage.getItem("SEC_PAYLOAD");
-    if (!raw) {
-      setStatus("No SEC data found.");
-      return;
-    }
-
-    const p = JSON.parse(raw);
-
-    // SEC-ID
-    secIdEl.textContent = `SEC-ID ${String(p.secId || "000")}`;
-
-    // Directions in the SCOPE CLICKS box
-    windageDirEl.textContent = clampText(p.windDir || "LEFT");
-    elevDirEl.textContent = clampText(p.elevDir || "UP");
-
-    // Thumbnail
-    if (p.thumbDataUrl) {
-      thumbEl.src = p.thumbDataUrl;
-    }
-
-    // Store numeric outputs (hidden for now, used later if you want)
-    windageText.textContent = `${two(p.windClicks)} clicks ${clampText(p.windDir)}`.trim();
-    elevText.textContent = `${two(p.elevClicks)} clicks ${clampText(p.elevDir)}`.trim();
-
-    // Score history (last score + avg score)
-    const scoreVal = Number(p.score) || 0;
-    const history = saveHistoryScore(scoreVal);
-    const avg = average(history);
-
-    scoreLast.textContent = two(scoreVal);
-    scoreAvg.textContent = two(avg);
-
-    // Vendor link placeholders
-    vendorBtnOut.href = p.vendorUrl || "#";
-    vendorBtnOut.addEventListener("click", (e) => {
-      if ((p.vendorUrl || "#") === "#") e.preventDefault();
-    });
-
-    setStatus("");
+    data = JSON.parse(raw);
   } catch (err) {
-    setStatus(String(err && err.message ? err.message : err));
+    console.error("Bad payload JSON:", err);
+    window.location.href = "./index.html";
+    return;
   }
-})();
-document.title = "SEC Output ✅ JS Running";
+
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value ?? "";
+  };
+
+  setText("secId", data.secId);
+  setText("lastScore", data.lastScore);
+  setText("avgScore", data.avgScore);
+  setText("windLine", data.windLine);
+  setText("elevLine", data.elevLine);
+  setText("tipsBox", data.tips);
+
+  const thumb = document.getElementById("thumb");
+  if (thumb) {
+    thumb.src = data.thumbDataUrl || "";
+    if (!data.thumbDataUrl) thumb.alt = "NO THUMBNAIL";
+  }
+
+  const backBtn = document.getElementById("backBtn");
+  if (backBtn) {
+    backBtn.addEventListener("click", () => {
+      window.location.href = "./index.html";
+    });
+  }
+
+  const vendorBtn = document.getElementById("vendorBtn");
+  if (vendorBtn) {
+    vendorBtn.addEventListener("click", () => {
+      const url = data.vendorUrl || "https://example.com";
+      window.open(url, "_blank");
+    });
+  }
+});
