@@ -1,4 +1,3 @@
-<!-- DEPLOY CHECK: Jan12 10:45pm -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -8,42 +7,32 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
-<body class="secPage outputPage">
-  <header class="outTop">
-    <div id="secId" class="secId">SEC-ID ---</div>
-  </header>
+<body class="page outputPage">
+  <div id="secId" class="secId"></div>
 
-  <main class="outGrid">
-    <section class="outLeft">
+  <div class="outGrid">
+    <div class="outLeft">
       <div class="outLabel">TARGET THUMBNAIL</div>
       <div class="outThumbBox">
-        <img id="thumb" alt="Target thumbnail" />
-        <div id="thumbMissing" class="thumbEmpty">No thumbnail found</div>
+        <img id="thumb" class="thumb" alt="TARGET THUMBNAIL" />
       </div>
 
       <div class="outBtns">
-        <button id="backBtn" class="outBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
-        <button id="vendorBtn" class="outBtn" type="button">BUY MORE TARGETS</button>
+        <button id="backBtn" class="pillBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
+        <button id="vendorBtn" class="pillBtn" type="button">BUY MORE TARGETS</button>
       </div>
-    </section>
+    </div>
 
-    <section class="outRight">
-      <div class="outPanel">
-        <div id="lastScore" class="outLine">Last Score: --</div>
-        <div id="avgScore" class="outLine">Average Score: --</div>
-      </div>
+    <div class="outRight">
+      <div id="lastScore" class="scoreLine"></div>
+      <div id="avgScore" class="scoreLine"></div>
 
-      <div class="outPanel">
-        <div id="windLine" class="outLine">Windage: --</div>
-        <div id="elevLine" class="outLine">Elevation: --</div>
-      </div>
+      <div id="windLine" class="clickLine"></div>
+      <div id="elevLine" class="clickLine"></div>
 
-      <div class="outPanel">
-        <div class="outLabelSmall">TIP</div>
-        <div id="tipsBox" class="tipsBox"></div>
-      </div>
-    </section>
-  </main>
+      <div id="tipsBox" class="tipsBox"></div>
+    </div>
+  </div>
 
   <script src="./api.js"></script>
   <script src="./output.js"></script>
