@@ -1,327 +1,273 @@
-/* =========================
-   SCZN3 / SEC - styles.css
-   Responsive (desktop + iPad/iPhone)
-   ========================= */
-
+/* ===== Global reset ===== */
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; padding: 0; }
-img { max-width: 100%; display: block; }
+html, body { height: 100%; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; }
 
-:root{
-  --panel: #2f5f7f;
-  --panel-dark: #274f69;
-  --panel-lite: rgba(255,255,255,.12);
-  --text: #ffffff;
-  --yellow: #ffd44d;
-  --red: #c90000;
-
-  --gap: 18px;
-  --radius: 10px;
-
-  /* Tweak these if you want the “right side” narrower/wider on desktop */
-  --right-col: 420px;
-}
-
-/* Shared page background */
-.page,
-.outputPage{
+/* ===== Stage scaling (keeps your absolute layout from drifting) ===== */
+.page{
   min-height: 100vh;
-  background: #cfe2cf;
-  /* keep your existing background image if you have one:
-     background: url("./bg.jpg") center/cover no-repeat; */
-  padding: clamp(12px, 2vw, 28px);
-  font-family: Arial, Helvetica, sans-serif;
-  color: var(--text);
-}
-
-/* =========================
-   UPLOAD PAGE (index.html)
-   ========================= */
-
-.uploadPage{
-  display: grid;
-  grid-template-columns: 1fr var(--right-col);
-  grid-template-rows: auto 1fr;
-  grid-template-areas:
-    "brand header"
-    "center right";
-  gap: var(--gap);
-  align-items: start;
-}
-
-/* Brand block (top-left) */
-.secBrand{
-  grid-area: brand;
-  line-height: 1.0;
-  font-weight: 800;
-  font-size: clamp(42px, 6vw, 88px);
-  text-shadow: 0 2px 6px rgba(0,0,0,.25);
-}
-.secBrandLine{ display:flex; align-items: baseline; }
-.secRed{ color: var(--red); }
-.secWhite{ color: rgba(255,255,255,.80); }
-.secTag{ margin-left: 10px; }
-
-/* Top-right header */
-.topRightHeader{
-  grid-area: header;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-x: hidden;
+}
+
+/* Set this to whatever your “design canvas” is */
+.stage{
+  position: relative;
+  width: 1200px;
+  height: 800px;
+  transform-origin: top center;
+
+  /* scale to fit viewport (Safari iOS supports min()) */
+  --sx: calc(100vw / 1200);
+  --sy: calc(100vh / 800);
+  --s: min(1, var(--sx), var(--sy));
+  transform: scale(var(--s));
+}
+
+/* ===== Upload page background ===== */
+.uploadPage{
+  background: #cfe2c9; /* fallback */
+  /* If you have a background image, set it here:
+  background: url("./bg.jpg") center/cover no-repeat fixed;
+  */
+}
+
+/* ===== Brand (top-left) ===== */
+.secBrand{
+  position: absolute;
+  left: 55px;
+  top: 55px;
+  line-height: 0.9;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 92px;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+.secBrandLine{ white-space: nowrap; }
+.secRed{ color: #b10000; }
+.secWhite{ color: rgba(255,255,255,0.85); }
+.secTag{ margin-left: 18px; }
+
+/* ===== Top-right header ===== */
+.topRightHeader{
+  position: absolute;
+  right: 55px;
+  top: 55px;
+  width: 520px;
+  text-align: center;
 }
 .hdrBox{
-  background: var(--panel);
-  padding: 18px 16px;
-  border-radius: var(--radius);
-  text-align: center;
-  font-weight: 800;
-  letter-spacing: .5px;
-  font-size: clamp(16px, 2.2vw, 22px);
+  background: #2f5f7a;
+  color: #fff;
+  padding: 16px 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
 }
 .hdrSub{
-  color: var(--red);
-  font-weight: 900;
-  text-align: center;
+  margin-top: 10px;
+  color: #b10000;
   font-style: italic;
+  font-weight: 800;
   letter-spacing: 2px;
-  font-size: clamp(14px, 1.8vw, 18px);
 }
 
-/* Center “PRESS TO SEE” box */
-.centerBox{
-  grid-area: center;
-  background: var(--panel);
-  border-radius: var(--radius);
-  padding: clamp(14px, 2vw, 22px);
-  box-shadow: 0 10px 24px rgba(0,0,0,.18);
-  max-width: 760px;
+/* ===== Right controls block ===== */
+.rightControls{
+  position: absolute;
+  right: 55px;
+  top: 240px;
+  width: 520px;
 }
-
-.pressTitle{
+.ctlBox{
+  background: #2f5f7a;
+  padding: 18px;
+}
+.ctlLabel{
+  display: block;
+  color: #fff;
+  font-weight: 800;
   text-align: center;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+.ctlInput{
+  width: 100%;
+  height: 64px;
+  font-size: 48px;
+  font-weight: 800;
+  text-align: center;
+  border: none;
+  outline: none;
+  background: #e8ecef;
+}
+.targetThumbLabel{
+  margin-top: 22px;
+  text-align: center;
+  color: rgba(0,0,0,0.55);
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+.vendorStack{
+  margin-top: 22px;
+}
+.vendorBtn{
+  display: block;
+  text-decoration: none;
+  background: #2f5f7a;
+  color: #fff;
+  padding: 16px 18px;
+  text-align: center;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.vendorLogo{
+  background: #2f5f7a;
+  color: rgba(255,255,255,0.85);
+  text-align: center;
+  padding: 14px 18px;
+  margin-top: 10px;
+}
+
+/* ===== Center “PRESS TO SEE” box ===== */
+.centerBox{
+  position: absolute;
+  left: 330px;
+  top: 285px;
+  width: 540px;
+  background: #2f5f7a;
+  padding: 18px;
+  box-shadow: 0 18px 28px rgba(0,0,0,0.25);
+}
+.pressTitle{
+  color: #fff;
   font-weight: 900;
   letter-spacing: 2px;
-  font-size: clamp(18px, 2.6vw, 28px);
-  margin-bottom: 14px;
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 26px;
 }
-
 .pressInner{
-  background: var(--panel-dark);
-  border-radius: var(--radius);
-  padding: clamp(14px, 2vw, 22px);
-  margin-bottom: 16px;
+  background: #244b62;
+  padding: 18px;
 }
-
 .pressSEC{
   text-align: center;
-  color: var(--red);
+  color: #b10000;
   font-weight: 900;
-  font-size: clamp(34px, 4.2vw, 58px);
-  margin: 4px 0 10px;
+  font-size: 44px;
+  margin-bottom: 10px;
 }
-
 .pressRow{
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   padding: 10px 0;
 }
-
 .pressLeft{
+  color: rgba(255,255,255,0.85);
   font-weight: 800;
-  letter-spacing: 1px;
-  font-size: clamp(16px, 2.2vw, 22px);
-  opacity: .92;
+  letter-spacing: 2px;
 }
 .pressRight{
-  text-align: right;
   font-weight: 900;
-  letter-spacing: 1px;
-  font-size: clamp(20px, 2.6vw, 28px);
+  letter-spacing: 2px;
 }
-.pressYellow{ color: var(--yellow); }
+.pressYellow{ color: #ffd24a; }
 
-/* File row */
 .fileRow{
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin: 10px 0 14px;
-  flex-wrap: wrap;
+  margin-top: 14px;
+  border: 2px solid rgba(255,255,255,0.25);
+  padding: 14px;
+  text-align: center;
 }
 .fileBtn{
   display: inline-block;
-  background: rgba(255,255,255,.15);
-  border: 2px solid rgba(255,255,255,.18);
-  padding: 14px 16px;
-  border-radius: 8px;
-  font-weight: 900;
-  cursor: pointer;
-  text-align: center;
-}
-.fileInput{
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  position: absolute;
-  left: -9999px;
-}
-
-/* See button */
-.seeBtn{
-  width: 100%;
-  background: rgba(255,255,255,.15);
-  border: 2px solid rgba(255,255,255,.18);
   color: #fff;
   font-weight: 900;
-  letter-spacing: 2px;
-  padding: 16px 14px;
-  border-radius: 8px;
+  letter-spacing: 1px;
   cursor: pointer;
 }
-.seeBtn:active{ transform: translateY(1px); }
+.fileInput{ display: none; }
 
+.seeBtn{
+  margin-top: 14px;
+  width: 100%;
+  background: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.9);
+  border: 2px solid rgba(255,255,255,0.25);
+  padding: 14px 18px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
 .status{
   margin-top: 10px;
+  text-align: center;
+  color: rgba(255,255,255,0.85);
   font-weight: 700;
-  color: rgba(255,255,255,.88);
 }
 
-/* Right controls (distance + vendor) */
-.rightControls{
-  grid-area: right;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  align-items: stretch;
-}
+/* ===== Output page layout ===== */
+.outputPage{ background: #fff; }
 
-.ctlBox{
-  background: var(--panel);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: 0 10px 24px rgba(0,0,0,.14);
-}
-
-.ctlLabel{
-  display:block;
-  text-align:center;
-  font-weight: 900;
-  letter-spacing: 1px;
-  font-size: clamp(14px, 1.6vw, 18px);
-  margin-bottom: 10px;
-}
-
-.ctlInput{
-  width: 100%;
-  border-radius: 8px;
-  border: 0;
-  padding: 14px 14px;
-  font-weight: 900;
-  text-align: center;
-  /* This is what fixes the “59” blowing up and overlapping */
-  font-size: clamp(24px, 4.2vw, 44px);
-  line-height: 1.1;
-  outline: none;
-}
-
-.targetThumbLabel{
-  text-align: center;
-  color: rgba(255,255,255,.70);
-  font-weight: 900;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  text-shadow: 0 1px 2px rgba(0,0,0,.25);
-}
-
-.vendorStack{
-  background: var(--panel);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: 0 10px 24px rgba(0,0,0,.14);
-  display: grid;
-  gap: 12px;
-}
-
-.vendorBtn{
-  display:block;
-  text-align:center;
-  text-decoration:none;
-  background: rgba(255,255,255,.15);
-  border: 2px solid rgba(255,255,255,.18);
-  color: #fff;
-  font-weight: 900;
-  letter-spacing: 1px;
-  padding: 12px 10px;
-  border-radius: 999px;
-}
-.vendorLogo{
-  text-align:center;
-  color: rgba(255,255,255,.72);
-  font-weight: 800;
-}
-
-/* =========================
-   OUTPUT PAGE (output.html)
-   ========================= */
-
-.outputPage{
-  color: #111;
-  background: #fff;
-  padding: clamp(12px, 2vw, 28px);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Make output readable and responsive */
 .secId{
-  color: var(--red);
+  position: absolute;
+  left: 20px;
+  top: 12px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 44px;
   font-weight: 900;
-  font-size: clamp(28px, 4vw, 44px);
-  margin-bottom: 10px;
+  color: #b10000;
+}
+
+.outTop{
+  position: absolute;
+  left: 20px;
+  top: 90px;
+  right: 20px;
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
 }
 
 .thumb{
-  width: min(520px, 92vw);
-  height: auto;
-  border: 2px solid #ddd;
+  width: 520px;
+  height: 360px;
+  border: 2px solid #cfcfcf;
   background: #fff;
+  object-fit: contain;
 }
 
-.lastScore, .avgScore, .windLine, .elevLine, .tipsBox{
-  margin-top: 10px;
-  max-width: 900px;
-  font-size: 18px;
+.outLines{
+  flex: 1;
+  min-width: 0;
 }
 
-#backBtn, #vendorBtn{
+.lastScore, .avgScore, .windLine, .elevLine{
+  font-size: 22px;
+  font-weight: 800;
+  margin: 6px 0;
+}
+
+.tipsBox{
   margin-top: 14px;
-  display: inline-block;
-  border: 0;
-  border-radius: 999px;
+  padding: 14px;
+  border: 2px solid #cfcfcf;
+  min-height: 120px;
+}
+
+.outBtns{
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#backBtn, #vendorBtn{
   padding: 10px 14px;
+  border: none;
+  background: #e9eef3;
   font-weight: 800;
   cursor: pointer;
-  background: #e8f0ff;
-  color: #1e4b7a;
-}
-
-#vendorBtn{ margin-left: 10px; }
-
-/* =========================
-   MOBILE: stack everything
-   ========================= */
-@media (max-width: 980px){
-  .uploadPage{
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto auto;
-    grid-template-areas:
-      "brand"
-      "header"
-      "center"
-      "right";
-  }
-
-  .centerBox{ max-width: 100%; }
 }
