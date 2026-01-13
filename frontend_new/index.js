@@ -1,81 +1,72 @@
-// index.js
-(function () {
-  const fileInput = document.getElementById("file");
-  const topUploadBtn = document.getElementById("topUploadBtn");
-  const seeBtn = document.getElementById("seeBtn");
-  const yardsInput = document.getElementById("yards");
-  const statusEl = document.getElementById("status");
+(() => {
+  const $ = (id) => document.getElementById(id);
 
-  const thumbPreview = document.getElementById("thumbPreview");
-  const thumbHint = document.getElementById("thumbHint");
+  const btnPick = $("btnPick");
+  const fileInput = $("fileInput");
+  const distance = $("distance");
+  const thumbImg = $("thumbImg");
+  const thumbEmpty = $("thumbEmpty");
+  const btnGenerate = $("btnGenerate");
+  const status = $("status");
 
-  let selectedFile = null;
+  // Change this ONLY if your backend is on a different domain:
+  // Example: const API_BASE = "https://YOUR-BACKEND.onrender.com";
+  const API_BASE = ""; // same-origin (or leave blank to disable backend calls)
 
-  // Top button triggers file picker
-  topUploadBtn.addEventListener("click", () => fileInput.click());
+  let lastThumbDataUrl = "";
+  let lastFullBlob = null;
 
-  // When file chosen, show thumbnail + store it (so output page can show it too)
-  fileInput.addEventListener("change", () => {
-    const f = fileInput.files && fileInput.files[0];
-    if (!f) return;
+  function setStatus(msg, kind = "") {
+    status.textContent = msg || "";
+    status.className = "status " + (kind ? `status_${kind}` : "");
+  }
 
-    selectedFile = f;
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
 
-    const url = URL.createObjectURL(f);
-    thumbPreview.src = url;
-    thumbPreview.style.display = "block";
-    thumbHint.style.display = "none";
+  async function downscaleToJpegBlob(dataUrl, maxW = 1400, quality = 0.85) {
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = rej;
+    });
 
-    // Also store a smaller-ish dataURL for output page
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        localStorage.setItem("sec_last_thumb", reader.result);
-      } catch (e) {
-        // if storage full, just skip
-      }
-    };
-    reader.readAsDataURL(f);
+    const ratio = Math.min(1, maxW / img.naturalWidth);
+    const w = Math.round(img.naturalWidth * ratio);
+    const h = Math.round(img.naturalHeight * ratio);
 
-    statusEl.textContent = "Photo selected.";
-  });
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
 
-  // Press to see -> call backend -> store results -> go to output
-  seeBtn.addEventListener("click", async () => {
-    if (!selectedFile) {
-      statusEl.textContent = "Pick a photo first.";
-      return;
-    }
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+    });
+  }
 
-    const yards = Number(yardsInput.value || 100);
-    statusEl.textContent = "Analyzing…";
+  async function makeThumbnailDataUrl(dataUrl, maxW = 900, quality = 0.8) {
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = rej;
+    });
 
-    try {
-      const fd = new FormData();
-      fd.append("image", selectedFile);
-      fd.append("yards", String(yards));
+    const ratio = Math.min(1, maxW / img.naturalWidth);
+    const w = Math.round(img.naturalWidth * ratio);
+    const h = Math.round(img.naturalHeight * ratio);
 
-      const res = await fetch(window.SEC_API.analyzeUrl, {
-        method: "POST",
-        body: fd
-      });
-
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`Analyze failed (${res.status}). ${t}`);
-      }
-
-      const data = await res.json();
-
-      // Store for output page to render
-      localStorage.setItem("sec_last_result", JSON.stringify(data));
-      localStorage.setItem("sec_last_yards", String(yards));
-
-      // Go output
-      window.location.href = "./output.html";
-    } catch (err) {
-      console.error(err);
-      statusEl.textContent = err.message || "Analyze failed.";
-    }
-  });
-})();
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w,
