@@ -1,25 +1,33 @@
-/* index.js
-   Input page logic:
-   - show thumbnail preview immediately after file pick
-   - store a small thumbnail in sessionStorage for output.html
-   - keep your existing upload/press-to-see flow
+/* index.js (LOCKED UI ROUTE)
+   - ONLY active upload trigger = top-right header bar
+   - center upload label is DISABLED (no click)
+   - PRESS TO SEE sends to output.html after file selected
+   - thumbnail preview stored in sessionStorage
 */
 
 (() => {
   // ====== CONFIG ======
-  const THUMB_MAX_W = 420;     // thumbnail width (px)
-  const THUMB_QUALITY = 0.82;  // jpeg quality
+  const THUMB_MAX_W = 420;
+  const THUMB_QUALITY = 0.82;
 
-  // ====== ELEMENTS ======
-  const fileInput = document.getElementById("file");
-  const seeBtn = document.getElementById("seeBtn");
-  const statusEl = document.getElementById("status");
-  const yardsEl = document.getElementById("yards");
-  const vendorBtn = document.getElementById("vendorBtn");
+  // ====== HELPERS ======
+  const $ = (sel) => document.querySelector(sel);
+  const el = (id) => document.getElementById(id);
 
-  // Optional: if you add an <img id="thumbPreview"> somewhere, we'll use it.
-  // If you don't have it, we will create a floating preview in the corner (no CSS dependency).
-  let thumbPreview = document.getElementById("thumbPreview");
+  const fileInput = el("file");         // hidden <input type=file>
+  const seeBtn = el("seeBtn");
+  const statusEl = el("status");
+  const yardsEl = el("yards");
+
+  // In your upload page HTML, this is the top-right box:
+  // <div class="hdrBox">UPLOAD TARGET PHOTO or TAKE PICTURE</div>
+  const topRightUploadBox = $(".hdrBox");
+
+  // Center upload label:
+  // <label class="fileBtn" for="file">UPLOAD TARGET PHOTO or TAKE PICTURE</label>
+  const centerUploadLabel = $(".fileBtn");
+
+  let thumbPreview = el("thumbPreview"); // optional if you add it later
 
   function setStatus(msg) {
     if (statusEl) statusEl.textContent = msg || "";
@@ -28,7 +36,7 @@
   function ensureThumbPreviewEl() {
     if (thumbPreview) return thumbPreview;
 
-    // Create a simple preview that won't break your layout.
+    // Safe floating preview (doesn't disturb layout)
     const img = document.createElement("img");
     img.id = "thumbPreview";
     img.alt = "TARGET THUMBNAIL";
@@ -49,7 +57,6 @@
   }
 
   async function fileToThumbDataUrl(file) {
-    // Load file into an <img>, then draw scaled to canvas and export jpeg dataURL
     const imgUrl = URL.createObjectURL(file);
     try {
       const img = await new Promise((resolve, reject) => {
@@ -66,10 +73,10 @@
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
+
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, w, h);
 
-      // Use jpeg for broad compatibility
       return canvas.toDataURL("image/jpeg", THUMB_QUALITY);
     } finally {
       URL.revokeObjectURL(imgUrl);
@@ -77,62 +84,80 @@
   }
 
   async function handleFilePicked() {
-    setStatus("");
     const file = fileInput?.files?.[0];
     if (!file) {
       sessionStorage.removeItem("sczn3_thumb");
-      sessionStorage.removeItem("sczn3_thumb_mime");
       return;
     }
 
-    // Generate and store thumbnail for output page
-    setStatus("Preparing thumbnail…");
+    setStatus("Photo selected.");
+
+    // Create + store thumb for output.html
     try {
       const thumbDataUrl = await fileToThumbDataUrl(file);
-
       sessionStorage.setItem("sczn3_thumb", thumbDataUrl);
-      sessionStorage.setItem("sczn3_thumb_mime", "image/jpeg");
       sessionStorage.setItem("sczn3_thumb_ts", String(Date.now()));
 
-      // Show preview immediately
+      // show preview
       const img = ensureThumbPreviewEl();
       img.src = thumbDataUrl;
-
-      setStatus("Photo selected.");
     } catch (err) {
       console.error(err);
-      setStatus("Could not read photo. Try a different picture.");
+      setStatus("Could not read photo. Try another picture.");
     }
   }
 
-  // ====== YOUR EXISTING UPLOAD FLOW HOOK ======
+  // ====== ONLY ACTIVE UPLOAD TRIGGER ======
+  function openFilePicker() {
+    if (!fileInput) return;
+    fileInput.click();
+  }
+
+  // Make top-right hdrBox clickable upload trigger
+  if (topRightUploadBox) {
+    topRightUploadBox.style.cursor = "pointer";
+    topRightUploadBox.addEventListener("click", openFilePicker);
+  }
+
+  // Disable center upload label (remove click + prevent opening picker)
+  if (centerUploadLabel) {
+    // Remove the default "for=file" behavior by blocking clicks
+    centerUploadLabel.removeAttribute("for");
+    centerUploadLabel.style.opacity = "0.55";
+    centerUploadLabel.style.cursor = "not-allowed";
+    centerUploadLabel.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setStatus("Use the top-right upload button.");
+    });
+  }
+
+  // File input change
+  if (fileInput) fileInput.addEventListener("change", handleFilePicked);
+
+  // ====== PRESS TO SEE ======
   async function handlePressToSee() {
     const file = fileInput?.files?.[0];
     if (!file) {
-      setStatus("Pick a photo first.");
+      setStatus("Tap the top-right upload button first.");
       return;
     }
 
-    // Keep the yards value for output page
     const yards = Number(yardsEl?.value || 100);
     sessionStorage.setItem("sczn3_yards", String(yards));
 
-    setStatus("Uploading…");
+    setStatus("Generating…");
 
     try {
-      // ---- If your api.js already has something like api.uploadAndScore(file, yards), call it here.
-      // I’m using a safe pattern: prefer window.api.uploadAndScore if present,
-      // otherwise just simulate and go to output.html (so thumbnail passing can be verified right now).
-
+      // Prefer real backend hook if present
       let result = null;
 
       if (window.api && typeof window.api.uploadAndScore === "function") {
         result = await window.api.uploadAndScore(file, yards);
       } else if (window.uploadAndScore && typeof window.uploadAndScore === "function") {
-        // alternate if you exposed it differently
         result = await window.uploadAndScore(file, yards);
       } else {
-        // no backend hook yet — simulate minimal output so you can verify output.html fills
+        // temporary stub to verify flow
         result = {
           secId: `SEC-ID ${String(Math.floor(Math.random() * 900) + 100).padStart(3, "0")}`,
           lastScore: "Last Score: 0",
@@ -144,7 +169,6 @@
         };
       }
 
-      // Store output fields for output.html
       sessionStorage.setItem("sczn3_secId", result?.secId || "");
       sessionStorage.setItem("sczn3_lastScore", result?.lastScore || "");
       sessionStorage.setItem("sczn3_avgScore", result?.avgScore || "");
@@ -153,33 +177,21 @@
       sessionStorage.setItem("sczn3_tips", result?.tips || "");
       sessionStorage.setItem("sczn3_vendorUrl", result?.vendorUrl || "#");
 
-      setStatus("Done.");
       window.location.href = "./output.html";
     } catch (err) {
       console.error(err);
-      setStatus("Upload failed. Check backend / network.");
+      setStatus("Generate failed. Check backend / network.");
     }
   }
 
-  // ====== INIT ======
-  if (fileInput) fileInput.addEventListener("change", handleFilePicked);
   if (seeBtn) seeBtn.addEventListener("click", handlePressToSee);
 
-  // Keep vendor button harmless on input page (optional)
-  if (vendorBtn) {
-    vendorBtn.addEventListener("click", (e) => {
-      const url = sessionStorage.getItem("sczn3_vendorUrl") || "#";
-      if (!url || url === "#") {
-        e.preventDefault();
-        setStatus("Vendor link not set yet.");
-      }
-    });
-  }
-
-  // If a thumb already exists in session (coming back), show it
+  // Restore existing thumb if present
   const existingThumb = sessionStorage.getItem("sczn3_thumb");
   if (existingThumb) {
     const img = ensureThumbPreviewEl();
     img.src = existingThumb;
   }
+
+  setStatus("");
 })();
