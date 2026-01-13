@@ -1,41 +1,36 @@
-/* index.js (LOCKED UI ROUTE)
-   - ONLY active upload trigger = top-right header bar
-   - center upload label is VISIBLE but DISABLED (no click)
-   - PRESS TO SEE sends to output.html after file selected
-   - thumbnail preview stored in sessionStorage
+/* index.js
+   Upload SEC (input page) — MOCK MATCH
+   - Only upload trigger: top-right .hdrBox
+   - Hidden <input id="file"> is clicked programmatically
+   - PRESS TO SEE goes to output.html after file is selected
+   - Stores thumbnail + yards + backend results in sessionStorage
 */
 
 (() => {
-  // ====== CONFIG ======
-  const THUMB_MAX_W = 420;
-  const THUMB_QUALITY = 0.82;
-
-  // ====== HELPERS ======
-  const $ = (sel) => document.querySelector(sel);
   const el = (id) => document.getElementById(id);
+  const $ = (sel) => document.querySelector(sel);
 
-  const fileInput = el("file");         // hidden <input type=file>
+  const fileInput = el("file");     // hidden input (display:none in HTML)
   const seeBtn = el("seeBtn");
   const statusEl = el("status");
   const yardsEl = el("yards");
 
-  // Top-right header upload box:
-  const topRightUploadBox = $(".hdrBox");
+  const hdrBox = $(".hdrBox");      // top-right upload box
 
-  // Center upload label:
-  const centerUploadLabel = $(".fileBtn");
-
-  let thumbPreview = el("thumbPreview"); // optional if you add it later
+  // --- thumbnail settings ---
+  const THUMB_MAX_W = 420;
+  const THUMB_QUALITY = 0.82;
 
   function setStatus(msg) {
     if (statusEl) statusEl.textContent = msg || "";
   }
 
+  // Floating thumbnail preview (safe; doesn’t change layout)
   function ensureThumbPreviewEl() {
-    if (thumbPreview) return thumbPreview;
+    let img = el("thumbPreview");
+    if (img) return img;
 
-    // Safe floating preview (doesn't disturb layout)
-    const img = document.createElement("img");
+    img = document.createElement("img");
     img.id = "thumbPreview";
     img.alt = "TARGET THUMBNAIL";
     img.style.position = "fixed";
@@ -49,9 +44,7 @@
     img.style.borderRadius = "6px";
     img.style.zIndex = "9999";
     document.body.appendChild(img);
-
-    thumbPreview = img;
-    return thumbPreview;
+    return img;
   }
 
   async function fileToThumbDataUrl(file) {
@@ -71,7 +64,6 @@
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
-
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, w, h);
 
@@ -81,10 +73,19 @@
     }
   }
 
-  async function handleFilePicked() {
+  function openPicker() {
+    if (!fileInput) {
+      setStatus("File input not found (id='file').");
+      return;
+    }
+    fileInput.click();
+  }
+
+  async function onFilePicked() {
     const file = fileInput?.files?.[0];
     if (!file) {
       sessionStorage.removeItem("sczn3_thumb");
+      setStatus("");
       return;
     }
 
@@ -95,43 +96,14 @@
       sessionStorage.setItem("sczn3_thumb", thumbDataUrl);
       sessionStorage.setItem("sczn3_thumb_ts", String(Date.now()));
 
-      const img = ensureThumbPreviewEl();
-      img.src = thumbDataUrl;
-    } catch (err) {
-      console.error(err);
+      ensureThumbPreviewEl().src = thumbDataUrl;
+    } catch (e) {
+      console.error(e);
       setStatus("Could not read photo. Try another picture.");
     }
   }
 
-  // ====== ONLY ACTIVE UPLOAD TRIGGER ======
-  function openFilePicker() {
-    if (!fileInput) return;
-    fileInput.click();
-  }
-
-  // Make top-right hdrBox clickable upload trigger
-  if (topRightUploadBox) {
-    topRightUploadBox.style.cursor = "pointer";
-    topRightUploadBox.addEventListener("click", openFilePicker);
-  }
-
-  // Disable center upload label (keep visible)
-  if (centerUploadLabel) {
-    // Remove default "for=file" behavior and block clicks
-    centerUploadLabel.removeAttribute("for");
-    centerUploadLabel.style.cursor = "not-allowed";
-    centerUploadLabel.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setStatus("Use the top-right upload button.");
-    });
-  }
-
-  // File input change
-  if (fileInput) fileInput.addEventListener("change", handleFilePicked);
-
-  // ====== PRESS TO SEE ======
-  async function handlePressToSee() {
+  async function onPressToSee() {
     const file = fileInput?.files?.[0];
     if (!file) {
       setStatus("Tap the top-right upload button first.");
@@ -144,15 +116,17 @@
     setStatus("Generating…");
 
     try {
-      // Prefer real backend hook if present
+      // Prefer your real backend function if present:
+      // - window.api.uploadAndScore(file, yards)
+      // - OR window.uploadAndScore(file, yards)
       let result = null;
 
       if (window.api && typeof window.api.uploadAndScore === "function") {
         result = await window.api.uploadAndScore(file, yards);
-      } else if (window.uploadAndScore && typeof window.uploadAndScore === "function") {
+      } else if (typeof window.uploadAndScore === "function") {
         result = await window.uploadAndScore(file, yards);
       } else {
-        // temporary stub to verify flow
+        // Temporary stub so you can verify navigation + layout now
         result = {
           secId: `SEC-ID ${String(Math.floor(Math.random() * 900) + 100).padStart(3, "0")}`,
           lastScore: "Last Score: 0",
@@ -173,20 +147,26 @@
       sessionStorage.setItem("sczn3_vendorUrl", result?.vendorUrl || "#");
 
       window.location.href = "./output.html";
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
       setStatus("Generate failed. Check backend / network.");
     }
   }
 
-  if (seeBtn) seeBtn.addEventListener("click", handlePressToSee);
-
-  // Restore existing thumb if present
-  const existingThumb = sessionStorage.getItem("sczn3_thumb");
-  if (existingThumb) {
-    const img = ensureThumbPreviewEl();
-    img.src = existingThumb;
+  // ---- wire events ----
+  if (hdrBox) {
+    hdrBox.style.cursor = "pointer";
+    hdrBox.addEventListener("click", openPicker);
+  } else {
+    setStatus("Top-right upload box not found (.hdrBox).");
   }
+
+  if (fileInput) fileInput.addEventListener("change", onFilePicked);
+  if (seeBtn) seeBtn.addEventListener("click", onPressToSee);
+
+  // restore existing thumb (if user went back)
+  const existingThumb = sessionStorage.getItem("sczn3_thumb");
+  if (existingThumb) ensureThumbPreviewEl().src = existingThumb;
 
   setStatus("");
 })();
