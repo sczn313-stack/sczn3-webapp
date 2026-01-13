@@ -1,55 +1,32 @@
-<!-- output.html (SEC OUTPUT page) -->
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SEC Output</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SEC Output</title>
+  <link rel="stylesheet" href="./styles.css?v=20260112_2215" />
+</head>
 
-  <body class="secPage secOutput">
-    <main class="secStage">
-      <!-- Top bar -->
-      <section class="outTop">
-        <div id="secId" class="outSecId">SEC-ID</div>
+<body class="outputPage">
+  <!-- Output SEC page (HTML) -->
+  <!-- output.js will fill these fields by id -->
 
-        <div class="outTopBtns">
-          <button id="backBtn" class="smallBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
-          <button id="vendorBtn" class="smallBtn smallBtnPrimary" type="button">BUY MORE TARGETS</button>
-        </div>
-      </section>
+  <div id="secId" class="secId"></div>
 
-      <!-- Main content -->
-      <section class="outMain">
-        <!-- Left: big thumbnail -->
-        <section class="outLeft">
-          <div class="outThumbWrap">
-            <div class="outThumbLabel">TARGET THUMBNAIL</div>
-            <img id="thumb" class="outThumb" alt="TARGET THUMBNAIL" />
-          </div>
-        </section>
+  <div id="lastScore" class="lastScore"></div>
+  <div id="avgScore" class="avgScore"></div>
 
-        <!-- Right: results -->
-        <aside class="outRight">
-          <div class="resultCard">
-            <div id="lastScore" class="resultLine"></div>
-            <div id="avgScore" class="resultLine"></div>
+  <div id="windLine" class="windLine"></div>
+  <div id="elevLine" class="elevLine"></div>
 
-            <div class="divider"></div>
+  <img id="thumb" class="thumb" alt="TARGET THUMBNAIL" />
 
-            <div id="windLine" class="resultBig"></div>
-            <div id="elevLine" class="resultBig"></div>
+  <div id="tipsBox" class="tipsBox"></div>
 
-            <div class="divider"></div>
+  <button id="backBtn" type="button">UPLOAD TARGET PHOTO or TAKE PICTURE</button>
+  <button id="vendorBtn" type="button">BUY MORE TARGETS</button>
 
-            <div id="tipsBox" class="tipsBox"></div>
-          </div>
-        </aside>
-      </section>
-    </main>
-
-    <script src="./api.js"></script>
-    <script src="./output.js"></script>
-  </body>
+  <script src="./api.js?v=20260112_2215"></script>
+  <script src="./output.js?v=20260112_2215"></script>
+</body>
 </html>
