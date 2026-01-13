@@ -1,59 +1,49 @@
-// output.js (SEC output page)
-// Reads localStorage key: sczn3_sec_payload
-// Increments SEC counter: sczn3_sec_counter
-// Fills fields by id: secId, lastScore, avgScore, windLine, elevLine, thumb, tipsBox
-// Wires buttons: backBtn, vendorBtn
+/* output.js
+   Output page logic:
+   - reads the fields stored by index.js / backend
+   - displays the thumbnail from sessionStorage
+   - back button returns to index.html
+   - vendor button opens vendor url
+*/
 
-(function () {
+(() => {
   const secIdEl = document.getElementById("secId");
   const lastScoreEl = document.getElementById("lastScore");
   const avgScoreEl = document.getElementById("avgScore");
   const windLineEl = document.getElementById("windLine");
   const elevLineEl = document.getElementById("elevLine");
-  const thumbEl = document.getElementById("thumb");
   const tipsBoxEl = document.getElementById("tipsBox");
-
+  const thumbEl = document.getElementById("thumb");
   const backBtn = document.getElementById("backBtn");
   const vendorBtn = document.getElementById("vendorBtn");
 
-  function pad3(n) {
-    const s = String(n);
-    return s.length === 1 ? "00" + s : s.length === 2 ? "0" + s : s;
+  function setText(el, txt) {
+    if (!el) return;
+    el.textContent = txt || "";
   }
 
-  // Increment SEC-ID
-  const counterKey = "sczn3_sec_counter";
-  const prev = Number(localStorage.getItem(counterKey) || "0");
-  const next = prev + 1;
-  localStorage.setItem(counterKey, String(next));
-
-  if (secIdEl) {
-    secIdEl.textContent = `SEC-ID ${pad3(next)}`;
+  function get(key, fallback = "") {
+    const v = sessionStorage.getItem(key);
+    return v == null ? fallback : v;
   }
 
-  // Load payload
-  let payload = null;
-  try {
-    const raw = localStorage.getItem("sczn3_sec_payload");
-    payload = raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    payload = null;
-  }
+  // Fill text fields
+  setText(secIdEl, get("sczn3_secId", "SEC-ID 000"));
+  setText(lastScoreEl, get("sczn3_lastScore", ""));
+  setText(avgScoreEl, get("sczn3_avgScore", ""));
+  setText(windLineEl, get("sczn3_windLine", ""));
+  setText(elevLineEl, get("sczn3_elevLine", ""));
+  setText(tipsBoxEl, get("sczn3_tips", ""));
 
-  // Populate fields
-  if (payload) {
-    if (lastScoreEl) lastScoreEl.textContent = payload.lastScore || "";
-    if (avgScoreEl) avgScoreEl.textContent = payload.avgScore || "";
-    if (windLineEl) windLineEl.textContent = payload.windLine || "";
-    if (elevLineEl) elevLineEl.textContent = payload.elevLine || "";
-    if (tipsBoxEl) tipsBoxEl.textContent = payload.tips || "";
-
-    if (thumbEl) {
-      thumbEl.src = payload.thumbDataUrl || "";
-      thumbEl.alt = "TARGET THUMBNAIL";
+  // Thumbnail
+  const thumb = get("sczn3_thumb", "");
+  if (thumbEl) {
+    if (thumb) {
+      thumbEl.src = thumb;
+    } else {
+      // Keep placeholder text visible if your CSS uses alt text area
+      thumbEl.removeAttribute("src");
     }
-  } else {
-    if (tipsBoxEl) tipsBoxEl.textContent = "No data found. Go back and upload a target photo.";
   }
 
   // Buttons
@@ -65,7 +55,9 @@
 
   if (vendorBtn) {
     vendorBtn.addEventListener("click", () => {
-      window.open("https://example.com", "_blank", "noopener");
+      const url = get("sczn3_vendorUrl", "#");
+      if (!url || url === "#") return;
+      window.open(url, "_blank", "noopener");
     });
   }
 })();
