@@ -99,3 +99,4 @@
     setStatus(String(err && err.message ? err.message : err));
   }
 })();
+document.title = "SEC Output ✅ JS Running";
