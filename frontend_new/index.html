@@ -5,17 +5,107 @@
   <title>Shooter Experience Card</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Use your shared stylesheet -->
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <style>
+    body {
+      font-family: serif;
+      padding: 20px;
+    }
+
+    h1 {
+      line-height: 1.1;
+    }
+
+    .uploadBlock {
+      width: 100%;
+      margin: 30px 0;
+      text-align: center;
+    }
+
+    /* PRIMARY UPLOAD BUTTON */
+    .uploadBtn {
+      display: inline-block;
+      background: #2f5f73;
+      color: #fff;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    /* HIDE REAL INPUT */
+    #targetPhoto {
+      display: none;
+    }
+
+    .uploadHint {
+      margin-top: 10px;
+      color: #b00000;
+      font-style: italic;
+    }
+
+    /* THUMB PREVIEW */
+    #thumb {
+      display: none;
+      margin: 18px auto 0;
+      max-width: 100%;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+
+    label {
+      display: block;
+      margin-top: 30px;
+      font-weight: 600;
+    }
+
+    input[type="number"] {
+      margin-top: 6px;
+      padding: 10px;
+      font-size: 16px;
+      width: 120px;
+    }
+
+    .pillBtn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 18px;
+      background: #e6eef2;
+      border-radius: 20px;
+      color: #0b66c3;
+      font-weight: 600;
+      text-decoration: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .pillBtn.primary {
+      background: #dfefff;
+    }
+
+    .pillBtn.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+  </style>
 </head>
 
-<body class="page upload-page">
+<body>
 
-  <h1 class="sec-title">Shooter<br>Experience<br>Card SEC</h1>
+  <h1>
+    Shooter<br>
+    Experience<br>
+    Card SEC
+  </h1>
 
-  <!-- UPLOAD -->
+  <!-- UPLOAD BLOCK -->
   <div class="uploadBlock">
-    <!-- LABEL IS THE BUTTON (iOS SAFE) -->
+
+    <!-- LABEL = BUTTON (iOS SAFE) -->
     <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
       UPLOAD TARGET PHOTO or TAKE PICTURE
     </label>
@@ -30,29 +120,37 @@
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 
-    <!-- THUMB PREVIEW -->
-    <img id="thumb" alt="Target thumbnail" />
+    <!-- IMAGE PREVIEW -->
+    <img id="thumb" alt="Target thumbnail preview" />
   </div>
 
-  <div class="distanceBlock">
-    <label for="distanceYards" class="distanceLabel">ADJUST DISTANCE (yards)</label>
-    <input
-      id="distanceYards"
-      type="number"
-      value="100"
-      min="1"
-      step="1"
-      inputmode="numeric"
-    />
-  </div>
+  <!-- DISTANCE -->
+  <label for="distanceYards">
+    ADJUST DISTANCE (yards)
+  </label>
+  <input
+    id="distanceYards"
+    type="number"
+    value="100"
+    min="1"
+    step="1"
+  />
 
-  <div class="ctaRow">
-    <a href="#" class="pillBtn" id="buyMoreBtn">BUY MORE TARGETS</a>
-    <a href="#" class="pillBtn disabled" id="pressToSee">PRESS TO SEE</a>
-  </div>
+  <!-- ACTION BUTTONS -->
+  <br><br>
 
-  <!-- IMPORTANT: cache-bust + defer so JS always runs AFTER DOM -->
-  <script src="./index.js?v=2" defer></script>
+  <a href="#" class="pillBtn primary" id="buyMoreBtn">
+    BUY MORE TARGETS
+  </a>
+
+  <br>
+
+  <a href="#" class="pillBtn disabled" id="pressToSee">
+    PRESS TO SEE
+  </a>
+
+  <!-- SCRIPT -->
+  <script src="index.js"></script>
 
 </body>
 </html>
