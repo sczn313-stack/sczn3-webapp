@@ -1,124 +1,142 @@
-// frontend_new/index.js
-// Updates:
-/// - Stops forcing camera-only by NOT overriding label behavior
-//   (label-for already opens the picker, which allows Photo Library)
-/// - Enables PRESS TO SEE after a valid image is chosen
-/// - Keeps distance editable (sanitizes on blur/change)
+/* frontend_new/index.js
+   Enables “YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS” only after a photo is selected.
+   Also shows the thumbnail preview.
+*/
 
 (() => {
-  "use strict";
-
-  const $ = (id) => document.getElementById(id);
-
-  const fileInput = $("targetPhoto");
-  const thumb = $("thumb");
-  const distanceInput = $("distanceYards");
-  const buyMoreBtn = $("buyMoreBtn");
-  const pressToSeeBtn = $("pressToSee");
+  const fileInput = document.getElementById("targetPhoto");
+  const thumb = document.getElementById("thumb");
+  const distanceInput = document.getElementById("distanceYards");
+  const pressToSee = document.getElementById("pressToSee");
 
   let selectedFile = null;
 
-  function setPressToSeeEnabled(enabled) {
-    if (!pressToSeeBtn) return;
+  // --- Helpers ---
+  function setPressToSeeEnabled(isEnabled) {
+    if (!pressToSee) return;
 
-    if (enabled) {
-      pressToSeeBtn.classList.remove("disabled");
-      pressToSeeBtn.style.pointerEvents = "auto";
-      pressToSeeBtn.style.opacity = "1";
-      pressToSeeBtn.setAttribute("aria-disabled", "false");
+    if (isEnabled) {
+      pressToSee.classList.remove("disabled");
+      pressToSee.setAttribute("aria-disabled", "false");
+      pressToSee.style.pointerEvents = "auto";
     } else {
-      pressToSeeBtn.classList.add("disabled");
-      pressToSeeBtn.style.pointerEvents = "none";
-      pressToSeeBtn.style.opacity = "0.6";
-      pressToSeeBtn.setAttribute("aria-disabled", "true");
+      pressToSee.classList.add("disabled");
+      pressToSee.setAttribute("aria-disabled", "true");
+      pressToSee.style.pointerEvents = "none";
     }
   }
 
-  function sanitizeDistance(raw) {
-    const n = Number(String(raw ?? "").trim());
-    if (!Number.isFinite(n)) return 100;
-    const rounded = Math.round(n);
-    return Math.max(1, rounded);
-  }
-
-  function showThumbFromFile(file) {
+  function showThumb(file) {
     if (!thumb) return;
-
-    if (!file) {
-      thumb.removeAttribute("src");
-      thumb.style.display = "none";
-      return;
-    }
-
-    const objectUrl = URL.createObjectURL(file);
-    thumb.onload = () => URL.revokeObjectURL(objectUrl);
-    thumb.src = objectUrl;
+    const url = URL.createObjectURL(file);
+    thumb.src = url;
     thumb.style.display = "block";
   }
 
-  // Init
+  function openModal(title, bodyHtml) {
+    // remove old modal if present
+    const old = document.getElementById("secModalOverlay");
+    if (old) old.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "secModalOverlay";
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.background = "rgba(0,0,0,0.55)";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.padding = "18px";
+    overlay.style.zIndex = "9999";
+
+    const card = document.createElement("div");
+    card.style.width = "min(520px, 92vw)";
+    card.style.background = "#2b2b2b";
+    card.style.color = "#fff";
+    card.style.borderRadius = "14px";
+    card.style.padding = "18px 18px 14px 18px";
+    card.style.boxShadow = "0 14px 40px rgba(0,0,0,0.35)";
+    card.style.textAlign = "left";
+
+    const h = document.createElement("div");
+    h.style.fontWeight = "800";
+    h.style.letterSpacing = "0.4px";
+    h.style.marginBottom = "10px";
+    h.style.textTransform = "uppercase";
+    h.textContent = title;
+
+    const body = document.createElement("div");
+    body.style.lineHeight = "1.35";
+    body.style.whiteSpace = "normal";
+    body.innerHTML = bodyHtml;
+
+    const footer = document.createElement("div");
+    footer.style.display = "flex";
+    footer.style.justifyContent = "flex-end";
+    footer.style.marginTop = "14px";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "Close";
+    closeBtn.style.background = "transparent";
+    closeBtn.style.border = "0";
+    closeBtn.style.color = "#6aa6ff";
+    closeBtn.style.fontSize = "18px";
+    closeBtn.style.cursor = "pointer";
+
+    closeBtn.addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    footer.appendChild(closeBtn);
+    card.appendChild(h);
+    card.appendChild(body);
+    card.appendChild(footer);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+  }
+
+  // --- Init state ---
   setPressToSeeEnabled(false);
 
-  // IMPORTANT:
-  // Do NOT programmatically click the file input from the label click.
-  // On iOS, that can push camera-only behavior.
-  // The label (for="targetPhoto") is the iOS-safe mechanism by itself.
-
+  // --- Events ---
   if (fileInput) {
     fileInput.addEventListener("change", () => {
-      const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-
+      const file = fileInput.files && fileInput.files[0];
       if (!file) {
         selectedFile = null;
-        showThumbFromFile(null);
+        if (thumb) thumb.style.display = "none";
         setPressToSeeEnabled(false);
-        return;
-      }
-
-      if (!file.type || !file.type.startsWith("image/")) {
-        selectedFile = null;
-        showThumbFromFile(null);
-        setPressToSeeEnabled(false);
-        alert("Please choose an image file.");
         return;
       }
 
       selectedFile = file;
-      showThumbFromFile(file);
+      showThumb(file);
       setPressToSeeEnabled(true);
     });
   }
 
-  if (distanceInput) {
-    distanceInput.addEventListener("blur", () => {
-      distanceInput.value = String(sanitizeDistance(distanceInput.value));
-    });
-    distanceInput.addEventListener("change", () => {
-      distanceInput.value = String(sanitizeDistance(distanceInput.value));
-    });
-  }
-
-  if (buyMoreBtn) {
-    buyMoreBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      alert("Buy More Targets link not set yet.");
-    });
-  }
-
-  if (pressToSeeBtn) {
-    pressToSeeBtn.addEventListener("click", (e) => {
+  if (pressToSee) {
+    pressToSee.addEventListener("click", (e) => {
       e.preventDefault();
 
-      if (!selectedFile) {
-        setPressToSeeEnabled(false);
-        alert("Upload a target photo first.");
-        return;
-      }
+      // If disabled (extra safety), do nothing
+      if (pressToSee.classList.contains("disabled") || !selectedFile) return;
 
-      const distanceYards = sanitizeDistance(distanceInput ? distanceInput.value : 100);
+      const dist = distanceInput ? distanceInput.value : "100";
 
-      alert(
-        `YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS\n\nReady to analyze.\n\nPhoto: ${selectedFile.name}\nDistance: ${distanceYards} yards\n\nNext step: connect this button to your backend analyze endpoint.`
+      openModal(
+        "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+        `
+          <div style="font-weight:700; margin-bottom:8px;">Ready to analyze.</div>
+          <div style="opacity:0.95;">
+            <div><b>Photo:</b> ${selectedFile.name}</div>
+            <div><b>Distance:</b> ${dist} yards</div>
+          </div>
+          <div style="margin-top:12px; opacity:0.9;">
+            Next step: connect this button to your backend analyze endpoint.
+          </div>
+        `
       );
     });
   }
