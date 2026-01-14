@@ -1,380 +1,230 @@
-/**
- * backend_new/server.js
- *
- * SCZN3 BACKEND — PADLOCKED COORDS (LOCK_V1) + PILOT SCORE (OFFSET_ONLY_V1)
- *
- * LOCK RULES (DO NOT EDIT WITHOUT UPDATING LOCK_VERSION + TESTS):
- * 1) Target coordinate system is:
- *      +X = RIGHT, +Y = UP
- * 2) POIB inches returned by /api/analyze MUST be in target coords.
- * 3) Correction is ALWAYS:
- *      correction = bull - POIB
- *    where bull is in target coords (usually 0,0), POIB is target coords inches.
- * 4) Backend returns DIRECTIONS (frontend must display, not reinterpret).
- *
- * PILOT SCORING (OFFSET ONLY):
- *  - r = sqrt(poibX^2 + poibY^2)  (inches)
- *  - score = clamp(100 * (1 - r/6), 0, 100)
- *
- * Endpoints:
- *   GET  /health
- *   GET  /api/health
- *   POST /api/calc
- *   POST /api/analyze   (multipart form-data: image)
- */
+/* frontend_new/index.js
+   SEC Upload Page Logic (thumbnail + enable/disable + backend analyze call)
+*/
 
-const express = require("express");
-const cors = require("cors");
-const multer = require("multer");
-const Jimp = require("jimp");
+(() => {
+  // =========================
+  // STEP 1: SET YOUR BACKEND
+  // =========================
+  // NO trailing slash
+  const API_BASE = "https://sczn3-backend-new.onrender.com";
 
-// =====================
-// PADLOCK STAMP
-// =====================
-const LOCK_VERSION = "LOCK_V1";
-const COORD_SYSTEM = "TARGET_INCHES_X_RIGHT_Y_UP";
-const SCORE_VERSION = "OFFSET_ONLY_V1";
+  // Backend route expected:
+  // POST {API_BASE}/api/analyze
+  // multipart/form-data fields:
+  // - image (file)
 
-// =====================
-// APP
-// =====================
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+  // =========================
+  // DOM
+  // =========================
+  const fileInput = document.getElementById("targetPhoto");
+  const thumb = document.getElementById("thumb");
+  const distanceInput = document.getElementById("distanceYards");
 
-// Multer (memory)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
-});
+  const buyMoreBtn = document.getElementById("buyMoreBtn");
+  const pressToSeeBtn = document.getElementById("pressToSee");
 
-// =====================
-// HELPERS (LOCKED)
-// =====================
-function n(v, fallback = 0) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : fallback;
-}
+  // Modal (created in HTML)
+  const modalOverlay = document.getElementById("secModalOverlay");
+  const modalTitle = document.getElementById("secModalTitle");
+  const modalBody = document.getElementById("secModalBody");
+  const modalClose = document.getElementById("secModalClose");
 
-function f2(v) {
-  const x = n(v);
-  return Math.round(x * 100) / 100;
-}
+  // =========================
+  // Helpers
+  // =========================
+  function hasFileSelected() {
+    return fileInput && fileInput.files && fileInput.files.length > 0;
+  }
 
-function clamp(x, lo, hi) {
-  const xx = n(x);
-  return Math.max(lo, Math.min(hi, xx));
-}
+  function setPressToSeeEnabled(isEnabled) {
+    if (!pressToSeeBtn) return;
 
-/**
- * PILOT SCORE: offset-only
- * r = distance from bull (0,0) to POIB in inches
- * score = clamp(100 * (1 - r/6), 0, 100)
- */
-function computeOffsetScore(poibX_in, poibY_in) {
-  const x = n(poibX_in);
-  const y = n(poibY_in);
-  const r = Math.sqrt(x * x + y * y); // inches
-  const score = clamp(100 * (1 - r / 6), 0, 100);
-  return { r_in: r, score };
-}
-
-/**
- * LOCKED direction/correction:
- * correction = bull - POIB
- */
-function computeCorrection(bullX_in, bullY_in, poibX_in, poibY_in) {
-  const dx = n(bullX_in) - n(poibX_in);
-  const dy = n(bullY_in) - n(poibY_in);
-
-  return {
-    dx,
-    dy,
-    windageDirection: dx >= 0 ? "RIGHT" : "LEFT",
-    elevationDirection: dy >= 0 ? "UP" : "DOWN",
-  };
-}
-
-/**
- * LOCKED pixel -> inches conversion in TARGET coords
- * image coords: +X right, +Y down
- * target coords: +X right, +Y up
- *
- * poibX_in = (groupX_px - bullX_px)/ppi
- * poibY_in = (bullY_px - groupY_px)/ppi   <-- Y flipped (LOCK)
- */
-function pixelsToTargetInches(groupX_px, groupY_px, bullX_px, bullY_px, ppi) {
-  const p = n(ppi);
-  if (!(p > 0)) return { poibX_in: 0, poibY_in: 0, ppi_used: 0 };
-
-  const poibX_in = (n(groupX_px) - n(bullX_px)) / p;
-  const poibY_in = (n(bullY_px) - n(groupY_px)) / p; // LOCK: Y flipped
-
-  return { poibX_in, poibY_in, ppi_used: p };
-}
-
-/**
- * Rough heuristic analyzer (direction-safe):
- * - Finds bull center by locating the centroid of "dark" pixels in the image.
- * - Finds group center by locating centroid of "orange-ish" pixels (bullet holes).
- *
- * NOTE:
- * - PPI is optional. If not provided and we can’t estimate reliably, we use a fallback.
- * - Direction is still correct because it's based on relative position and the Y flip.
- */
-async function analyzeImage(buffer) {
-  const img = await Jimp.read(buffer);
-
-  // Normalize size for stable thresholding
-  const targetW = 1200;
-  if (img.bitmap.width > targetW) img.resize(targetW, Jimp.AUTO);
-
-  const w = img.bitmap.width;
-  const h = img.bitmap.height;
-
-  // 1) Bull center = centroid of dark pixels
-  let bullSumX = 0,
-    bullSumY = 0,
-    bullCount = 0;
-
-  // 2) Group center = centroid of orange pixels
-  let grpSumX = 0,
-    grpSumY = 0,
-    grpCount = 0;
-
-  // Sampling step (speed)
-  const step = 2;
-
-  for (let y = 0; y < h; y += step) {
-    for (let x = 0; x < w; x += step) {
-      const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
-
-      // Dark pixel heuristic
-      const brightness = (r + g + b) / 3;
-      const isDark = brightness < 70;
-
-      if (isDark) {
-        bullSumX += x;
-        bullSumY += y;
-        bullCount++;
-      }
-
-      // Orange splatter heuristic (synthetic orange cluster targets)
-      const isOrange =
-        r > 140 && g > 70 && g < 200 && b < 120 && r > g && g > b;
-
-      if (isOrange) {
-        grpSumX += x;
-        grpSumY += y;
-        grpCount++;
-      }
+    if (isEnabled) {
+      pressToSeeBtn.classList.remove("disabled");
+      pressToSeeBtn.setAttribute("aria-disabled", "false");
+      pressToSeeBtn.style.pointerEvents = "auto";
+    } else {
+      pressToSeeBtn.classList.add("disabled");
+      pressToSeeBtn.setAttribute("aria-disabled", "true");
+      pressToSeeBtn.style.pointerEvents = "none";
     }
   }
 
-  let groupX_px, groupY_px;
-
-  const bullX_px = bullCount > 0 ? bullSumX / bullCount : w / 2;
-  const bullY_px = bullCount > 0 ? bullSumY / bullCount : h / 2;
-
-  if (grpCount > 50) {
-    groupX_px = grpSumX / grpCount;
-    groupY_px = grpSumY / grpCount;
-  } else {
-    // Fallback: dark centroid far from bull
-    let farSumX = 0,
-      farSumY = 0,
-      farCount = 0;
-
-    for (let y = 0; y < h; y += step) {
-      for (let x = 0; x < w; x += step) {
-        const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
-        const brightness = (r + g + b) / 3;
-        const isDark = brightness < 60;
-        if (!isDark) continue;
-
-        const dx = x - bullX_px;
-        const dy = y - bullY_px;
-        const dist2 = dx * dx + dy * dy;
-
-        if (dist2 < 140 * 140) continue;
-
-        farSumX += x;
-        farSumY += y;
-        farCount++;
-      }
-    }
-
-    groupX_px = farCount > 0 ? farSumX / farCount : bullX_px;
-    groupY_px = farCount > 0 ? farSumY / farCount : bullY_px;
+  function stripHtml(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent || div.innerText || "";
   }
 
-  const ppi_fallback = 100;
-  const ppi = ppi_fallback;
+  function openModal(title, htmlBody) {
+    if (!modalOverlay) {
+      alert(`${title}\n\n${stripHtml(htmlBody)}`);
+      return;
+    }
+    if (modalTitle) modalTitle.textContent = title;
+    if (modalBody) modalBody.innerHTML = htmlBody;
 
-  return {
-    resizedW: w,
-    resizedH: h,
-    bull_px: { x: bullX_px, y: bullY_px },
-    group_px: { x: groupX_px, y: groupY_px },
-    ppi_estimate: ppi,
-    method: grpCount > 50 ? "orange_centroid" : "dark_far_centroid",
-    samples: Math.floor((w / step) * (h / step)),
-    orangeCount: grpCount,
-    darkCount: bullCount,
-  };
-}
+    modalOverlay.style.display = "flex";
+    modalOverlay.setAttribute("aria-hidden", "false");
+  }
 
-// =====================
-// ROUTES
-// =====================
-app.get(["/health", "/api/health"], (req, res) => {
-  res.json({
-    ok: true,
-    service: "sczn3-backend-new",
-    lock_version: LOCK_VERSION,
-    coord_system: COORD_SYSTEM,
-    score_version: SCORE_VERSION,
-    time: new Date().toISOString(),
-  });
-});
+  function closeModal() {
+    if (!modalOverlay) return;
+    modalOverlay.style.display = "none";
+    modalOverlay.setAttribute("aria-hidden", "true");
+  }
 
-/**
- * POST /api/calc
- * body:
- *   bull_in: {x,y} (optional, default 0,0)
- *   poib_in: {x,y} (required)
- */
-app.post("/api/calc", (req, res) => {
-  const bullX = n(req.body?.bull_in?.x, 0);
-  const bullY = n(req.body?.bull_in?.y, 0);
+  function fmt(v) {
+    return String(v ?? "").trim();
+  }
 
-  const poibX = n(req.body?.poib_in?.x, 0);
-  const poibY = n(req.body?.poib_in?.y, 0);
+  async function analyzeToBackend(file) {
+    // ✅ FIX: your backend route is /api/analyze
+    const url = `${API_BASE}/api/analyze`;
 
-  const corr = computeCorrection(bullX, bullY, poibX, poibY);
+    const fd = new FormData();
+    // ✅ backend expects field name: "image"
+    fd.append("image", file);
 
-  // Pilot score uses POIB relative to bull (bull defaults to 0,0 in our system)
-  const scoreObj = computeOffsetScore(poibX, poibY);
-
-  res.json({
-    ok: true,
-    lock_version: LOCK_VERSION,
-    coord_system: COORD_SYSTEM,
-    score_version: SCORE_VERSION,
-
-    bull_in: { x: bullX, y: bullY },
-    poib_in: { x: poibX, y: poibY },
-
-    correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
-    directions: {
-      windage: corr.windageDirection,
-      elevation: corr.elevationDirection,
-    },
-
-    // Pilot score fields
-    offset_in: f2(scoreObj.r_in),
-    score: f2(scoreObj.score),
-  });
-});
-
-/**
- * POST /api/analyze
- * multipart form-data:
- *   image: file
- *
- * Returns (LOCKED):
- *   poib_in in TARGET coords (+X right, +Y up)
- *   directions computed from correction = bull - POIB
- *   pilot scoring: offset-only
- */
-app.post("/api/analyze", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({
-        ok: false,
-        error: "No image uploaded (field name: image)",
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        body: fd,
       });
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      throw new Error(`Load failed\nURL tried: ${url}\n${msg}`);
     }
 
-    const a = await analyzeImage(req.file.buffer);
+    const contentType = res.headers.get("content-type") || "";
 
-    // Bull in target coords is defined as 0,0 for our standard.
-    const bull_in = { x: 0, y: 0 };
+    if (!res.ok) {
+      let bodyText = "";
+      try {
+        bodyText = await res.text();
+      } catch (_) {}
+      throw new Error(
+        `HTTP ${res.status} ${res.statusText}\nURL tried: ${url}\n${bodyText || "(no body)"}`
+      );
+    }
 
-    // Convert pixels -> inches in TARGET coords (LOCKED Y flip)
-    const conv = pixelsToTargetInches(
-      a.group_px.x,
-      a.group_px.y,
-      a.bull_px.x,
-      a.bull_px.y,
-      a.ppi_estimate
-    );
+    if (contentType.includes("application/json")) return await res.json();
+    return await res.text();
+  }
 
-    const poib_in = {
-      x: f2(conv.poibX_in),
-      y: f2(conv.poibY_in),
-    };
+  // =========================
+  // Init state
+  // =========================
+  setPressToSeeEnabled(false);
 
-    // LOCKED correction and directions
-    const corr = computeCorrection(bull_in.x, bull_in.y, poib_in.x, poib_in.y);
-
-    // PILOT SCORE (offset-only)
-    const scoreObj = computeOffsetScore(poib_in.x, poib_in.y);
-
-    return res.json({
-      ok: true,
-
-      // Padlock stamp
-      lock_version: LOCK_VERSION,
-      coord_system: COORD_SYSTEM,
-      score_version: SCORE_VERSION,
-
-      // Canonical values
-      bull_in,
-      poib_in,
-
-      correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
-      directions: {
-        windage: corr.windageDirection,
-        elevation: corr.elevationDirection,
-      },
-
-      // Pilot scoring fields
-      offset_in: f2(scoreObj.r_in),
-      score: f2(scoreObj.score),
-
-      // Debug info (safe)
-      note:
-        "LOCKED: target coords +X right +Y up; poibY uses Y flip; correction = bull - POIB; score = OffsetOnly",
-      debug: {
-        method: a.method,
-        resizedW: a.resizedW,
-        resizedH: a.resizedH,
-        bull_px: { x: f2(a.bull_px.x), y: f2(a.bull_px.y) },
-        group_px: { x: f2(a.group_px.x), y: f2(a.group_px.y) },
-        ppi_estimate: a.ppi_estimate,
-        orangeCount: a.orangeCount,
-        darkCount: a.darkCount,
-        samples: a.samples,
-      },
-    });
-  } catch (err) {
-    return res.status(500).json({
-      ok: false,
-      lock_version: LOCK_VERSION,
-      coord_system: COORD_SYSTEM,
-      score_version: SCORE_VERSION,
-      error: String(err),
+  // =========================
+  // Events
+  // =========================
+  if (modalClose) modalClose.addEventListener("click", closeModal);
+  if (modalOverlay) {
+    modalOverlay.addEventListener("click", (e) => {
+      if (e.target === modalOverlay) closeModal();
     });
   }
-});
 
-// =====================
-// START
-// =====================
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`[sczn3-backend-new] listening on :${PORT}`);
-  console.log(`[LOCK] ${LOCK_VERSION} — ${COORD_SYSTEM}`);
-  console.log(`[SCORE] ${SCORE_VERSION}`);
-});
+  if (buyMoreBtn) {
+    buyMoreBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openModal("BUY MORE TARGETS", "<div>Coming soon.</div>");
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      if (!hasFileSelected()) {
+        if (thumb) {
+          thumb.style.display = "none";
+          thumb.removeAttribute("src");
+        }
+        setPressToSeeEnabled(false);
+        return;
+      }
+
+      const file = fileInput.files[0];
+
+      // Thumbnail preview
+      if (thumb) {
+        const objUrl = URL.createObjectURL(file);
+        thumb.src = objUrl;
+        thumb.style.display = "block";
+        thumb.onload = () => URL.revokeObjectURL(objUrl);
+      }
+
+      setPressToSeeEnabled(true);
+    });
+  }
+
+  // Main button: analyze
+  if (pressToSeeBtn) {
+    pressToSeeBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+
+      if (!hasFileSelected()) return;
+
+      const file = fileInput.files[0];
+      const distanceYards = fmt(distanceInput ? distanceInput.value : "100") || "100";
+
+      openModal(
+        "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+        `
+          <div style="margin-bottom:12px;">Analyzing…</div>
+          <div style="opacity:.9;">
+            <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
+            <div><b>Distance:</b> ${distanceYards} yards</div>
+          </div>
+        `
+      );
+
+      try {
+        const result = await analyzeToBackend(file);
+
+        openModal(
+          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+          `
+            <div style="margin-bottom:12px;"><b>Analyze success ✅</b></div>
+            <div style="opacity:.9; margin-bottom:10px;">
+              <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
+              <div><b>Distance:</b> ${distanceYards} yards</div>
+            </div>
+            <div style="white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.35;">
+${typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+            </div>
+          `
+        );
+      } catch (err) {
+        const message = err && err.message ? err.message : String(err);
+
+        openModal(
+          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+          `
+            <div style="color:#ffb3b3; font-weight:700; margin-bottom:10px;">
+              Analyze failed:
+              <span style="font-weight:600; color:#ffd0d0;">${stripHtml(message).split("\n")[0]}</span>
+            </div>
+
+            <div style="opacity:.95; margin-bottom:10px; white-space:pre-wrap;">
+${stripHtml(message)}
+            </div>
+
+            <div style="opacity:.9; margin-top:10px;">
+              <div><b>Check:</b></div>
+              <ul style="margin:8px 0 0 18px;">
+                <li>API_BASE is correct</li>
+                <li>Backend route exists (<b>/api/analyze</b>)</li>
+                <li>Backend allows CORS from your frontend domain</li>
+                <li>Backend expects multipart field: <b>image</b></li>
+              </ul>
+            </div>
+          `
+        );
+      }
+    });
+  }
+})();
