@@ -22,8 +22,8 @@
 
     .sec-word {
       font-weight: 900;
-      color: #b00000;          /* red */
-      margin-left: 10px;       /* <-- adds the space you asked for */
+      color: #b00000;
+      margin-left: 10px;
       display: inline-block;
     }
 
@@ -36,7 +36,7 @@
 
     .uploadBtn {
       display: inline-block;
-      background: #2f5f73;
+      background: #2f5f73; /* <- teal */
       color: #fff;
       padding: 14px 22px;
       border-radius: 12px;
@@ -53,7 +53,7 @@
 
     /* THUMBNAIL PREVIEW */
     img#thumb {
-      display: none;           /* JS will flip to block */
+      display: none;
       margin: 16px auto 0 auto;
       max-width: 92%;
       border: 1px solid #cfcfcf;
@@ -90,15 +90,15 @@
       color: #1f4fd8;
     }
 
-    /* BOX AROUND "YOUR SCORE / ..." */
+    /* BOX AROUND "YOUR SCORE / ..." (MATCH UPLOAD COLOR) */
     #pressToSee {
       margin-top: 30px;
       display: inline-block;
       padding: 14px 16px;
-      border: 2px solid #1f4fd8;
+      border: 2px solid #2f5f73;   /* <- match upload */
       border-radius: 12px;
       background: #ffffff;
-      color: #1f4fd8;
+      color: #2f5f73;              /* <- match upload */
       font-weight: 700;
       text-decoration: none;
       max-width: 92%;
@@ -137,7 +137,6 @@
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 
-    <!-- Thumbnail preview (this was missing — adding back fixes it) -->
     <img id="thumb" alt="Target thumbnail preview" />
   </div>
 
@@ -162,8 +161,7 @@
     YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS
   </a>
 
-  <!-- keep cache-bust + defer -->
-  <script src="./index.js?v=4" defer></script>
+  <script src="./index.js?v=5" defer></script>
 
 </body>
 </html>
