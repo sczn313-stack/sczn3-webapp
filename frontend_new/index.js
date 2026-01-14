@@ -1,7 +1,8 @@
 /* frontend_new/index.js
    SEC Upload Page Logic
    - Thumbnail preview
-   - Backend analyze call
+   - Client-side resize/compress BEFORE upload (fixes iPhone huge-photo stalls)
+   - Backend analyze call with timeout (no infinite "Analyzing…")
    - Scope Profiles (MOA/MIL, click value)
    - True MOA support (1 MOA = 1.047" @ 100y)
    - Clean SEC output + Confirm Zero + Next 5-shot challenge
@@ -13,6 +14,11 @@
   // CONFIG
   // =========================
   const API_BASE = "https://sczn3-backend-new.onrender.com";
+
+  // Client-side image prep (key fix)
+  const MAX_EDGE_PX = 1600;     // long-edge cap
+  const JPEG_QUALITY = 0.82;    // 0..1
+  const ANALYZE_TIMEOUT_MS = 25000;
 
   // =========================
   // DOM
@@ -97,6 +103,79 @@
     return Math.round(x * 100) / 100;
   }
 
+  function bytesToMB(bytes) {
+    return Math.round((bytes / (1024 * 1024)) * 100) / 100;
+  }
+
+  // =========================
+  // Client-side resize/compress (THE FIX)
+  // =========================
+  function loadImageFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not load image"));
+      };
+
+      img.src = url;
+    });
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), type, quality);
+    });
+  }
+
+  async function prepareUploadBlob(originalFile) {
+    // If it's already small, still normalize to JPEG for consistent backend behavior
+    const img = await loadImageFromFile(originalFile);
+
+    const w0 = img.naturalWidth || img.width;
+    const h0 = img.naturalHeight || img.height;
+
+    let w = w0;
+    let h = h0;
+
+    const maxEdge = Math.max(w0, h0);
+    if (maxEdge > MAX_EDGE_PX) {
+      const scale = MAX_EDGE_PX / maxEdge;
+      w = Math.round(w0 * scale);
+      h = Math.round(h0 * scale);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext("2d", { alpha: false });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, w, h);
+
+    // Always output JPEG (fast decode, smaller)
+    const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
+    if (!blob) throw new Error("Image compression failed");
+
+    return {
+      blob,
+      outName: (originalFile.name || "target").replace(/\.[^.]+$/, "") + ".jpg",
+      origW: w0,
+      origH: h0,
+      outW: w,
+      outH: h,
+      origMB: bytesToMB(originalFile.size),
+      outMB: bytesToMB(blob.size),
+    };
+  }
+
   // =========================
   // Scope profiles (dynamic UI)
   // =========================
@@ -106,7 +185,6 @@
     { id: "mil_01", label: "MIL — 0.1/click", kind: "MIL", clickValue: 0.1, milInchesAt100: 3.6 },
     { id: "mil_005", label: "MIL — 0.05/click", kind: "MIL", clickValue: 0.05, milInchesAt100: 3.6 },
   ];
-
   let selectedProfileId = "moa_025_true";
 
   function injectProfileUI() {
@@ -160,10 +238,7 @@
   // =========================
   function inchesPerUnitAtDistance(profile, distanceYards) {
     const yd = n(distanceYards, 100);
-
-    if (profile.kind === "MOA") {
-      return (profile.moaInchesAt100 || 1.047) * (yd / 100);
-    }
+    if (profile.kind === "MOA") return (profile.moaInchesAt100 || 1.047) * (yd / 100);
     return (profile.milInchesAt100 || 3.6) * (yd / 100);
   }
 
@@ -187,21 +262,34 @@
   }
 
   // =========================
-  // Backend call
+  // Backend call (with timeout)
   // =========================
-  async function analyzeToBackend(file) {
+  async function analyzeToBackend(imageBlob, fileNameForServer) {
     const url = `${API_BASE}/api/analyze`;
 
     const fd = new FormData();
-    fd.append("image", file);
+    fd.append("image", imageBlob, fileNameForServer || "target.jpg");
+
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
 
     let res;
     try {
-      res = await fetch(url, { method: "POST", body: fd });
+      res = await fetch(url, {
+        method: "POST",
+        body: fd,
+        mode: "cors",
+        cache: "no-store",
+        signal: controller.signal,
+      });
     } catch (err) {
-      const msg = err && err.message ? err.message : String(err);
-      throw new Error(`Load failed\nURL tried: ${url}\n${msg}`);
+      clearTimeout(t);
+      const msg = err && err.name === "AbortError"
+        ? `Timed out after ${Math.round(ANALYZE_TIMEOUT_MS / 1000)}s`
+        : (err && err.message ? err.message : String(err));
+      throw new Error(`Analyze request failed\nURL tried: ${url}\n${msg}`);
     }
+    clearTimeout(t);
 
     if (!res.ok) {
       let bodyText = "";
@@ -279,17 +367,13 @@
 
         <hr style="border:none;border-top:1px solid rgba(0,0,0,.12);margin:14px 0;">
 
-        <div style="font-weight:900; margin-bottom:8px;">
-          Confirm Zero
-        </div>
+        <div style="font-weight:900; margin-bottom:8px;">Confirm Zero</div>
         <div style="opacity:.92; margin-bottom:12px;">
           Dial the clicks above, then fire a tight 3–5 shot group.
           If your group is centered, you’re done.
         </div>
 
-        <div style="font-weight:900; margin-bottom:8px;">
-          Next 5-Shot Challenge
-        </div>
+        <div style="font-weight:900; margin-bottom:8px;">Next 5-Shot Challenge</div>
         <div style="opacity:.92;">
           Want to level up? Shoot 5 more and run it again to track improvement.
         </div>
@@ -321,7 +405,7 @@
   // Scope UI
   injectProfileUI();
 
-  // File picker: ensure label triggers the hidden input everywhere
+  // File picker: ensure label triggers input everywhere
   if (uploadLabel && fileInput) {
     uploadLabel.addEventListener("click", (e) => {
       e.preventDefault();
@@ -343,6 +427,7 @@
 
       const file = fileInput.files[0];
 
+      // Thumbnail (original)
       if (thumb) {
         const objUrl = URL.createObjectURL(file);
         thumb.src = objUrl;
@@ -367,9 +452,35 @@
       openModal(
         "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
         `
+          <div style="margin-bottom:12px;">Preparing photo…</div>
+          <div style="opacity:.9;">
+            <div><b>Original:</b> ${file ? file.name : "(none)"} (${bytesToMB(file.size)} MB)</div>
+            <div><b>Distance:</b> ${distanceYards} yards</div>
+            <div><b>Profile:</b> ${profile.label}</div>
+          </div>
+        `
+      );
+
+      let prep;
+      try {
+        prep = await prepareUploadBlob(file);
+      } catch (err) {
+        const message = err && err.message ? err.message : String(err);
+        openModal(
+          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+          `<div style="color:#ff6b6b;font-weight:900;margin-bottom:10px;">Photo prep failed</div>
+           <div style="white-space:pre-wrap;opacity:.95;">${stripHtml(message)}</div>`
+        );
+        return;
+      }
+
+      openModal(
+        "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+        `
           <div style="margin-bottom:12px;">Analyzing…</div>
           <div style="opacity:.9;">
-            <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
+            <div><b>Upload:</b> ${prep.outName} (${prep.outMB} MB)</div>
+            <div><b>Resize:</b> ${prep.origW}×${prep.origH} → ${prep.outW}×${prep.outH}</div>
             <div><b>Distance:</b> ${distanceYards} yards</div>
             <div><b>Profile:</b> ${profile.label}</div>
           </div>
@@ -377,8 +488,11 @@
       );
 
       try {
-        const result = await analyzeToBackend(file);
-        openModal("YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS", renderSEC(result, file ? file.name : "", distanceYards, profile));
+        const result = await analyzeToBackend(prep.blob, prep.outName);
+        openModal(
+          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+          renderSEC(result, prep.outName, distanceYards, profile)
+        );
       } catch (err) {
         const message = err && err.message ? err.message : String(err);
         openModal(
@@ -391,10 +505,9 @@
             <div style="opacity:.9; margin-top:12px;">
               <b>Check:</b>
               <ul style="margin:8px 0 0 18px;">
-                <li>API_BASE is correct</li>
                 <li>Backend route exists: <b>/api/analyze</b></li>
-                <li>Backend allows CORS from your frontend domain</li>
                 <li>multipart field name is <b>image</b></li>
+                <li>Try a different photo if this one is unusual</li>
               </ul>
             </div>
           `
