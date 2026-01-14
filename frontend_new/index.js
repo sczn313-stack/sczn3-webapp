@@ -5,21 +5,17 @@
    - Scope Profiles (MOA/MIL, click value)
    - True MOA support (1 MOA = 1.047" @ 100y)
    - Clean SEC output + Confirm Zero + Next 5-shot challenge
+   - Modal overlay (no alert fallback) + background scroll lock
 */
 
 (() => {
   // =========================
   // CONFIG
   // =========================
-  // Render backend (NO trailing slash)
   const API_BASE = "https://sczn3-backend-new.onrender.com";
 
-  // Your backend endpoint:
-  // POST {API_BASE}/api/analyze  multipart/form-data: image
-  // (backend currently ignores distanceYards — that's OK)
-
   // =========================
-  // DOM (existing)
+  // DOM
   // =========================
   const fileInput = document.getElementById("targetPhoto");
   const thumb = document.getElementById("thumb");
@@ -28,14 +24,14 @@
   const buyMoreBtn = document.getElementById("buyMoreBtn");
   const pressToSeeBtn = document.getElementById("pressToSee");
 
-  // Modal (exists in HTML)
+  // Modal (must exist in HTML now)
   const modalOverlay = document.getElementById("secModalOverlay");
   const modalTitle = document.getElementById("secModalTitle");
   const modalBody = document.getElementById("secModalBody");
   const modalClose = document.getElementById("secModalClose");
 
   // =========================
-  // Small helpers
+  // Helpers
   // =========================
   function hasFileSelected() {
     return fileInput && fileInput.files && fileInput.files.length > 0;
@@ -64,11 +60,16 @@
 
   function openModal(title, htmlBody) {
     if (!modalOverlay) {
+      // If you ever see this alert again, the modal markup is missing.
       alert(`${title}\n\n${stripHtml(htmlBody)}`);
       return;
     }
+
     if (modalTitle) modalTitle.textContent = title;
     if (modalBody) modalBody.innerHTML = htmlBody;
+
+    // lock background scroll
+    document.body.classList.add("modal-open");
 
     modalOverlay.style.display = "flex";
     modalOverlay.setAttribute("aria-hidden", "false");
@@ -76,8 +77,12 @@
 
   function closeModal() {
     if (!modalOverlay) return;
+
     modalOverlay.style.display = "none";
     modalOverlay.setAttribute("aria-hidden", "true");
+
+    // unlock background scroll
+    document.body.classList.remove("modal-open");
   }
 
   function fmt(v) {
@@ -97,11 +102,9 @@
   // =========================
   // Scope profiles (dynamic UI)
   // =========================
-  // We inject a small profile control under the distance box (no HTML edit needed).
-  // Defaults: MOA 0.25/click True MOA
   const PROFILES = [
-    { id: "moa_025_true", label: 'MOA — 0.25/click (True MOA)', kind: "MOA", clickValue: 0.25, moaInchesAt100: 1.047 },
-    { id: "moa_0125_true", label: 'MOA — 0.125/click (True MOA)', kind: "MOA", clickValue: 0.125, moaInchesAt100: 1.047 },
+    { id: "moa_025_true", label: "MOA — 0.25/click (True MOA)", kind: "MOA", clickValue: 0.25, moaInchesAt100: 1.047 },
+    { id: "moa_0125_true", label: "MOA — 0.125/click (True MOA)", kind: "MOA", clickValue: 0.125, moaInchesAt100: 1.047 },
     { id: "mil_01", label: "MIL — 0.1/click", kind: "MIL", clickValue: 0.1, milInchesAt100: 3.6 },
     { id: "mil_005", label: "MIL — 0.05/click", kind: "MIL", clickValue: 0.05, milInchesAt100: 3.6 },
   ];
@@ -109,10 +112,7 @@
   let selectedProfileId = "moa_025_true";
 
   function injectProfileUI() {
-    // Find a reasonable place: near the distance input
     if (!distanceInput) return;
-
-    // Avoid double-inject
     if (document.getElementById("scopeProfileWrap")) return;
 
     const wrap = document.createElement("div");
@@ -141,7 +141,6 @@
       </div>
     `;
 
-    // Insert after distance input's container-ish area
     const parent = distanceInput.parentElement;
     if (parent) parent.appendChild(wrap);
 
@@ -159,31 +158,23 @@
   }
 
   // =========================
-  // Click computation (frontend)
+  // Click computation
   // =========================
-  // Backend already returns correction_in dx/dy (bull - POIB) and directions.
-  // We convert correction inches -> clicks based on chosen profile and distance.
   function inchesPerUnitAtDistance(profile, distanceYards) {
     const yd = n(distanceYards, 100);
 
     if (profile.kind === "MOA") {
-      // inches per 1 MOA at distance
-      const inchesPerMOA = (profile.moaInchesAt100 || 1.047) * (yd / 100);
-      return inchesPerMOA; // per 1 MOA
+      return (profile.moaInchesAt100 || 1.047) * (yd / 100);
     }
 
-    // MIL:
-    // 1 mil ≈ 3.6" @ 100y
-    const inchesPerMIL = (profile.milInchesAt100 || 3.6) * (yd / 100);
-    return inchesPerMIL; // per 1 mil
+    return (profile.milInchesAt100 || 3.6) * (yd / 100);
   }
 
   function clicksFromCorrection(profile, distanceYards, dx_in, dy_in, windageDir, elevDir) {
-    const unitInches = inchesPerUnitAtDistance(profile, distanceYards); // inches per 1 MOA or 1 MIL
-    const clickValue = n(profile.clickValue, 0.25); // MOA/click or MIL/click
+    const unitInches = inchesPerUnitAtDistance(profile, distanceYards);
+    const clickValue = n(profile.clickValue, 0.25);
 
-    // units needed:
-    const windUnits = Math.abs(n(dx_in, 0)) / unitInches; // MOA or MIL
+    const windUnits = Math.abs(n(dx_in, 0)) / unitInches;
     const elevUnits = Math.abs(n(dy_in, 0)) / unitInches;
 
     const windClicks = windUnits / clickValue;
@@ -225,7 +216,7 @@
   }
 
   // =========================
-  // Render (Final SEC view)
+  // Render SEC
   // =========================
   function renderSEC(result, fileName, distanceYards, profile) {
     const ok = !!result?.ok;
@@ -244,7 +235,6 @@
 
     const clickObj = clicksFromCorrection(profile, distanceYards, dx, dy, windDir, elevDir);
 
-    // Build a clean “card” layout
     return `
       <div style="font-size:16px; line-height:1.35;">
         <div style="font-weight:800; margin:6px 0 14px;">Analyze success ✅</div>
@@ -311,7 +301,7 @@
   }
 
   // =========================
-  // Init
+  // Init + events
   // =========================
   setPressToSeeEnabled(false);
 
