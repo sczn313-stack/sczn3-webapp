@@ -6,12 +6,11 @@
   // =========================
   // STEP 1: SET YOUR BACKEND
   // =========================
-  // Replace with your Render backend service URL (NO trailing slash)
-  const API_BASE_RAW = "https://sczn3-backend-new.onrender.com";
-  const API_BASE = String(API_BASE_RAW || "").replace(/\/+$/, ""); // strips trailing slash
+  // Render backend service URL (NO trailing slash)
+  const API_BASE = "https://sczn3-backend-new.onrender.com";
 
   // Backend route expected:
-  // POST {API_BASE}/analyze
+  // POST {API_BASE}/api/analyze
   // multipart/form-data fields:
   // - image (file)
   // - distanceYards (string/number)
@@ -20,6 +19,7 @@
   // DOM
   // =========================
   const fileInput = document.getElementById("targetPhoto");
+  const uploadLabel = document.getElementById("uploadLabel");
   const thumb = document.getElementById("thumb");
   const distanceInput = document.getElementById("distanceYards");
 
@@ -53,6 +53,12 @@
     }
   }
 
+  function stripHtml(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent || div.innerText || "";
+  }
+
   function openModal(title, htmlBody) {
     if (!modalOverlay) {
       alert(`${title}\n\n${stripHtml(htmlBody)}`);
@@ -71,18 +77,13 @@
     modalOverlay.setAttribute("aria-hidden", "true");
   }
 
-  function stripHtml(html) {
-    const div = document.createElement("div");
-    div.innerHTML = html;
-    return div.textContent || div.innerText || "";
-  }
-
   function fmt(v) {
     return String(v ?? "").trim();
   }
 
   async function analyzeToBackend(file, distanceYards) {
-    const url = `${API_BASE}/analyze`;
+    // ✅ IMPORTANT: your backend route is /api/analyze (not /analyze)
+    const url = `${API_BASE}/api/analyze`;
 
     const fd = new FormData();
     fd.append("image", file);
@@ -93,6 +94,7 @@
       res = await fetch(url, {
         method: "POST",
         body: fd,
+        // Do NOT set Content-Type manually for FormData
       });
     } catch (err) {
       const msg = err && err.message ? err.message : String(err);
@@ -219,7 +221,7 @@ ${stripHtml(message)}
               <div><b>Check:</b></div>
               <ul style="margin:8px 0 0 18px;">
                 <li>API_BASE is correct</li>
-                <li>Backend route exists (/analyze)</li>
+                <li>Backend route exists (<b>/api/analyze</b>)</li>
                 <li>Backend allows CORS from your frontend domain</li>
                 <li>Backend expects multipart fields: <b>image</b> and <b>distanceYards</b></li>
               </ul>
