@@ -16,19 +16,21 @@
     /* TITLE */
     h1 {
       line-height: 1.1;
-      margin-bottom: 24px;
+      margin: 0 0 26px 0;
       font-weight: 500;
     }
 
     .sec-word {
       font-weight: 900;
-      color: #b00000; /* deep red */
+      color: #b00000;          /* red */
+      margin-left: 10px;       /* <-- adds the space you asked for */
+      display: inline-block;
     }
 
     /* UPLOAD */
     .uploadBlock {
       width: 100%;
-      margin: 30px 0;
+      margin: 26px 0 10px 0;
       text-align: center;
     }
 
@@ -49,28 +51,38 @@
       color: #8b0000;
     }
 
+    /* THUMBNAIL PREVIEW */
+    img#thumb {
+      display: none;           /* JS will flip to block */
+      margin: 16px auto 0 auto;
+      max-width: 92%;
+      border: 1px solid #cfcfcf;
+      border-radius: 10px;
+    }
+
     /* DISTANCE */
     label {
       display: block;
-      margin-top: 30px;
+      margin-top: 26px;
       font-weight: 600;
     }
 
     input[type="number"] {
       margin-top: 6px;
-      padding: 8px;
+      padding: 8px 10px;
       font-size: 16px;
-      width: 140px;
+      width: 160px;
     }
 
     /* BUTTONS */
     .pillBtn {
       display: inline-block;
-      margin-top: 24px;
+      margin-top: 22px;
       padding: 12px 22px;
       border-radius: 999px;
       font-weight: 600;
       text-decoration: none;
+      text-align: center;
     }
 
     .primary {
@@ -78,25 +90,41 @@
       color: #1f4fd8;
     }
 
-    .disabled {
-      background: #f0f0f0;
+    /* BOX AROUND "YOUR SCORE / ..." */
+    #pressToSee {
+      margin-top: 30px;
+      display: inline-block;
+      padding: 14px 16px;
+      border: 2px solid #1f4fd8;
+      border-radius: 12px;
+      background: #ffffff;
+      color: #1f4fd8;
+      font-weight: 700;
+      text-decoration: none;
+      max-width: 92%;
+    }
+
+    /* Disabled state still works */
+    #pressToSee.disabled {
+      border-color: #d7d7d7;
       color: #9aa0a6;
+      background: #f5f5f5;
+      pointer-events: none;
+      opacity: 0.7;
     }
   </style>
 </head>
 
 <body>
 
-  <!-- TITLE -->
   <h1>
     Shooter<br>
     Experience<br>
-    Card <span class="sec-word">SEC</span>
+    Card<span class="sec-word">SEC</span>
   </h1>
 
-  <!-- UPLOAD -->
   <div class="uploadBlock">
-    <label for="targetPhoto" class="uploadBtn">
+    <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
       UPLOAD TARGET PHOTO or TAKE PICTURE
     </label>
 
@@ -108,9 +136,11 @@
     />
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
+
+    <!-- Thumbnail preview (this was missing — adding back fixes it) -->
+    <img id="thumb" alt="Target thumbnail preview" />
   </div>
 
-  <!-- DISTANCE -->
   <label for="distanceYards">ADJUST DISTANCE (yards)</label>
   <input
     id="distanceYards"
@@ -120,7 +150,6 @@
     step="1"
   />
 
-  <!-- ACTION BUTTONS -->
   <br><br>
 
   <a href="#" class="pillBtn primary" id="buyMoreBtn">
@@ -129,12 +158,12 @@
 
   <br>
 
-  <a href="#" class="pillBtn disabled" id="pressToSee">
+  <a href="#" class="disabled" id="pressToSee">
     YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS
   </a>
 
-  <!-- SCRIPT -->
-  <script src="index.js"></script>
+  <!-- keep cache-bust + defer -->
+  <script src="./index.js?v=4" defer></script>
 
 </body>
 </html>
