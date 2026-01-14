@@ -1,44 +1,38 @@
 /* frontend_new/index.js
-   SEC Upload Page Logic
+   SEC Upload Page Logic (stable)
    - Thumbnail preview
-   - Client-side resize/compress BEFORE upload (fixes iPhone huge-photo stalls)
-   - Backend analyze call with timeout (no infinite "Analyzing…")
+   - Backend analyze call (multipart: image)
    - Scope Profiles (MOA/MIL, click value)
    - True MOA support (1 MOA = 1.047" @ 100y)
    - Clean SEC output + Confirm Zero + Next 5-shot challenge
-   - Modal overlay + background scroll lock
+   - IMPORTANT FIX: normalize image before upload (handles iPhone EXIF rotate/flip)
 */
 
 (() => {
   // =========================
   // CONFIG
   // =========================
+  // Render backend (NO trailing slash)
   const API_BASE = "https://sczn3-backend-new.onrender.com";
-
-  // Client-side image prep (key fix)
-  const MAX_EDGE_PX = 1600;     // long-edge cap
-  const JPEG_QUALITY = 0.82;    // 0..1
-  const ANALYZE_TIMEOUT_MS = 25000;
 
   // =========================
   // DOM
   // =========================
   const fileInput = document.getElementById("targetPhoto");
-  const uploadLabel = document.getElementById("uploadLabel");
   const thumb = document.getElementById("thumb");
   const distanceInput = document.getElementById("distanceYards");
 
   const buyMoreBtn = document.getElementById("buyMoreBtn");
   const pressToSeeBtn = document.getElementById("pressToSee");
 
-  // Modal
+  // Modal (optional; if not present, we fallback to alert)
   const modalOverlay = document.getElementById("secModalOverlay");
   const modalTitle = document.getElementById("secModalTitle");
   const modalBody = document.getElementById("secModalBody");
   const modalClose = document.getElementById("secModalClose");
 
   // =========================
-  // Helpers
+  // Small helpers
   // =========================
   function hasFileSelected() {
     return fileInput && fileInput.files && fileInput.files.length > 0;
@@ -66,15 +60,17 @@
   }
 
   function openModal(title, htmlBody) {
-    if (!modalOverlay) {
+    if (!modalOverlay || !modalTitle || !modalBody) {
       alert(`${title}\n\n${stripHtml(htmlBody)}`);
       return;
     }
 
-    if (modalTitle) modalTitle.textContent = title;
-    if (modalBody) modalBody.innerHTML = htmlBody;
+    modalTitle.textContent = title;
+    modalBody.innerHTML = htmlBody;
 
-    document.body.classList.add("modal-open");
+    // ensure scroll works inside modal body (even if CSS wasn’t set)
+    modalBody.style.maxHeight = "70vh";
+    modalBody.style.overflowY = "auto";
 
     modalOverlay.style.display = "flex";
     modalOverlay.setAttribute("aria-hidden", "false");
@@ -82,11 +78,8 @@
 
   function closeModal() {
     if (!modalOverlay) return;
-
     modalOverlay.style.display = "none";
     modalOverlay.setAttribute("aria-hidden", "true");
-
-    document.body.classList.remove("modal-open");
   }
 
   function fmt(v) {
@@ -103,79 +96,6 @@
     return Math.round(x * 100) / 100;
   }
 
-  function bytesToMB(bytes) {
-    return Math.round((bytes / (1024 * 1024)) * 100) / 100;
-  }
-
-  // =========================
-  // Client-side resize/compress (THE FIX)
-  // =========================
-  function loadImageFromFile(file) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(img);
-      };
-      img.onerror = (e) => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Could not load image"));
-      };
-
-      img.src = url;
-    });
-  }
-
-  function canvasToBlob(canvas, type, quality) {
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), type, quality);
-    });
-  }
-
-  async function prepareUploadBlob(originalFile) {
-    // If it's already small, still normalize to JPEG for consistent backend behavior
-    const img = await loadImageFromFile(originalFile);
-
-    const w0 = img.naturalWidth || img.width;
-    const h0 = img.naturalHeight || img.height;
-
-    let w = w0;
-    let h = h0;
-
-    const maxEdge = Math.max(w0, h0);
-    if (maxEdge > MAX_EDGE_PX) {
-      const scale = MAX_EDGE_PX / maxEdge;
-      w = Math.round(w0 * scale);
-      h = Math.round(h0 * scale);
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-
-    const ctx = canvas.getContext("2d", { alpha: false });
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, 0, 0, w, h);
-
-    // Always output JPEG (fast decode, smaller)
-    const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
-    if (!blob) throw new Error("Image compression failed");
-
-    return {
-      blob,
-      outName: (originalFile.name || "target").replace(/\.[^.]+$/, "") + ".jpg",
-      origW: w0,
-      origH: h0,
-      outW: w,
-      outH: h,
-      origMB: bytesToMB(originalFile.size),
-      outMB: bytesToMB(blob.size),
-    };
-  }
-
   // =========================
   // Scope profiles (dynamic UI)
   // =========================
@@ -185,6 +105,7 @@
     { id: "mil_01", label: "MIL — 0.1/click", kind: "MIL", clickValue: 0.1, milInchesAt100: 3.6 },
     { id: "mil_005", label: "MIL — 0.05/click", kind: "MIL", clickValue: 0.05, milInchesAt100: 3.6 },
   ];
+
   let selectedProfileId = "moa_025_true";
 
   function injectProfileUI() {
@@ -234,12 +155,18 @@
   }
 
   // =========================
-  // Click computation
+  // CLICK COMPUTATION (frontend)
   // =========================
   function inchesPerUnitAtDistance(profile, distanceYards) {
     const yd = n(distanceYards, 100);
-    if (profile.kind === "MOA") return (profile.moaInchesAt100 || 1.047) * (yd / 100);
-    return (profile.milInchesAt100 || 3.6) * (yd / 100);
+
+    if (profile.kind === "MOA") {
+      const inchesPerMOA = (profile.moaInchesAt100 || 1.047) * (yd / 100);
+      return inchesPerMOA; // per 1 MOA
+    }
+
+    const inchesPerMIL = (profile.milInchesAt100 || 3.6) * (yd / 100);
+    return inchesPerMIL; // per 1 mil
   }
 
   function clicksFromCorrection(profile, distanceYards, dx_in, dy_in, windageDir, elevDir) {
@@ -255,41 +182,63 @@
     return {
       windage: { dir: windageDir, clicks: f2(windClicks), dx_in: f2(dx_in) },
       elevation: { dir: elevDir, clicks: f2(elevClicks), dy_in: f2(dy_in) },
-      assumptions: profile.kind === "MOA"
-        ? `Assumes ${clickValue} MOA/click • 1 MOA = ${(profile.moaInchesAt100 || 1.047).toFixed(3)}" @ 100y`
-        : `Assumes ${clickValue} MIL/click • 1 MIL = ${(profile.milInchesAt100 || 3.6).toFixed(1)}" @ 100y`,
+      assumptions:
+        profile.kind === "MOA"
+          ? `Assumes ${clickValue} MOA/click • 1 MOA = ${(profile.moaInchesAt100 || 1.047).toFixed(3)}" @ 100y`
+          : `Assumes ${clickValue} MIL/click • 1 MIL = ${(profile.milInchesAt100 || 3.6).toFixed(1)}" @ 100y`,
     };
   }
 
   // =========================
-  // Backend call (with timeout)
+  // IMPORTANT FIX: Normalize image before upload
   // =========================
-  async function analyzeToBackend(imageBlob, fileNameForServer) {
+  async function normalizeImageFile(file) {
+    // Decode using browser (this respects iPhone EXIF orientation),
+    // then re-encode to a new JPEG Blob (EXIF stripped).
+    const bitmap = await createImageBitmap(file);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0);
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(
+        (b) => resolve(b),
+        "image/jpeg",
+        0.92
+      );
+    });
+
+    if (!blob) throw new Error("Failed to normalize image (canvas.toBlob returned null).");
+
+    const normalizedName = (file.name || "upload")
+      .replace(/\.(heic|heif|png|webp|jpeg|jpg)$/i, "") + "_normalized.jpg";
+
+    return new File([blob], normalizedName, { type: "image/jpeg" });
+  }
+
+  // =========================
+  // Backend call
+  // =========================
+  async function analyzeToBackend(file) {
     const url = `${API_BASE}/api/analyze`;
 
-    const fd = new FormData();
-    fd.append("image", imageBlob, fileNameForServer || "target.jpg");
+    // Normalize BEFORE sending (fixes rotate/flip causing wrong up/down)
+    const normalizedFile = await normalizeImageFile(file);
 
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+    const fd = new FormData();
+    fd.append("image", normalizedFile);
 
     let res;
     try {
-      res = await fetch(url, {
-        method: "POST",
-        body: fd,
-        mode: "cors",
-        cache: "no-store",
-        signal: controller.signal,
-      });
+      res = await fetch(url, { method: "POST", body: fd });
     } catch (err) {
-      clearTimeout(t);
-      const msg = err && err.name === "AbortError"
-        ? `Timed out after ${Math.round(ANALYZE_TIMEOUT_MS / 1000)}s`
-        : (err && err.message ? err.message : String(err));
-      throw new Error(`Analyze request failed\nURL tried: ${url}\n${msg}`);
+      const msg = err && err.message ? err.message : String(err);
+      throw new Error(`Load failed\nURL tried: ${url}\n${msg}`);
     }
-    clearTimeout(t);
 
     if (!res.ok) {
       let bodyText = "";
@@ -301,7 +250,7 @@
   }
 
   // =========================
-  // Render SEC
+  // Render (Final SEC view)
   // =========================
   function renderSEC(result, fileName, distanceYards, profile) {
     const ok = !!result?.ok;
@@ -367,13 +316,17 @@
 
         <hr style="border:none;border-top:1px solid rgba(0,0,0,.12);margin:14px 0;">
 
-        <div style="font-weight:900; margin-bottom:8px;">Confirm Zero</div>
+        <div style="font-weight:900; margin-bottom:8px;">
+          Confirm Zero
+        </div>
         <div style="opacity:.92; margin-bottom:12px;">
           Dial the clicks above, then fire a tight 3–5 shot group.
           If your group is centered, you’re done.
         </div>
 
-        <div style="font-weight:900; margin-bottom:8px;">Next 5-Shot Challenge</div>
+        <div style="font-weight:900; margin-bottom:8px;">
+          Next 5-Shot Challenge
+        </div>
         <div style="opacity:.92;">
           Want to level up? Shoot 5 more and run it again to track improvement.
         </div>
@@ -382,11 +335,10 @@
   }
 
   // =========================
-  // Init + Events
+  // Init
   // =========================
   setPressToSeeEnabled(false);
 
-  // Modal close handlers
   if (modalClose) modalClose.addEventListener("click", closeModal);
   if (modalOverlay) {
     modalOverlay.addEventListener("click", (e) => {
@@ -394,7 +346,6 @@
     });
   }
 
-  // BUY MORE TARGETS
   if (buyMoreBtn) {
     buyMoreBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -402,18 +353,8 @@
     });
   }
 
-  // Scope UI
   injectProfileUI();
 
-  // File picker: ensure label triggers input everywhere
-  if (uploadLabel && fileInput) {
-    uploadLabel.addEventListener("click", (e) => {
-      e.preventDefault();
-      fileInput.click();
-    });
-  }
-
-  // On file selected: show thumbnail, enable press-to-see
   if (fileInput) {
     fileInput.addEventListener("change", () => {
       if (!hasFileSelected()) {
@@ -427,7 +368,7 @@
 
       const file = fileInput.files[0];
 
-      // Thumbnail (original)
+      // Thumbnail preview (what user sees)
       if (thumb) {
         const objUrl = URL.createObjectURL(file);
         thumb.src = objUrl;
@@ -439,7 +380,6 @@
     });
   }
 
-  // Main analyze
   if (pressToSeeBtn) {
     pressToSeeBtn.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -452,35 +392,9 @@
       openModal(
         "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
         `
-          <div style="margin-bottom:12px;">Preparing photo…</div>
-          <div style="opacity:.9;">
-            <div><b>Original:</b> ${file ? file.name : "(none)"} (${bytesToMB(file.size)} MB)</div>
-            <div><b>Distance:</b> ${distanceYards} yards</div>
-            <div><b>Profile:</b> ${profile.label}</div>
-          </div>
-        `
-      );
-
-      let prep;
-      try {
-        prep = await prepareUploadBlob(file);
-      } catch (err) {
-        const message = err && err.message ? err.message : String(err);
-        openModal(
-          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-          `<div style="color:#ff6b6b;font-weight:900;margin-bottom:10px;">Photo prep failed</div>
-           <div style="white-space:pre-wrap;opacity:.95;">${stripHtml(message)}</div>`
-        );
-        return;
-      }
-
-      openModal(
-        "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-        `
           <div style="margin-bottom:12px;">Analyzing…</div>
           <div style="opacity:.9;">
-            <div><b>Upload:</b> ${prep.outName} (${prep.outMB} MB)</div>
-            <div><b>Resize:</b> ${prep.origW}×${prep.origH} → ${prep.outW}×${prep.outH}</div>
+            <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
             <div><b>Distance:</b> ${distanceYards} yards</div>
             <div><b>Profile:</b> ${profile.label}</div>
           </div>
@@ -488,10 +402,10 @@
       );
 
       try {
-        const result = await analyzeToBackend(prep.blob, prep.outName);
+        const result = await analyzeToBackend(file);
         openModal(
           "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-          renderSEC(result, prep.outName, distanceYards, profile)
+          renderSEC(result, file ? file.name : "", distanceYards, profile)
         );
       } catch (err) {
         const message = err && err.message ? err.message : String(err);
@@ -505,9 +419,10 @@
             <div style="opacity:.9; margin-top:12px;">
               <b>Check:</b>
               <ul style="margin:8px 0 0 18px;">
+                <li>API_BASE is correct</li>
                 <li>Backend route exists: <b>/api/analyze</b></li>
+                <li>Backend allows CORS from your frontend domain</li>
                 <li>multipart field name is <b>image</b></li>
-                <li>Try a different photo if this one is unusual</li>
               </ul>
             </div>
           `
