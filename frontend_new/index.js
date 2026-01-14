@@ -1,9 +1,6 @@
 /* frontend_new/index.js
-   SEC Upload Page Logic
-   - Thumbnail preview
-   - Enable/disable "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS"
-   - POST to Render backend:  {API_BASE}/api/analyze  (multipart: image)
-   - Displays: score, offset, POIB, correction directions, and click counts (True MOA)
+   SEC Upload Page Logic (thumbnail + enable/disable + backend analyze call)
+   + Shows Score + POIB + Directions + Clicks (True MOA)
 */
 
 (() => {
@@ -15,51 +12,34 @@
 
   // Backend route:
   // POST {API_BASE}/api/analyze
-  // multipart/form-data:
-  //   - image (file)
-  // (We also send distanceYards as extra field; backend may ignore it, which is fine.)
+  // multipart/form-data fields:
+  // - image (file)
+  // (backend expects only image; we also send distanceYards for our click calc)
+  const ANALYZE_PATH = "/api/analyze";
+
+  // Click configuration (default)
+  const CLICK_MOA = 0.25; // 1/4 MOA per click
+  const TRUE_MOA_IN_PER_100Y = 1.047; // inches @100y for 1 MOA
 
   // =========================
   // DOM
   // =========================
   const fileInput = document.getElementById("targetPhoto");
-  const uploadLabel = document.getElementById("uploadLabel");
   const thumb = document.getElementById("thumb");
   const distanceInput = document.getElementById("distanceYards");
 
   const buyMoreBtn = document.getElementById("buyMoreBtn");
   const pressToSeeBtn = document.getElementById("pressToSee");
 
-  // Modal (must exist in HTML)
+  // Modal
   const modalOverlay = document.getElementById("secModalOverlay");
   const modalTitle = document.getElementById("secModalTitle");
   const modalBody = document.getElementById("secModalBody");
   const modalClose = document.getElementById("secModalClose");
 
   // =========================
-  // Guard (if IDs don’t match)
-  // =========================
-  if (!fileInput || !pressToSeeBtn) {
-    console.warn(
-      "[SEC] Missing required elements. Check IDs: targetPhoto, pressToSee"
-    );
-  }
-
-  // =========================
   // Helpers
   // =========================
-  const f2 = (v) => Math.round(Number(v) * 100) / 100;
-
-  function fmt(v) {
-    return String(v ?? "").trim();
-  }
-
-  function stripHtml(html) {
-    const div = document.createElement("div");
-    div.innerHTML = html;
-    return div.textContent || div.innerText || "";
-  }
-
   function hasFileSelected() {
     return !!(fileInput && fileInput.files && fileInput.files.length > 0);
   }
@@ -67,23 +47,23 @@
   function setPressToSeeEnabled(isEnabled) {
     if (!pressToSeeBtn) return;
 
-    // Works whether it’s a <button> or <a>
     if (isEnabled) {
       pressToSeeBtn.classList.remove("disabled");
       pressToSeeBtn.setAttribute("aria-disabled", "false");
       pressToSeeBtn.style.pointerEvents = "auto";
-      if ("disabled" in pressToSeeBtn) pressToSeeBtn.disabled = false;
-      pressToSeeBtn.style.opacity = "";
-      pressToSeeBtn.style.filter = "";
+      pressToSeeBtn.style.opacity = "1";
     } else {
       pressToSeeBtn.classList.add("disabled");
       pressToSeeBtn.setAttribute("aria-disabled", "true");
       pressToSeeBtn.style.pointerEvents = "none";
-      if ("disabled" in pressToSeeBtn) pressToSeeBtn.disabled = true;
-      // in case CSS isn’t applied
-      pressToSeeBtn.style.opacity = "0.35";
-      pressToSeeBtn.style.filter = "grayscale(35%)";
+      pressToSeeBtn.style.opacity = "0.45";
     }
+  }
+
+  function stripHtml(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent || div.innerText || "";
   }
 
   function openModal(title, htmlBody) {
@@ -104,19 +84,46 @@
     modalOverlay.setAttribute("aria-hidden", "true");
   }
 
+  function n(v, fallback = 0) {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : fallback;
+  }
+
+  function f2(v) {
+    return Math.round(n(v) * 100) / 100;
+  }
+
+  function fmtDistanceYards() {
+    const raw = distanceInput ? String(distanceInput.value || "").trim() : "";
+    const d = n(raw, 100);
+    return d > 0 ? d : 100;
+  }
+
+  // True MOA inches per click at distance:
+  // 1 MOA @ distanceYards = 1.047 * (distanceYards/100)
+  // inchesPerClick = that * clickMoa
+  function inchesPerClick(distanceYards, clickMoa = CLICK_MOA) {
+    const d = n(distanceYards, 100);
+    return TRUE_MOA_IN_PER_100Y * (d / 100) * n(clickMoa, 0.25);
+  }
+
+  function computeClicksFromInches(deltaInches, distanceYards) {
+    const ipc = inchesPerClick(distanceYards);
+    if (!(ipc > 0)) return 0;
+    return Math.abs(n(deltaInches, 0)) / ipc;
+  }
+
   async function analyzeToBackend(file, distanceYards) {
-    const url = `${API_BASE}/api/analyze`;
+    const url = `${API_BASE}${ANALYZE_PATH}`;
 
     const fd = new FormData();
     fd.append("image", file);
-    fd.append("distanceYards", String(distanceYards)); // extra field (safe)
+    // backend doesn't require this, but safe to include for future
+    fd.append("distanceYards", String(distanceYards));
 
     let res;
     try {
-      res = await fetch(url, {
-        method: "POST",
-        body: fd,
-      });
+      res = await fetch(url, { method: "POST", body: fd });
     } catch (err) {
       const msg = err && err.message ? err.message : String(err);
       throw new Error(`Load failed\nURL tried: ${url}\n${msg}`);
@@ -130,7 +137,7 @@
         bodyText = await res.text();
       } catch (_) {}
       throw new Error(
-        `HTTP ${res.status}\nURL tried: ${url}\n${bodyText || "(no body)"}`
+        `HTTP ${res.status} ${res.statusText}\nURL tried: ${url}\n${bodyText || "(no body)"}`
       );
     }
 
@@ -138,25 +145,77 @@
     return await res.text();
   }
 
-  function computeClicksFromCorrection(dx_in, dy_in, yards) {
-    // True MOA: 1 MOA = 1.047" at 100y
-    const inchPerMOA100 = 1.047;
-    const moaPerClick = 0.25; // default
-    const inchesPerClick = inchPerMOA100 * (Number(yards) / 100) * moaPerClick;
+  function renderResultModal({ fileName, distanceYards, result }) {
+    // Expect backend JSON like:
+    // result.score, result.offset_in, result.poib_in {x,y}
+    // result.correction_in {dx,dy}
+    // result.directions {windage,elevation}
+    if (typeof result !== "object" || !result) {
+      openModal(
+        "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+        `<div style="white-space:pre-wrap;">${stripHtml(String(result))}</div>`
+      );
+      return;
+    }
 
-    const windDir = dx_in >= 0 ? "RIGHT" : "LEFT";
-    const elevDir = dy_in >= 0 ? "UP" : "DOWN";
+    const score = f2(result.score);
+    const offset_in = f2(result.offset_in);
 
-    const windClicks = Math.abs(dx_in) / inchesPerClick;
-    const elevClicks = Math.abs(dy_in) / inchesPerClick;
+    const poibX = f2(result?.poib_in?.x);
+    const poibY = f2(result?.poib_in?.y);
 
-    return {
-      inchesPerClick,
-      windDir,
-      elevDir,
-      windClicks,
-      elevClicks,
-    };
+    const dx = f2(result?.correction_in?.dx);
+    const dy = f2(result?.correction_in?.dy);
+
+    const windDir = String(result?.directions?.windage || "").toUpperCase();
+    const elevDir = String(result?.directions?.elevation || "").toUpperCase();
+
+    const windClicks = f2(computeClicksFromInches(dx, distanceYards));
+    const elevClicks = f2(computeClicksFromInches(dy, distanceYards));
+
+    openModal(
+      "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
+      `
+        <div style="font-weight:800; margin-bottom:10px;">
+          Analyze success ✅
+        </div>
+
+        <div style="opacity:.95; margin-bottom:14px;">
+          <div><b>Photo:</b> ${fileName}</div>
+          <div><b>Distance:</b> ${distanceYards} yards</div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <div style="font-size:20px; font-weight:800; margin-bottom:6px;">
+            Score: ${score}
+          </div>
+          <div style="font-size:16px; font-weight:700;">
+            Offset: ${offset_in} in
+          </div>
+          <div style="margin-top:6px; font-size:16px; font-weight:700;">
+            POIB: x=${poibX}, y=${poibY} (in)
+          </div>
+        </div>
+
+        <div style="padding:10px 12px; border:1px solid rgba(255,255,255,.18); border-radius:10px;">
+          <div style="font-weight:800; margin-bottom:8px;">Scope Clicks (True MOA)</div>
+
+          <div style="margin-bottom:8px;">
+            <div><b>Windage:</b> ${windDir} — <b>${windClicks}</b> clicks</div>
+            <div style="opacity:.85; font-size:12px;">(dx = ${dx} in)</div>
+          </div>
+
+          <div>
+            <div><b>Elevation:</b> ${elevDir} — <b>${elevClicks}</b> clicks</div>
+            <div style="opacity:.85; font-size:12px;">(dy = ${dy} in)</div>
+          </div>
+
+          <div style="opacity:.75; font-size:12px; margin-top:10px;">
+            Assumes ${CLICK_MOA} MOA/click • 1 MOA = 1.047″ @ 100y
+          </div>
+        </div>
+      `
+    );
   }
 
   // =========================
@@ -195,7 +254,7 @@
 
       const file = fileInput.files[0];
 
-      // Thumbnail
+      // Thumbnail preview
       if (thumb) {
         const objUrl = URL.createObjectURL(file);
         thumb.src = objUrl;
@@ -210,16 +269,11 @@
   if (pressToSeeBtn) {
     pressToSeeBtn.addEventListener("click", async (e) => {
       e.preventDefault();
-
-      if (!hasFileSelected()) {
-        setPressToSeeEnabled(false);
-        return;
-      }
+      if (!hasFileSelected()) return;
 
       const file = fileInput.files[0];
-      const distanceYards = fmt(distanceInput ? distanceInput.value : "100") || "100";
+      const distanceYards = fmtDistanceYards();
 
-      // Working modal
       openModal(
         "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
         `
@@ -233,85 +287,18 @@
 
       try {
         const result = await analyzeToBackend(file, distanceYards);
-
-        // Backend expected JSON
-        const ok = !!result && typeof result === "object" && result.ok === true;
-
-        if (!ok) {
-          openModal(
-            "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-            `
-              <div style="color:#ffb3b3; font-weight:700; margin-bottom:10px;">Analyze failed</div>
-              <div style="white-space:pre-wrap; opacity:.95;">${stripHtml(
-                typeof result === "string" ? result : JSON.stringify(result, null, 2)
-              )}</div>
-            `
-          );
-          return;
-        }
-
-        // Pull values
-        const score = Number(result.score);
-        const offset = Number(result.offset_in);
-
-        const poibX = Number(result?.poib_in?.x ?? 0);
-        const poibY = Number(result?.poib_in?.y ?? 0);
-
-        // Prefer backend correction/directions (padlocked), else compute (bull=0,0)
-        let dx = Number(result?.correction_in?.dx);
-        let dy = Number(result?.correction_in?.dy);
-        let windDir = result?.directions?.windage;
-        let elevDir = result?.directions?.elevation;
-
-        if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-          dx = 0 - poibX;
-          dy = 0 - poibY;
-        }
-        if (!windDir) windDir = dx >= 0 ? "RIGHT" : "LEFT";
-        if (!elevDir) elevDir = dy >= 0 ? "UP" : "DOWN";
-
-        const clickObj = computeClicksFromCorrection(dx, dy, Number(distanceYards));
-
-        openModal(
-          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-          `
-            <div style="margin-bottom:10px;"><b>Analyze success ✅</b></div>
-
-            <div style="opacity:.95; margin-bottom:10px;">
-              <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
-              <div><b>Distance:</b> ${distanceYards} yards</div>
-            </div>
-
-            <div style="font-size:18px; font-weight:800; margin:14px 0 6px 0;">
-              Score: ${Number.isFinite(score) ? f2(score) : "(n/a)"}
-            </div>
-
-            <div style="opacity:.95; margin-bottom:10px;">
-              <div><b>Offset:</b> ${Number.isFinite(offset) ? f2(offset) : "(n/a)"} in</div>
-              <div><b>POIB:</b> x=${f2(poibX)}, y=${f2(poibY)} (in)</div>
-            </div>
-
-            <hr style="border:none; border-top:1px solid rgba(0,0,0,.12); margin:12px 0;" />
-
-            <div style="opacity:.95; margin-bottom:8px;">
-              <div><b>Correction (in):</b> wind ${f2(Math.abs(dx))} ${windDir}, elev ${f2(Math.abs(dy))} ${elevDir}</div>
-              <div><b>Clicks (0.25 MOA, True MOA):</b> ${windDir} ${f2(clickObj.windClicks)} clicks, ${elevDir} ${f2(clickObj.elevClicks)} clicks</div>
-            </div>
-
-            <div style="opacity:.7; font-size:12px;">
-              (Assumes 0.25 MOA/click and 1.047" per MOA at 100y)
-            </div>
-          `
-        );
+        renderResultModal({
+          fileName: file ? file.name : "(none)",
+          distanceYards,
+          result,
+        });
       } catch (err) {
         const message = err && err.message ? err.message : String(err);
-
         openModal(
           "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
           `
-            <div style="color:#ffb3b3; font-weight:700; margin-bottom:10px;">
-              Analyze failed:
-              <span style="font-weight:600; color:#ffd0d0;">${stripHtml(message).split("\n")[0]}</span>
+            <div style="color:#ffb3b3; font-weight:800; margin-bottom:10px;">
+              Analyze failed
             </div>
 
             <div style="opacity:.95; margin-bottom:10px; white-space:pre-wrap;">
@@ -321,11 +308,10 @@ ${stripHtml(message)}
             <div style="opacity:.9; margin-top:10px;">
               <div><b>Check:</b></div>
               <ul style="margin:8px 0 0 18px;">
-                <li>API_BASE is exactly: <b>${API_BASE}</b></li>
-                <li>Backend route exists: <b>/api/analyze</b></li>
-                <li>Backend is live: try <b>${API_BASE}/api/health</b></li>
-                <li>CORS allows your frontend domain</li>
-                <li>Multipart field name is <b>image</b></li>
+                <li>API_BASE is correct</li>
+                <li>Backend route exists (${ANALYZE_PATH})</li>
+                <li>Backend allows CORS from your frontend domain</li>
+                <li>Backend expects multipart field: <b>image</b></li>
               </ul>
             </div>
           `
