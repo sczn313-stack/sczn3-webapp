@@ -13,7 +13,6 @@
       text-align: center;
     }
 
-    /* TITLE */
     h1 {
       line-height: 1.1;
       margin: 0 0 26px 0;
@@ -27,7 +26,6 @@
       display: inline-block;
     }
 
-    /* UPLOAD */
     .uploadBlock {
       width: 100%;
       margin: 26px 0 10px 0;
@@ -36,7 +34,7 @@
 
     .uploadBtn {
       display: inline-block;
-      background: #2f5f73; /* <- teal */
+      background: #2f5f73;
       color: #fff;
       padding: 14px 22px;
       border-radius: 12px;
@@ -51,7 +49,6 @@
       color: #8b0000;
     }
 
-    /* THUMBNAIL PREVIEW */
     img#thumb {
       display: none;
       margin: 16px auto 0 auto;
@@ -60,7 +57,6 @@
       border-radius: 10px;
     }
 
-    /* DISTANCE */
     label {
       display: block;
       margin-top: 26px;
@@ -74,7 +70,6 @@
       width: 160px;
     }
 
-    /* BUTTONS */
     .pillBtn {
       display: inline-block;
       margin-top: 22px;
@@ -90,21 +85,21 @@
       color: #1f4fd8;
     }
 
-    /* BOX AROUND "YOUR SCORE / ..." (MATCH UPLOAD COLOR) */
+    /* TIGHTER BOX (MATCH UPLOAD COLOR) */
     #pressToSee {
-      margin-top: 30px;
+      margin-top: 26px;
       display: inline-block;
-      padding: 14px 16px;
-      border: 2px solid #2f5f73;   /* <- match upload */
-      border-radius: 12px;
+      padding: 10px 12px;          /* tighter */
+      border: 3px solid #2f5f73;   /* a touch stronger */
+      border-radius: 10px;         /* slightly tighter corners */
       background: #ffffff;
-      color: #2f5f73;              /* <- match upload */
-      font-weight: 700;
+      color: #2f5f73;
+      font-weight: 800;
       text-decoration: none;
       max-width: 92%;
+      line-height: 1.15;           /* tighter text */
     }
 
-    /* Disabled state still works */
     #pressToSee.disabled {
       border-color: #d7d7d7;
       color: #9aa0a6;
@@ -128,12 +123,7 @@
       UPLOAD TARGET PHOTO or TAKE PICTURE
     </label>
 
-    <input
-      id="targetPhoto"
-      type="file"
-      accept="image/*"
-      style="display:none"
-    />
+    <input id="targetPhoto" type="file" accept="image/*" style="display:none" />
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 
@@ -141,19 +131,11 @@
   </div>
 
   <label for="distanceYards">ADJUST DISTANCE (yards)</label>
-  <input
-    id="distanceYards"
-    type="number"
-    value="100"
-    min="1"
-    step="1"
-  />
+  <input id="distanceYards" type="number" value="100" min="1" step="1" />
 
   <br><br>
 
-  <a href="#" class="pillBtn primary" id="buyMoreBtn">
-    BUY MORE TARGETS
-  </a>
+  <a href="#" class="pillBtn primary" id="buyMoreBtn">BUY MORE TARGETS</a>
 
   <br>
 
@@ -161,7 +143,7 @@
     YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS
   </a>
 
-  <script src="./index.js?v=5" defer></script>
+  <script src="./index.js?v=6" defer></script>
 
 </body>
 </html>
