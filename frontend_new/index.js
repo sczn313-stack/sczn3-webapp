@@ -7,8 +7,8 @@
   // STEP 1: SET YOUR BACKEND
   // =========================
   // Replace with your Render backend service URL (NO trailing slash)
-  // Example: "https://sczn3-sec-backend.onrender.com"
-  const API_BASE = "https://YOUR-BACKEND.onrender.com";
+  const API_BASE_RAW = "https://sczn3-backend-new.onrender.com";
+  const API_BASE = String(API_BASE_RAW || "").replace(/\/+$/, ""); // strips trailing slash
 
   // Backend route expected:
   // POST {API_BASE}/analyze
@@ -20,7 +20,6 @@
   // DOM
   // =========================
   const fileInput = document.getElementById("targetPhoto");
-  const uploadLabel = document.getElementById("uploadLabel");
   const thumb = document.getElementById("thumb");
   const distanceInput = document.getElementById("distanceYards");
 
@@ -56,7 +55,6 @@
 
   function openModal(title, htmlBody) {
     if (!modalOverlay) {
-      // fallback
       alert(`${title}\n\n${stripHtml(htmlBody)}`);
       return;
     }
@@ -95,7 +93,6 @@
       res = await fetch(url, {
         method: "POST",
         body: fd,
-        // NOTE: do NOT set Content-Type for FormData (browser sets boundary)
       });
     } catch (err) {
       const msg = err && err.message ? err.message : String(err);
@@ -114,7 +111,6 @@
       );
     }
 
-    // Try JSON first, fall back to text
     if (contentType.includes("application/json")) {
       return await res.json();
     }
@@ -132,7 +128,6 @@
   if (modalClose) modalClose.addEventListener("click", closeModal);
   if (modalOverlay) {
     modalOverlay.addEventListener("click", (e) => {
-      // click outside the modal content closes
       if (e.target === modalOverlay) closeModal();
     });
   }
@@ -140,8 +135,6 @@
   if (buyMoreBtn) {
     buyMoreBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      // TODO: replace with your printer/manufacturer URL when ready
-      // window.location.href = "https://YOUR-PRINTER-SITE.com";
       openModal("BUY MORE TARGETS", "<div>Coming soon.</div>");
     });
   }
@@ -164,10 +157,7 @@
         const objUrl = URL.createObjectURL(file);
         thumb.src = objUrl;
         thumb.style.display = "block";
-        thumb.onload = () => {
-          // Release memory
-          URL.revokeObjectURL(objUrl);
-        };
+        thumb.onload = () => URL.revokeObjectURL(objUrl);
       }
 
       setPressToSeeEnabled(true);
@@ -178,14 +168,11 @@
   if (pressToSeeBtn) {
     pressToSeeBtn.addEventListener("click", async (e) => {
       e.preventDefault();
-
-      // guard
       if (!hasFileSelected()) return;
 
       const file = fileInput.files[0];
       const distanceYards = fmt(distanceInput ? distanceInput.value : "100") || "100";
 
-      // Show "working" modal
       openModal(
         "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
         `
@@ -200,8 +187,6 @@
       try {
         const result = await analyzeToBackend(file, distanceYards);
 
-        // Show success (placeholder rendering)
-        // You can replace this with your real SEC rendering once backend returns final data.
         openModal(
           "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
           `
