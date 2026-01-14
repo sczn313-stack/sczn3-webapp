@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <title>Shooter Experience Card</title>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <!-- INLINE STYLES (locked layout) -->
   <style>
     body {
       font-family: serif;
       padding: 20px;
+      margin: 0;
     }
 
     h1 {
       line-height: 1.1;
+      margin-bottom: 30px;
     }
 
     .uploadBlock {
@@ -21,24 +25,15 @@
       text-align: center;
     }
 
-    /* PRIMARY UPLOAD BUTTON */
     .uploadBtn {
       display: inline-block;
       background: #2f5f73;
       color: #fff;
-      padding: 14px 22px;
-      border-radius: 10px;
+      padding: 16px 24px;
+      border-radius: 12px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    /* HIDE REAL INPUT */
-    #targetPhoto {
-      display: none;
     }
 
     .uploadHint {
@@ -47,48 +42,45 @@
       font-style: italic;
     }
 
-    /* THUMB PREVIEW */
-    #thumb {
+    img#thumb {
       display: none;
-      margin: 18px auto 0;
+      margin-top: 20px;
       max-width: 100%;
-      border-radius: 10px;
       border: 1px solid #ccc;
+      border-radius: 8px;
     }
 
     label {
       display: block;
       margin-top: 30px;
+      margin-bottom: 6px;
       font-weight: 600;
     }
 
     input[type="number"] {
-      margin-top: 6px;
+      font-size: 18px;
       padding: 10px;
-      font-size: 16px;
       width: 120px;
     }
 
     .pillBtn {
       display: inline-block;
-      margin-top: 20px;
-      padding: 10px 18px;
-      background: #e6eef2;
-      border-radius: 20px;
-      color: #0b66c3;
-      font-weight: 600;
+      margin-top: 30px;
+      padding: 14px 22px;
+      border-radius: 999px;
       text-decoration: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
+      font-weight: 600;
+      text-align: center;
     }
 
     .pillBtn.primary {
-      background: #dfefff;
+      background: #d9ecfb;
+      color: #1f5fa0;
     }
 
     .pillBtn.disabled {
-      opacity: 0.5;
+      background: #eee;
+      color: #aaa;
       pointer-events: none;
     }
   </style>
@@ -97,25 +89,24 @@
 <body>
 
   <h1>
-    Shooter<br>
-    Experience<br>
+    Shooter<br />
+    Experience<br />
     Card SEC
   </h1>
 
   <!-- UPLOAD BLOCK -->
   <div class="uploadBlock">
-
-    <!-- LABEL = BUTTON (iOS SAFE) -->
+    <!-- iOS-safe upload -->
     <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
       UPLOAD TARGET PHOTO or TAKE PICTURE
     </label>
 
-    <!-- REAL FILE INPUT -->
     <input
       id="targetPhoto"
       type="file"
       accept="image/*"
-      name="targetPhoto"
+      capture="environment"
+      style="display:none"
     />
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
@@ -125,9 +116,7 @@
   </div>
 
   <!-- DISTANCE -->
-  <label for="distanceYards">
-    ADJUST DISTANCE (yards)
-  </label>
+  <label for="distanceYards">ADJUST DISTANCE (yards)</label>
   <input
     id="distanceYards"
     type="number"
@@ -150,7 +139,7 @@
   </a>
 
   <!-- SCRIPT -->
-  <script src="index.js"></script>
+  <script src="./index.js?v=3" defer></script>
 
 </body>
 </html>
