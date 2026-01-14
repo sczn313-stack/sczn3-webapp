@@ -1,19 +1,17 @@
 // sczn3-webapp/frontend_new/output.js
-// Output page logic for output.html (the one you pasted)
+// Output page logic (CUT + PASTE FULL FILE)
 //
-// What it does:
-// - Loads the uploaded target image (from sessionStorage) into #targetThumb
-// - Loads distance into #distanceText
-// - Sets default adjustment text into #adjText
-// - Shows a friendly "no data yet" banner until results exist
-// - Optional: tries to call backend endpoints safely (won't break UI)
+// LOCKS:
+// - Uses stored photo + distance from sessionStorage (from index.js)
+// - Calls backend /api/analyze with multipart field name: "image"
+// - Uses backend correction_in + directions (no reinterpret)
+// - Converts inches -> clicks using TRUE MOA (1.047"/100y) + 1/4 MOA per click
+// - 2 decimals everywhere
 
 (function () {
-  function $(id) {
-    return document.getElementById(id);
-  }
+  const $ = (id) => document.getElementById(id);
 
-  // ---- Elements (match output.html) ----
+  // ---- Elements (match your output.html) ----
   const secIdText = $("secIdText");
 
   const targetThumb = $("targetThumb");
@@ -32,14 +30,31 @@
 
   const debugBox = $("debugBox");
 
-  // ---- Storage keys (must match index.js) ----
-  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
-  const DIST_KEY = "sczn3_distance_yards";
+  // ---- Storage keys (NEW + backward compatible) ----
+  // NEW keys (from the index.js I gave you)
+  const K_PHOTO_NEW = "sec_targetPhoto_dataUrl";
+  const K_NAME_NEW = "sec_targetPhoto_fileName";
+  const K_DIST_NEW = "sec_distance_yards";
+  const K_VENDOR_NEW = "sec_vendor_buy_url";
+  const K_SECID_NEW = "sec_id";
+  const K_RESULT_NEW = "sec_results_json";
 
-  // Optional result cache keys (if backend or other code stores them later)
-  const RESULT_KEY = "sczn3_sec_results_json";
+  // OLD keys (backward compatibility)
+  const K_PHOTO_OLD = "sczn3_targetPhoto_dataUrl";
+  const K_NAME_OLD = "sczn3_targetPhoto_fileName";
+  const K_DIST_OLD = "sczn3_distance_yards";
+  const K_VENDOR_OLD = "sczn3_vendor_buy_url";
+  const K_SECID_OLD = "sczn3_sec_id";
+  const K_RESULT_OLD = "sczn3_sec_results_json";
 
   // ---- Helpers ----
+  const n = (v, fb = 0) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : fb;
+  };
+
+  const f2 = (v) => (Math.round(n(v) * 100) / 100).toFixed(2);
+
   function show(el) {
     if (!el) return;
     el.classList.remove("hidden");
@@ -48,12 +63,22 @@
     if (!el) return;
     el.classList.add("hidden");
   }
-
   function setText(el, value) {
     if (!el) return;
     el.textContent = value == null ? "—" : String(value);
   }
-
+  function safeGet(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  function safeSet(key, val) {
+    try {
+      sessionStorage.setItem(key, val);
+    } catch {}
+  }
   function safeJsonParse(str) {
     try {
       return JSON.parse(str);
@@ -61,37 +86,23 @@
       return null;
     }
   }
-
   function setDir(el, dir) {
     if (!el) return;
-    const d = (dir || "").toString().trim();
+    const d = String(dir || "").trim().toUpperCase();
     el.textContent = d ? d : "";
   }
 
-  function setClicks(value, valueEl, dir, dirEl) {
-    // value can be a string like "4.25" or "4.25 UP" or an object { clicks:"4.25", dir:"UP" }
-    if (value && typeof value === "object") {
-      setText(valueEl, value.clicks ?? value.value ?? "—");
-      setDir(dirEl, value.dir ?? "");
-      return;
-    }
+  // TRUE MOA (1.047" per MOA at 100y)
+  function inchesPerMOA(distanceYards) {
+    return 1.047 * (n(distanceYards, 100) / 100);
+  }
 
-    const s = (value == null ? "" : String(value)).trim();
-    if (!s) {
-      setText(valueEl, "—");
-      setDir(dirEl, "");
-      return;
-    }
-
-    // Try to split "4.25 UP"
-    const parts = s.split(/\s+/);
-    if (parts.length >= 2) {
-      setText(valueEl, parts[0]);
-      setDir(dirEl, parts.slice(1).join(" "));
-    } else {
-      setText(valueEl, s);
-      setDir(dirEl, dir || "");
-    }
+  // clicks = MOA / moaPerClick (default 0.25)
+  function clicksFromInches(inches, distanceYards, moaPerClick) {
+    const inPer = inchesPerMOA(distanceYards);
+    const moa = inPer > 0 ? n(inches) / inPer : 0;
+    const c = n(moaPerClick, 0.25) > 0 ? moa / n(moaPerClick, 0.25) : 0;
+    return c;
   }
 
   // Converts dataURL -> Blob so we can send FormData
@@ -99,10 +110,10 @@
     const parts = url.split(",");
     const mime = (parts[0].match(/:(.*?);/) || [])[1] || "image/jpeg";
     const bstr = atob(parts[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) u8arr[n] = bstr.charCodeAt(n);
-    return new Blob([u8arr], { type: mime });
+    let i = bstr.length;
+    const u8 = new Uint8Array(i);
+    while (i--) u8[i] = bstr.charCodeAt(i);
+    return new Blob([u8], { type: mime });
   }
 
   function debug(msg, obj) {
@@ -112,112 +123,196 @@
     show(debugBox);
   }
 
-  // ---- Load basics (photo + distance) ----
-  const dataUrl = sessionStorage.getItem(PHOTO_KEY);
-  const distance = sessionStorage.getItem(DIST_KEY) || "100";
-
-  // SEC ID (simple for now)
-  if (secIdText) {
-    const existing = sessionStorage.getItem("sczn3_sec_id");
-    if (existing) {
-      secIdText.textContent = "SEC-ID — " + existing;
-    } else {
-      const gen = Math.random().toString(16).slice(2, 8).toUpperCase();
-      sessionStorage.setItem("sczn3_sec_id", gen);
-      secIdText.textContent = "SEC-ID — " + gen;
-    }
+  function getStoredPhoto() {
+    return safeGet(K_PHOTO_NEW) || safeGet(K_PHOTO_OLD) || "";
+  }
+  function getStoredName() {
+    return safeGet(K_NAME_NEW) || safeGet(K_NAME_OLD) || "target.jpg";
+  }
+  function getStoredDistance() {
+    return safeGet(K_DIST_NEW) || safeGet(K_DIST_OLD) || "100";
+  }
+  function getStoredVendorUrl() {
+    return safeGet(K_VENDOR_NEW) || safeGet(K_VENDOR_OLD) || "";
+  }
+  function getStoredResultJson() {
+    return safeGet(K_RESULT_NEW) || safeGet(K_RESULT_OLD) || "";
+  }
+  function setStoredResultJson(val) {
+    safeSet(K_RESULT_NEW, val);
+    safeSet(K_RESULT_OLD, val);
   }
 
-  // Fill Distance + Adjustment defaults
-  setText(distanceText, distance);
+  // ---- SEC ID ----
+  (function initSecId() {
+    if (!secIdText) return;
+
+    const existing =
+      safeGet(K_SECID_NEW) ||
+      safeGet(K_SECID_OLD);
+
+    if (existing) {
+      secIdText.textContent = "SEC-ID — " + existing;
+      return;
+    }
+
+    const gen = Math.random().toString(16).slice(2, 8).toUpperCase();
+    safeSet(K_SECID_NEW, gen);
+    safeSet(K_SECID_OLD, gen);
+    secIdText.textContent = "SEC-ID — " + gen;
+  })();
+
+  // ---- Basics (photo + distance + adjustment label) ----
+  const dataUrl = getStoredPhoto();
+  const fileName = getStoredName();
+  const distance = getStoredDistance(); // string
+  const distNum = n(distance, 100);
+
+  setText(distanceText, String(distNum));
   setText(adjText, "1/4 MOA per click");
 
-  // Load preview image
   if (dataUrl && targetThumb) {
     targetThumb.src = dataUrl;
   } else {
-    // No photo means they landed here without upload
+    // Landed here without photo
     setText(scoreText, "—");
-    setClicks(null, elevClicksText, "", elevDirText);
-    setClicks(null, windClicksText, "", windDirText);
+    setText(elevClicksText, "—");
+    setText(windClicksText, "—");
+    setDir(elevDirText, "");
+    setDir(windDirText, "");
     setText(tipText, "—");
     show(noDataBanner);
     hide(resultsGrid);
     return;
   }
 
-  // ---- If results were saved already, show them immediately ----
-  const cached = safeJsonParse(sessionStorage.getItem(RESULT_KEY) || "");
+  // ---- If results already cached, render them ----
+  const cached = safeJsonParse(getStoredResultJson());
   if (cached) {
     hide(noDataBanner);
     show(resultsGrid);
-
-    setText(scoreText, cached.score ?? cached.smartScore ?? "—");
-
-    // Support multiple naming styles
-    const elevVal =
-      cached.elevation ?? cached.elev ?? cached.elevClicks ?? cached.elev_clicks ?? null;
-    const windVal =
-      cached.windage ?? cached.wind ?? cached.windClicks ?? cached.wind_clicks ?? null;
-
-    setClicks(elevVal, elevClicksText, cached.elevDir, elevDirText);
-    setClicks(windVal, windClicksText, cached.windDir, windDirText);
-
-    setText(tipText, cached.tip ?? cached.message ?? "—");
+    renderFromBackend(cached, { source: "cache" });
     return;
   }
 
-  // Default state: no results yet (until backend wired)
+  // Default state until backend responds
   show(noDataBanner);
   hide(resultsGrid);
 
-  // ---- OPTIONAL: Try backend endpoints safely (won't break UI) ----
-  async function tryPost(url) {
+  // ---- Core render from backend payload ----
+  function renderFromBackend(data, meta) {
+    // Preferred shape: { correction_in:{dx,dy}, directions:{windage,elevation}, poib_in:{x,y} }
+    const dx =
+      data?.correction_in?.dx ??
+      data?.correctionIn?.dx ??
+      data?.correction?.dx ??
+      data?.dx ??
+      0;
+
+    const dy =
+      data?.correction_in?.dy ??
+      data?.correctionIn?.dy ??
+      data?.correction?.dy ??
+      data?.dy ??
+      0;
+
+    const windDir =
+      data?.directions?.windage ??
+      data?.direction?.windage ??
+      data?.windageDirection ??
+      data?.windDir ??
+      "";
+
+    const elevDir =
+      data?.directions?.elevation ??
+      data?.direction?.elevation ??
+      data?.elevationDirection ??
+      data?.elevDir ??
+      "";
+
+    const windClicks = clicksFromInches(Math.abs(n(dx)), distNum, 0.25);
+    const elevClicks = clicksFromInches(Math.abs(n(dy)), distNum, 0.25);
+
+    // Score (pilot-safe): show OFFSET inches (no invented scoring scale)
+    let offsetIn = null;
+    const px = data?.poib_in?.x ?? data?.poib?.x ?? null;
+    const py = data?.poib_in?.y ?? data?.poib?.y ?? null;
+    if (px != null && py != null) {
+      offsetIn = Math.sqrt(n(px) * n(px) + n(py) * n(py));
+    }
+
+    hide(noDataBanner);
+    show(resultsGrid);
+
+    if (offsetIn == null) {
+      setText(scoreText, "OFFSET —");
+    } else {
+      setText(scoreText, "OFFSET " + f2(offsetIn) + " in");
+    }
+
+    setText(elevClicksText, f2(elevClicks));
+    setDir(elevDirText, String(elevDir).trim().toUpperCase());
+
+    setText(windClicksText, f2(windClicks));
+    setDir(windDirText, String(windDir).trim().toUpperCase());
+
+    setText(tipText, "Shoot another cluster and scan again.");
+
+    // Optional debug (hidden by default via CSS class)
+    if (debugBox) {
+      debug(
+        "SEC output (locked)",
+        {
+          meta: meta || {},
+          distanceYards: distNum,
+          correction_in: { dx: n(dx), dy: n(dy) },
+          directions: { windage: windDir, elevation: elevDir },
+          computed_clicks: { wind: f2(windClicks), elev: f2(elevClicks) },
+          poib_in: data?.poib_in || data?.poib || null,
+          lock: "clicks use TRUE MOA + 1/4 MOA per click; directions come from backend",
+        }
+      );
+      // Comment this out if you never want debug visible:
+      // show(debugBox);
+      hide(debugBox);
+    }
+  }
+
+  // ---- Backend call (LOCKED: field name = "image", endpoint = /api/analyze) ----
+  async function callAnalyze() {
     const blob = dataUrlToBlob(dataUrl);
     const fd = new FormData();
-    fd.append("targetPhoto", blob, "target.jpg");
-    fd.append("distanceYards", distance);
 
-    const res = await fetch(url, { method: "POST", body: fd });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    // IMPORTANT: backend_new/server.js expects upload.single("image")
+    fd.append("image", blob, fileName || "target.jpg");
+
+    // Not required by backend, but harmless if you log later
+    fd.append("distanceYards", String(distNum));
+
+    const res = await fetch("/api/analyze", { method: "POST", body: fd });
+    if (!res.ok) throw new Error("Analyze failed (HTTP " + res.status + ")");
     return res.json();
   }
 
-  (async function () {
-    const endpoints = ["/analyze", "/api/analyze", "/sec/analyze"];
+  (async function run() {
+    try {
+      const data = await callAnalyze();
 
-    for (const ep of endpoints) {
+      // Cache for refresh
       try {
-        const data = await tryPost(ep);
+        setStoredResultJson(JSON.stringify(data));
+      } catch {}
 
-        // If we got here, we have a working endpoint.
-        // Cache it so refresh keeps results.
-        try {
-          sessionStorage.setItem(RESULT_KEY, JSON.stringify(data));
-        } catch {}
-
-        hide(noDataBanner);
-        show(resultsGrid);
-
-        setText(scoreText, data.score ?? data.smartScore ?? "—");
-
-        // Directions/clicks support
-        const elevVal =
-          data.elevation ?? data.elev ?? data.elevClicks ?? data.elev_clicks ?? data.clicksElevation ?? null;
-        const windVal =
-          data.windage ?? data.wind ?? data.windClicks ?? data.wind_clicks ?? data.clicksWindage ?? null;
-
-        setClicks(elevVal, elevClicksText, data.elevDir, elevDirText);
-        setClicks(windVal, windClicksText, data.windDir, windDirText);
-
-        setText(tipText, data.tip ?? data.message ?? "—");
-        return;
-      } catch (err) {
-        // keep trying next endpoint
-      }
+      renderFromBackend(data, { source: "/api/analyze" });
+    } catch (err) {
+      // Leave banner visible, but show a helpful hint in debug
+      debug(
+        "No results yet. Backend didn’t return data for /api/analyze.",
+        { error: String(err) }
+      );
+      hide(debugBox); // keep quiet unless you want it visible
+      show(noDataBanner);
+      hide(resultsGrid);
     }
-
-    // No endpoint found (normal for now)
-    // Leave the banner visible.
   })();
 })();
