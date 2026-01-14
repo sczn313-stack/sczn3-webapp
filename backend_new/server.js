@@ -3,6 +3,19 @@
  *
  * SCZN3 BACKEND — PADLOCKED COORDS (LOCK_V1) + PILOT SCORE (OFFSET_ONLY_V1)
  *
+ * LOCK RULES (DO NOT EDIT WITHOUT UPDATING LOCK_VERSION + TESTS):
+ * 1) Target coordinate system is:
+ *      +X = RIGHT, +Y = UP
+ * 2) POIB inches returned by /api/analyze MUST be in target coords.
+ * 3) Correction is ALWAYS:
+ *      correction = bull - POIB
+ *    where bull is in target coords (usually 0,0), POIB is target coords inches.
+ * 4) Backend returns DIRECTIONS (frontend must display, not reinterpret).
+ *
+ * PILOT SCORING (OFFSET ONLY):
+ *  - r = sqrt(poibX^2 + poibY^2)  (inches)
+ *  - score = clamp(100 * (1 - r/6), 0, 100)
+ *
  * Endpoints:
  *   GET  /health
  *   GET  /api/health
@@ -26,16 +39,7 @@ const SCORE_VERSION = "OFFSET_ONLY_V1";
 // APP
 // =====================
 const app = express();
-
-// CORS: allow your frontend + general testing
-app.use(
-  cors({
-    origin: true,
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
-
+app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
 // Multer (memory)
@@ -62,6 +66,11 @@ function clamp(x, lo, hi) {
   return Math.max(lo, Math.min(hi, xx));
 }
 
+/**
+ * PILOT SCORE: offset-only
+ * r = distance from bull (0,0) to POIB in inches
+ * score = clamp(100 * (1 - r/6), 0, 100)
+ */
 function computeOffsetScore(poibX_in, poibY_in) {
   const x = n(poibX_in);
   const y = n(poibY_in);
@@ -104,6 +113,15 @@ function pixelsToTargetInches(groupX_px, groupY_px, bullX_px, bullY_px, ppi) {
   return { poibX_in, poibY_in, ppi_used: p };
 }
 
+/**
+ * Rough heuristic analyzer (direction-safe):
+ * - Finds bull center by locating the centroid of "dark" pixels in the image.
+ * - Finds group center by locating centroid of "orange-ish" pixels (bullet holes).
+ *
+ * NOTE:
+ * - PPI is optional. If not provided and we can’t estimate reliably, we use a fallback.
+ * - Direction is still correct because it's based on relative position and the Y flip.
+ */
 async function analyzeImage(buffer) {
   const img = await Jimp.read(buffer);
 
@@ -124,12 +142,14 @@ async function analyzeImage(buffer) {
     grpSumY = 0,
     grpCount = 0;
 
+  // Sampling step (speed)
   const step = 2;
 
   for (let y = 0; y < h; y += step) {
     for (let x = 0; x < w; x += step) {
       const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
 
+      // Dark pixel heuristic
       const brightness = (r + g + b) / 3;
       const isDark = brightness < 70;
 
@@ -139,8 +159,8 @@ async function analyzeImage(buffer) {
         bullCount++;
       }
 
-      const isOrange =
-        r > 140 && g > 70 && g < 200 && b < 120 && r > g && g > b;
+      // Orange splatter heuristic (synthetic orange cluster targets)
+      const isOrange = r > 140 && g > 70 && g < 200 && b < 120 && r > g && g > b;
 
       if (isOrange) {
         grpSumX += x;
@@ -150,15 +170,16 @@ async function analyzeImage(buffer) {
     }
   }
 
+  let groupX_px, groupY_px;
+
   const bullX_px = bullCount > 0 ? bullSumX / bullCount : w / 2;
   const bullY_px = bullCount > 0 ? bullSumY / bullCount : h / 2;
-
-  let groupX_px, groupY_px;
 
   if (grpCount > 50) {
     groupX_px = grpSumX / grpCount;
     groupY_px = grpSumY / grpCount;
   } else {
+    // Fallback: dark centroid far from bull
     let farSumX = 0,
       farSumY = 0,
       farCount = 0;
@@ -167,8 +188,8 @@ async function analyzeImage(buffer) {
       for (let x = 0; x < w; x += step) {
         const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
         const brightness = (r + g + b) / 3;
-        const isDark2 = brightness < 60;
-        if (!isDark2) continue;
+        const isDark = brightness < 60;
+        if (!isDark) continue;
 
         const dx = x - bullX_px;
         const dy = y - bullY_px;
@@ -187,13 +208,14 @@ async function analyzeImage(buffer) {
   }
 
   const ppi_fallback = 100;
+  const ppi = ppi_fallback;
 
   return {
     resizedW: w,
     resizedH: h,
     bull_px: { x: bullX_px, y: bullY_px },
     group_px: { x: groupX_px, y: groupY_px },
-    ppi_estimate: ppi_fallback,
+    ppi_estimate: ppi,
     method: grpCount > 50 ? "orange_centroid" : "dark_far_centroid",
     samples: Math.floor((w / step) * (h / step)),
     orangeCount: grpCount,
@@ -215,6 +237,12 @@ app.get(["/health", "/api/health"], (req, res) => {
   });
 });
 
+/**
+ * POST /api/calc
+ * body:
+ *   bull_in: {x,y} (optional, default 0,0)
+ *   poib_in: {x,y} (required)
+ */
 app.post("/api/calc", (req, res) => {
   const bullX = n(req.body?.bull_in?.x, 0);
   const bullY = n(req.body?.bull_in?.y, 0);
@@ -245,6 +273,16 @@ app.post("/api/calc", (req, res) => {
   });
 });
 
+/**
+ * POST /api/analyze
+ * multipart form-data:
+ *   image: file
+ *
+ * Returns (LOCKED):
+ *   poib_in in TARGET coords (+X right, +Y up)
+ *   directions computed from correction = bull - POIB
+ *   pilot scoring: offset-only
+ */
 app.post("/api/analyze", upload.single("image"), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
@@ -256,8 +294,10 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
 
     const a = await analyzeImage(req.file.buffer);
 
+    // Bull in target coords is defined as 0,0 for our standard.
     const bull_in = { x: 0, y: 0 };
 
+    // Convert pixels -> inches in TARGET coords (LOCKED Y flip)
     const conv = pixelsToTargetInches(
       a.group_px.x,
       a.group_px.y,
@@ -276,6 +316,7 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
 
     return res.json({
       ok: true,
+
       lock_version: LOCK_VERSION,
       coord_system: COORD_SYSTEM,
       score_version: SCORE_VERSION,
