@@ -1,58 +1,58 @@
-<!-- sczn3-webapp/frontend_new/index.html -->
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Shooter Experience Card</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="./styles.css?v=1" />
+
+  <!-- Use your shared stylesheet -->
+  <link rel="stylesheet" href="./styles.css?v=2" />
 </head>
 
 <body class="page upload-page">
 
-  <h1 class="h1">
-    Shooter<br>Experience<br>Card SEC
-  </h1>
+  <h1 class="sec-title">Shooter<br>Experience<br>Card SEC</h1>
 
   <!-- UPLOAD -->
-  <section class="panel">
-    <div class="uploadBlock">
+  <div class="uploadBlock">
+    <!-- LABEL IS THE BUTTON (iOS SAFE) -->
+    <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
+      UPLOAD TARGET PHOTO or TAKE PICTURE
+    </label>
 
-      <!-- iOS-safe: label triggers the input -->
-      <label for="targetPhoto" class="uploadBtn" id="uploadLabel">
-        UPLOAD TARGET PHOTO or TAKE PICTURE
-      </label>
+    <!-- REAL FILE INPUT -->
+    <input
+      id="targetPhoto"
+      type="file"
+      accept="image/*"
+      name="targetPhoto"
+    />
 
-      <!-- IMPORTANT:
-           Don't use display:none on iOS file inputs.
-           Keep it "visually hidden" but still present/clickable. -->
-      <input
-        id="targetPhoto"
-        type="file"
-        accept="image/*"
-        name="targetPhoto"
-        class="fileInput"
-      />
+    <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 
-      <div class="uploadHint">INSURE ALL 4 CORNERS</div>
+    <!-- THUMB PREVIEW -->
+    <img id="thumb" alt="Target thumbnail" />
+  </div>
 
-      <!-- PREVIEW -->
-      <img id="thumb" class="thumb" alt="Target thumbnail" />
-    </div>
-  </section>
+  <div class="distanceBlock">
+    <label for="distanceYards" class="distanceLabel">ADJUST DISTANCE (yards)</label>
+    <input
+      id="distanceYards"
+      type="number"
+      value="100"
+      min="1"
+      step="1"
+      inputmode="numeric"
+    />
+  </div>
 
-  <!-- DISTANCE -->
-  <section class="panel">
-    <label class="fieldLabel" for="distanceYards">ADJUST DISTANCE (yards)</label>
-    <input id="distanceYards" class="fieldInput" type="number" value="100" />
-  </section>
-
-  <!-- ACTIONS -->
-  <section class="actions">
+  <div class="ctaRow">
     <a href="#" class="pillBtn" id="buyMoreBtn">BUY MORE TARGETS</a>
     <a href="#" class="pillBtn disabled" id="pressToSee">PRESS TO SEE</a>
-  </section>
+  </div>
 
-  <script src="./index.js?v=1"></script>
+  <!-- IMPORTANT: cache-bust + defer so JS always runs AFTER DOM -->
+  <script src="./index.js?v=2" defer></script>
+
 </body>
 </html>
