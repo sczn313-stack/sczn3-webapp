@@ -1,230 +1,328 @@
-/* frontend_new/index.js
-   SEC Upload Page Logic (thumbnail + enable/disable + backend analyze call)
-*/
+/**
+ * backend_new/server.js
+ *
+ * SCZN3 BACKEND — PADLOCKED COORDS (LOCK_V1) + PILOT SCORE (OFFSET_ONLY_V1)
+ *
+ * Endpoints:
+ *   GET  /health
+ *   GET  /api/health
+ *   POST /api/calc
+ *   POST /api/analyze   (multipart form-data: image)
+ */
 
-(() => {
-  // =========================
-  // STEP 1: SET YOUR BACKEND
-  // =========================
-  // NO trailing slash
-  const API_BASE = "https://sczn3-backend-new.onrender.com";
+const express = require("express");
+const cors = require("cors");
+const multer = require("multer");
+const Jimp = require("jimp");
 
-  // Backend route expected:
-  // POST {API_BASE}/api/analyze
-  // multipart/form-data fields:
-  // - image (file)
+// =====================
+// PADLOCK STAMP
+// =====================
+const LOCK_VERSION = "LOCK_V1";
+const COORD_SYSTEM = "TARGET_INCHES_X_RIGHT_Y_UP";
+const SCORE_VERSION = "OFFSET_ONLY_V1";
 
-  // =========================
-  // DOM
-  // =========================
-  const fileInput = document.getElementById("targetPhoto");
-  const thumb = document.getElementById("thumb");
-  const distanceInput = document.getElementById("distanceYards");
+// =====================
+// APP
+// =====================
+const app = express();
 
-  const buyMoreBtn = document.getElementById("buyMoreBtn");
-  const pressToSeeBtn = document.getElementById("pressToSee");
+// CORS: allow your frontend + general testing
+app.use(
+  cors({
+    origin: true,
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
 
-  // Modal (created in HTML)
-  const modalOverlay = document.getElementById("secModalOverlay");
-  const modalTitle = document.getElementById("secModalTitle");
-  const modalBody = document.getElementById("secModalBody");
-  const modalClose = document.getElementById("secModalClose");
+app.use(express.json({ limit: "2mb" }));
 
-  // =========================
-  // Helpers
-  // =========================
-  function hasFileSelected() {
-    return fileInput && fileInput.files && fileInput.files.length > 0;
-  }
+// Multer (memory)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+});
 
-  function setPressToSeeEnabled(isEnabled) {
-    if (!pressToSeeBtn) return;
+// =====================
+// HELPERS (LOCKED)
+// =====================
+function n(v, fallback = 0) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : fallback;
+}
 
-    if (isEnabled) {
-      pressToSeeBtn.classList.remove("disabled");
-      pressToSeeBtn.setAttribute("aria-disabled", "false");
-      pressToSeeBtn.style.pointerEvents = "auto";
-    } else {
-      pressToSeeBtn.classList.add("disabled");
-      pressToSeeBtn.setAttribute("aria-disabled", "true");
-      pressToSeeBtn.style.pointerEvents = "none";
+function f2(v) {
+  const x = n(v);
+  return Math.round(x * 100) / 100;
+}
+
+function clamp(x, lo, hi) {
+  const xx = n(x);
+  return Math.max(lo, Math.min(hi, xx));
+}
+
+function computeOffsetScore(poibX_in, poibY_in) {
+  const x = n(poibX_in);
+  const y = n(poibY_in);
+  const r = Math.sqrt(x * x + y * y); // inches
+  const score = clamp(100 * (1 - r / 6), 0, 100);
+  return { r_in: r, score };
+}
+
+/**
+ * LOCKED direction/correction:
+ * correction = bull - POIB
+ */
+function computeCorrection(bullX_in, bullY_in, poibX_in, poibY_in) {
+  const dx = n(bullX_in) - n(poibX_in);
+  const dy = n(bullY_in) - n(poibY_in);
+
+  return {
+    dx,
+    dy,
+    windageDirection: dx >= 0 ? "RIGHT" : "LEFT",
+    elevationDirection: dy >= 0 ? "UP" : "DOWN",
+  };
+}
+
+/**
+ * LOCKED pixel -> inches conversion in TARGET coords
+ * image coords: +X right, +Y down
+ * target coords: +X right, +Y up
+ *
+ * poibX_in = (groupX_px - bullX_px)/ppi
+ * poibY_in = (bullY_px - groupY_px)/ppi   <-- Y flipped (LOCK)
+ */
+function pixelsToTargetInches(groupX_px, groupY_px, bullX_px, bullY_px, ppi) {
+  const p = n(ppi);
+  if (!(p > 0)) return { poibX_in: 0, poibY_in: 0, ppi_used: 0 };
+
+  const poibX_in = (n(groupX_px) - n(bullX_px)) / p;
+  const poibY_in = (n(bullY_px) - n(groupY_px)) / p; // LOCK: Y flipped
+
+  return { poibX_in, poibY_in, ppi_used: p };
+}
+
+async function analyzeImage(buffer) {
+  const img = await Jimp.read(buffer);
+
+  // Normalize size for stable thresholding
+  const targetW = 1200;
+  if (img.bitmap.width > targetW) img.resize(targetW, Jimp.AUTO);
+
+  const w = img.bitmap.width;
+  const h = img.bitmap.height;
+
+  // 1) Bull center = centroid of dark pixels
+  let bullSumX = 0,
+    bullSumY = 0,
+    bullCount = 0;
+
+  // 2) Group center = centroid of orange pixels
+  let grpSumX = 0,
+    grpSumY = 0,
+    grpCount = 0;
+
+  const step = 2;
+
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
+
+      const brightness = (r + g + b) / 3;
+      const isDark = brightness < 70;
+
+      if (isDark) {
+        bullSumX += x;
+        bullSumY += y;
+        bullCount++;
+      }
+
+      const isOrange =
+        r > 140 && g > 70 && g < 200 && b < 120 && r > g && g > b;
+
+      if (isOrange) {
+        grpSumX += x;
+        grpSumY += y;
+        grpCount++;
+      }
     }
   }
 
-  function stripHtml(html) {
-    const div = document.createElement("div");
-    div.innerHTML = html;
-    return div.textContent || div.innerText || "";
-  }
+  const bullX_px = bullCount > 0 ? bullSumX / bullCount : w / 2;
+  const bullY_px = bullCount > 0 ? bullSumY / bullCount : h / 2;
 
-  function openModal(title, htmlBody) {
-    if (!modalOverlay) {
-      alert(`${title}\n\n${stripHtml(htmlBody)}`);
-      return;
+  let groupX_px, groupY_px;
+
+  if (grpCount > 50) {
+    groupX_px = grpSumX / grpCount;
+    groupY_px = grpSumY / grpCount;
+  } else {
+    let farSumX = 0,
+      farSumY = 0,
+      farCount = 0;
+
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
+        const brightness = (r + g + b) / 3;
+        const isDark2 = brightness < 60;
+        if (!isDark2) continue;
+
+        const dx = x - bullX_px;
+        const dy = y - bullY_px;
+        const dist2 = dx * dx + dy * dy;
+
+        if (dist2 < 140 * 140) continue;
+
+        farSumX += x;
+        farSumY += y;
+        farCount++;
+      }
     }
-    if (modalTitle) modalTitle.textContent = title;
-    if (modalBody) modalBody.innerHTML = htmlBody;
 
-    modalOverlay.style.display = "flex";
-    modalOverlay.setAttribute("aria-hidden", "false");
+    groupX_px = farCount > 0 ? farSumX / farCount : bullX_px;
+    groupY_px = farCount > 0 ? farSumY / farCount : bullY_px;
   }
 
-  function closeModal() {
-    if (!modalOverlay) return;
-    modalOverlay.style.display = "none";
-    modalOverlay.setAttribute("aria-hidden", "true");
-  }
+  const ppi_fallback = 100;
 
-  function fmt(v) {
-    return String(v ?? "").trim();
-  }
+  return {
+    resizedW: w,
+    resizedH: h,
+    bull_px: { x: bullX_px, y: bullY_px },
+    group_px: { x: groupX_px, y: groupY_px },
+    ppi_estimate: ppi_fallback,
+    method: grpCount > 50 ? "orange_centroid" : "dark_far_centroid",
+    samples: Math.floor((w / step) * (h / step)),
+    orangeCount: grpCount,
+    darkCount: bullCount,
+  };
+}
 
-  async function analyzeToBackend(file) {
-    // ✅ FIX: your backend route is /api/analyze
-    const url = `${API_BASE}/api/analyze`;
+// =====================
+// ROUTES
+// =====================
+app.get(["/health", "/api/health"], (req, res) => {
+  res.json({
+    ok: true,
+    service: "sczn3-backend-new",
+    lock_version: LOCK_VERSION,
+    coord_system: COORD_SYSTEM,
+    score_version: SCORE_VERSION,
+    time: new Date().toISOString(),
+  });
+});
 
-    const fd = new FormData();
-    // ✅ backend expects field name: "image"
-    fd.append("image", file);
+app.post("/api/calc", (req, res) => {
+  const bullX = n(req.body?.bull_in?.x, 0);
+  const bullY = n(req.body?.bull_in?.y, 0);
 
-    let res;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        body: fd,
+  const poibX = n(req.body?.poib_in?.x, 0);
+  const poibY = n(req.body?.poib_in?.y, 0);
+
+  const corr = computeCorrection(bullX, bullY, poibX, poibY);
+  const scoreObj = computeOffsetScore(poibX, poibY);
+
+  res.json({
+    ok: true,
+    lock_version: LOCK_VERSION,
+    coord_system: COORD_SYSTEM,
+    score_version: SCORE_VERSION,
+
+    bull_in: { x: bullX, y: bullY },
+    poib_in: { x: poibX, y: poibY },
+
+    correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
+    directions: {
+      windage: corr.windageDirection,
+      elevation: corr.elevationDirection,
+    },
+
+    offset_in: f2(scoreObj.r_in),
+    score: f2(scoreObj.score),
+  });
+});
+
+app.post("/api/analyze", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        ok: false,
+        error: "No image uploaded (field name: image)",
       });
-    } catch (err) {
-      const msg = err && err.message ? err.message : String(err);
-      throw new Error(`Load failed\nURL tried: ${url}\n${msg}`);
     }
 
-    const contentType = res.headers.get("content-type") || "";
+    const a = await analyzeImage(req.file.buffer);
 
-    if (!res.ok) {
-      let bodyText = "";
-      try {
-        bodyText = await res.text();
-      } catch (_) {}
-      throw new Error(
-        `HTTP ${res.status} ${res.statusText}\nURL tried: ${url}\n${bodyText || "(no body)"}`
-      );
-    }
+    const bull_in = { x: 0, y: 0 };
 
-    if (contentType.includes("application/json")) return await res.json();
-    return await res.text();
-  }
+    const conv = pixelsToTargetInches(
+      a.group_px.x,
+      a.group_px.y,
+      a.bull_px.x,
+      a.bull_px.y,
+      a.ppi_estimate
+    );
 
-  // =========================
-  // Init state
-  // =========================
-  setPressToSeeEnabled(false);
+    const poib_in = {
+      x: f2(conv.poibX_in),
+      y: f2(conv.poibY_in),
+    };
 
-  // =========================
-  // Events
-  // =========================
-  if (modalClose) modalClose.addEventListener("click", closeModal);
-  if (modalOverlay) {
-    modalOverlay.addEventListener("click", (e) => {
-      if (e.target === modalOverlay) closeModal();
+    const corr = computeCorrection(bull_in.x, bull_in.y, poib_in.x, poib_in.y);
+    const scoreObj = computeOffsetScore(poib_in.x, poib_in.y);
+
+    return res.json({
+      ok: true,
+      lock_version: LOCK_VERSION,
+      coord_system: COORD_SYSTEM,
+      score_version: SCORE_VERSION,
+
+      bull_in,
+      poib_in,
+
+      correction_in: { dx: f2(corr.dx), dy: f2(corr.dy) },
+      directions: {
+        windage: corr.windageDirection,
+        elevation: corr.elevationDirection,
+      },
+
+      offset_in: f2(scoreObj.r_in),
+      score: f2(scoreObj.score),
+
+      note:
+        "LOCKED: target coords +X right +Y up; poibY uses Y flip; correction = bull - POIB; score = OffsetOnly",
+      debug: {
+        method: a.method,
+        resizedW: a.resizedW,
+        resizedH: a.resizedH,
+        bull_px: { x: f2(a.bull_px.x), y: f2(a.bull_px.y) },
+        group_px: { x: f2(a.group_px.x), y: f2(a.group_px.y) },
+        ppi_estimate: a.ppi_estimate,
+        orangeCount: a.orangeCount,
+        darkCount: a.darkCount,
+        samples: a.samples,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      lock_version: LOCK_VERSION,
+      coord_system: COORD_SYSTEM,
+      score_version: SCORE_VERSION,
+      error: String(err),
     });
   }
+});
 
-  if (buyMoreBtn) {
-    buyMoreBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      openModal("BUY MORE TARGETS", "<div>Coming soon.</div>");
-    });
-  }
-
-  if (fileInput) {
-    fileInput.addEventListener("change", () => {
-      if (!hasFileSelected()) {
-        if (thumb) {
-          thumb.style.display = "none";
-          thumb.removeAttribute("src");
-        }
-        setPressToSeeEnabled(false);
-        return;
-      }
-
-      const file = fileInput.files[0];
-
-      // Thumbnail preview
-      if (thumb) {
-        const objUrl = URL.createObjectURL(file);
-        thumb.src = objUrl;
-        thumb.style.display = "block";
-        thumb.onload = () => URL.revokeObjectURL(objUrl);
-      }
-
-      setPressToSeeEnabled(true);
-    });
-  }
-
-  // Main button: analyze
-  if (pressToSeeBtn) {
-    pressToSeeBtn.addEventListener("click", async (e) => {
-      e.preventDefault();
-
-      if (!hasFileSelected()) return;
-
-      const file = fileInput.files[0];
-      const distanceYards = fmt(distanceInput ? distanceInput.value : "100") || "100";
-
-      openModal(
-        "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-        `
-          <div style="margin-bottom:12px;">Analyzing…</div>
-          <div style="opacity:.9;">
-            <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
-            <div><b>Distance:</b> ${distanceYards} yards</div>
-          </div>
-        `
-      );
-
-      try {
-        const result = await analyzeToBackend(file);
-
-        openModal(
-          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-          `
-            <div style="margin-bottom:12px;"><b>Analyze success ✅</b></div>
-            <div style="opacity:.9; margin-bottom:10px;">
-              <div><b>Photo:</b> ${file ? file.name : "(none)"}</div>
-              <div><b>Distance:</b> ${distanceYards} yards</div>
-            </div>
-            <div style="white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.35;">
-${typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-            </div>
-          `
-        );
-      } catch (err) {
-        const message = err && err.message ? err.message : String(err);
-
-        openModal(
-          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-          `
-            <div style="color:#ffb3b3; font-weight:700; margin-bottom:10px;">
-              Analyze failed:
-              <span style="font-weight:600; color:#ffd0d0;">${stripHtml(message).split("\n")[0]}</span>
-            </div>
-
-            <div style="opacity:.95; margin-bottom:10px; white-space:pre-wrap;">
-${stripHtml(message)}
-            </div>
-
-            <div style="opacity:.9; margin-top:10px;">
-              <div><b>Check:</b></div>
-              <ul style="margin:8px 0 0 18px;">
-                <li>API_BASE is correct</li>
-                <li>Backend route exists (<b>/api/analyze</b>)</li>
-                <li>Backend allows CORS from your frontend domain</li>
-                <li>Backend expects multipart field: <b>image</b></li>
-              </ul>
-            </div>
-          `
-        );
-      }
-    });
-  }
-})();
+// =====================
+// START
+// =====================
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`[sczn3-backend-new] listening on :${PORT}`);
+  console.log(`[LOCK] ${LOCK_VERSION} — ${COORD_SYSTEM}`);
+  console.log(`[SCORE] ${SCORE_VERSION}`);
+});
