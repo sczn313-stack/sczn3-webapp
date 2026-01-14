@@ -5,7 +5,7 @@
    - Scope Profiles (MOA/MIL, click value)
    - True MOA support (1 MOA = 1.047" @ 100y)
    - Clean SEC output + Confirm Zero + Next 5-shot challenge
-   - Modal overlay (no alert fallback) + background scroll lock
+   - Modal overlay + background scroll lock
 */
 
 (() => {
@@ -18,13 +18,14 @@
   // DOM
   // =========================
   const fileInput = document.getElementById("targetPhoto");
+  const uploadLabel = document.getElementById("uploadLabel");
   const thumb = document.getElementById("thumb");
   const distanceInput = document.getElementById("distanceYards");
 
   const buyMoreBtn = document.getElementById("buyMoreBtn");
   const pressToSeeBtn = document.getElementById("pressToSee");
 
-  // Modal (must exist in HTML now)
+  // Modal
   const modalOverlay = document.getElementById("secModalOverlay");
   const modalTitle = document.getElementById("secModalTitle");
   const modalBody = document.getElementById("secModalBody");
@@ -60,7 +61,6 @@
 
   function openModal(title, htmlBody) {
     if (!modalOverlay) {
-      // If you ever see this alert again, the modal markup is missing.
       alert(`${title}\n\n${stripHtml(htmlBody)}`);
       return;
     }
@@ -68,7 +68,6 @@
     if (modalTitle) modalTitle.textContent = title;
     if (modalBody) modalBody.innerHTML = htmlBody;
 
-    // lock background scroll
     document.body.classList.add("modal-open");
 
     modalOverlay.style.display = "flex";
@@ -81,7 +80,6 @@
     modalOverlay.style.display = "none";
     modalOverlay.setAttribute("aria-hidden", "true");
 
-    // unlock background scroll
     document.body.classList.remove("modal-open");
   }
 
@@ -166,7 +164,6 @@
     if (profile.kind === "MOA") {
       return (profile.moaInchesAt100 || 1.047) * (yd / 100);
     }
-
     return (profile.milInchesAt100 || 3.6) * (yd / 100);
   }
 
@@ -301,10 +298,11 @@
   }
 
   // =========================
-  // Init + events
+  // Init + Events
   // =========================
   setPressToSeeEnabled(false);
 
+  // Modal close handlers
   if (modalClose) modalClose.addEventListener("click", closeModal);
   if (modalOverlay) {
     modalOverlay.addEventListener("click", (e) => {
@@ -312,6 +310,7 @@
     });
   }
 
+  // BUY MORE TARGETS
   if (buyMoreBtn) {
     buyMoreBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -319,9 +318,18 @@
     });
   }
 
-  // Inject scope profile UI on load
+  // Scope UI
   injectProfileUI();
 
+  // File picker: ensure label triggers the hidden input everywhere
+  if (uploadLabel && fileInput) {
+    uploadLabel.addEventListener("click", (e) => {
+      e.preventDefault();
+      fileInput.click();
+    });
+  }
+
+  // On file selected: show thumbnail, enable press-to-see
   if (fileInput) {
     fileInput.addEventListener("change", () => {
       if (!hasFileSelected()) {
@@ -335,7 +343,6 @@
 
       const file = fileInput.files[0];
 
-      // Thumbnail
       if (thumb) {
         const objUrl = URL.createObjectURL(file);
         thumb.src = objUrl;
@@ -347,6 +354,7 @@
     });
   }
 
+  // Main analyze
   if (pressToSeeBtn) {
     pressToSeeBtn.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -370,10 +378,7 @@
 
       try {
         const result = await analyzeToBackend(file);
-        openModal(
-          "YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS",
-          renderSEC(result, file ? file.name : "", distanceYards, profile)
-        );
+        openModal("YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS", renderSEC(result, file ? file.name : "", distanceYards, profile));
       } catch (err) {
         const message = err && err.message ? err.message : String(err);
         openModal(
