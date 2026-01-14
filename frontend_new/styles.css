@@ -27,5 +27,23 @@
   font-size: 15px;         /* smaller so it fits */
   line-height: 1.25;
 }
+/* ===== Modal-only fit patch (does NOT change page layout) ===== */
+#secModalOverlay{
+  position: fixed;
+  inset: 0;
+  padding: 12px;
+}
 
+#secModal{
+  width: min(720px, 94vw);
+  max-height: 86vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#secModalBody{
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
 #secModalTitle{ font-size: 18px; line-height: 1.15; }
