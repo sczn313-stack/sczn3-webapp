@@ -4,72 +4,83 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SEC Output</title>
-  <link rel="stylesheet" href="./styles.css?v=1" />
+  <style>
+    body{margin:0;font-family:serif;background:#fff;}
+    .wrap{padding:16px;}
+    .panel{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:14px;margin:0 0 14px 0;}
+    .title{font-weight:800;letter-spacing:.02em;margin:0 0 10px 0;}
+    .row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;}
+    .thumb{max-width:100%;border-radius:12px;border:1px solid rgba(0,0,0,.12);}
+    .meta{font-size:16px;line-height:1.35;}
+    .meta .k{font-weight:800;}
+    .grid{display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:12px;}
+    .card{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:12px;}
+    .label{font-weight:900;letter-spacing:.02em;margin:0 0 8px 0;}
+    .value{font-size:28px;font-weight:900;}
+    .click-line{display:flex;gap:8px;align-items:baseline;font-size:18px;margin:6px 0;}
+    .click-line .k{font-weight:900;}
+    .click-line .v{font-weight:900;}
+    .dir{font-weight:900;}
+    .tip{font-size:16px;line-height:1.25;}
+    .nodata{padding:10px 12px;border-radius:12px;background:#fff7e6;border:1px solid rgba(0,0,0,.12);font-weight:700;}
+    .hidden{display:none;}
+    .secid{font-weight:900;margin:0 0 10px 0;}
+  </style>
 </head>
 
-<body class="page output-page">
-  <header class="topbar">
-    <div class="brand">
-      <div class="secid" id="secIdText">SEC-ID —</div>
-      <div class="sub">SEC Output</div>
-    </div>
+<body>
+  <div class="wrap">
+    <div class="secid" id="secIdText">SEC-ID —</div>
 
-    <div class="top-actions">
-      <a class="btn small" href="./index.html">Back</a>
-    </div>
-  </header>
-
-  <main class="wrap">
-    <section class="panel">
-      <div class="panel-title">TARGET THUMBNAIL</div>
-      <div class="thumb-row">
+    <div class="panel">
+      <div class="title">TARGET THUMBNAIL</div>
+      <div class="row">
         <img id="targetThumb" class="thumb" alt="Target thumbnail" />
-        <div class="thumb-meta">
-          <div class="meta-line"><span class="k">Distance:</span> <span id="distanceText">—</span> yards</div>
-          <div class="meta-line"><span class="k">Adjustment:</span> <span id="adjText">—</span></div>
+        <div class="meta">
+          <div><span class="k">Distance:</span> <span id="distanceText">—</span> yards</div>
+          <div><span class="k">Adjustment:</span> <span id="adjText">—</span></div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <section class="panel">
-      <div class="panel-title">RESULTS</div>
+    <div class="panel">
+      <div class="title">RESULTS</div>
 
       <div id="noDataBanner" class="nodata">
-        No results found yet. Generate SEC first, then press “PRESS TO SEE”.
+        No results found yet. Generate SEC first, then press “YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS”.
       </div>
 
-      <div id="resultsGrid" class="results-grid hidden">
-        <div class="result-card">
-          <div class="result-label">SCORE</div>
-          <div class="result-value" id="scoreText">—</div>
+      <div id="resultsGrid" class="grid hidden">
+        <div class="card">
+          <div class="label">SCORE</div>
+          <div class="value" id="scoreText">—</div>
         </div>
 
-        <div class="result-card">
-          <div class="result-label">CLICKS</div>
-          <div class="clicks">
-            <div class="click-line">
-              <span class="k">Elevation:</span>
-              <span class="v" id="elevClicksText">—</span>
-              <span class="dir" id="elevDirText"></span>
-            </div>
-            <div class="click-line">
-              <span class="k">Windage:</span>
-              <span class="v" id="windClicksText">—</span>
-              <span class="dir" id="windDirText"></span>
-            </div>
+        <div class="card">
+          <div class="label">CLICKS</div>
+          <div class="click-line">
+            <span class="k">Elevation:</span>
+            <span class="v" id="elevClicksText">—</span>
+            <span class="dir" id="elevDirText"></span>
+          </div>
+          <div class="click-line">
+            <span class="k">Windage:</span>
+            <span class="v" id="windClicksText">—</span>
+            <span class="dir" id="windDirText"></span>
           </div>
         </div>
 
-        <div class="result-card">
-          <div class="result-label">TIP</div>
+        <div class="card">
+          <div class="label">TIP</div>
           <div class="tip" id="tipText">—</div>
         </div>
       </div>
 
-      <div id="debugBox" class="debug hidden"></div>
-    </section>
-  </main>
+      <div id="debugBox" class="hidden"></div>
+    </div>
+  </div>
 
-  <script src="./output.js?v=2"></script>
+  <!-- bump version to kill iOS caching -->
+  <script src="./output.js?v=9" defer></script>
 </body>
 </html>
