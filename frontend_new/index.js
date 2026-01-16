@@ -26,6 +26,19 @@
   const pressToSee    = $("pressToSee");
   const buyMoreBtn    = $("buyMoreBtn");
 
+  // ---- Storage helpers (SESSION + LOCAL) ----
+  function sGet(key){
+    return sessionStorage.getItem(key) || localStorage.getItem(key);
+  }
+  function sSet(key, val){
+    try { sessionStorage.setItem(key, val); } catch {}
+    try { localStorage.setItem(key, val); } catch {}
+  }
+  function sDel(key){
+    try { sessionStorage.removeItem(key); } catch {}
+    try { localStorage.removeItem(key); } catch {}
+  }
+
   function setPressEnabled(enabled){
     if (!pressToSee) return;
     if (enabled){
@@ -42,7 +55,7 @@
   function saveDistance(){
     if (!distanceInput) return;
     const v = String(distanceInput.value || "").trim();
-    if (v) sessionStorage.setItem(DIST_KEY, v);
+    if (v) sSet(DIST_KEY, v);
   }
 
   function readFileAsDataURL(file){
@@ -59,13 +72,13 @@
   }
 
   function loadTaps(){
-    const raw = sessionStorage.getItem(TAPS_KEY) || "";
+    const raw = sGet(TAPS_KEY) || "";
     const arr = safeJsonParse(raw);
     return Array.isArray(arr) ? arr : [];
   }
 
   function saveTaps(arr){
-    sessionStorage.setItem(TAPS_KEY, JSON.stringify(arr || []));
+    sSet(TAPS_KEY, JSON.stringify(arr || []));
   }
 
   // Map tap (client coords on displayed image) -> NATURAL image pixel coords
@@ -136,13 +149,13 @@
 
   // ---- Init ----
   (function init(){
-    const savedDist = sessionStorage.getItem(DIST_KEY);
+    const savedDist = sGet(DIST_KEY);
     if (distanceInput && savedDist) distanceInput.value = savedDist;
 
-    const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
+    const buyUrl = sGet("sczn3_vendor_buy_url");
     if (buyMoreBtn && buyUrl) buyMoreBtn.href = buyUrl;
 
-    const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
+    const savedPhoto = sGet(PHOTO_KEY);
     if (savedPhoto){
       showThumb(savedPhoto);
       setPressEnabled(true);
@@ -183,10 +196,10 @@
         // new photo = reset taps
         saveTaps([]);
 
-        // show + store
+        // show + store (SESSION + LOCAL)
         showThumb(dataUrl);
-        sessionStorage.setItem(PHOTO_KEY, dataUrl);
-        sessionStorage.setItem(FILE_KEY, file.name || "target.jpg");
+        sSet(PHOTO_KEY, dataUrl);
+        sSet(FILE_KEY, file.name || "target.jpg");
 
         saveDistance();
         setPressEnabled(true);
@@ -227,12 +240,12 @@
     });
   }
 
-  // ---- PRESS TO SEE -> output.html ----
+  // ---- PRESS TO SEE -> output.html (SAME TAB) ----
   if (pressToSee){
     pressToSee.addEventListener("click", (e) => {
       e.preventDefault();
 
-      const hasPhoto = !!sessionStorage.getItem(PHOTO_KEY);
+      const hasPhoto = !!sGet(PHOTO_KEY);
       if (!hasPhoto){
         alert("Please upload a target photo first.");
         setPressEnabled(false);
@@ -240,6 +253,8 @@
       }
 
       saveDistance();
+
+      // same-tab navigation is critical on iPad Safari
       window.location.href = "./output.html";
     });
   }
