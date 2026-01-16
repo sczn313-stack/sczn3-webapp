@@ -1,98 +1,97 @@
-// backend_new/server.js (FULL REPLACEMENT)  ✅ NO JIMP. Tap-based correction_in + directions.
+// backend_new/server.js
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
+const sharp = require("sharp");
 
 const app = express();
 
-// ---- CORS (safe for pilot) ----
-app.use(cors());
+// --- CORS (keep permissive for now; lock down later) ---
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-// ---- Multer (accept image, but we don’t need it yet) ----
-const upload = multer({ storage: multer.memoryStorage() });
+// --- Upload (memory, since we'll read via sharp) ---
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024 } // 12MB
+});
 
-// ---- Health check ----
+// --- Health check ---
 app.get("/", (req, res) => {
-  res.type("text").send("SCZN3 backend_new OK");
+  res.status(200).send("SCZN3 backend_new OK");
 });
 
-// Optional: show useful message if someone hits analyze with GET
-app.get("/api/analyze", (req, res) => {
-  res.status(405).json({ ok:false, error:"Use POST /api/analyze" });
-});
-
-/**
- * POST /api/analyze
- * Accepts multipart/form-data:
- * - image: file (optional for now)
- * - taps: JSON string [{x,y}, ...]  (REQUIRED for pilot)
- * - distanceYards: number (optional)
- *
- * Returns:
- * - correction_in: { dx, dy }  (bull - POIB), inches (pilot scale)
- * - directions: { windage, elevation } where dx>0 => RIGHT, dx<0 => LEFT; dy>0 => DOWN, dy<0 => UP
- */
+// --- Analyze endpoint (POST) ---
 app.post("/api/analyze", upload.single("image"), async (req, res) => {
   try {
-    const tapsRaw = req.body?.taps || "[]";
-    let taps;
-    try { taps = JSON.parse(tapsRaw); } catch { taps = []; }
-
-    if (!Array.isArray(taps) || taps.length === 0) {
-      return res.json({
-        ok: true,
-        note: "Backend reached. Provide taps to compute correction_in.",
-        correction_in: null,
-        directions: null
-      });
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ ok: false, error: "Missing image file (field name: image)" });
     }
 
-    // Try to infer image size:
-    // - If image was sent: we can’t decode without an image lib, so we accept optional width/height later.
-    // - For now we use a stable pilot canvas size (works for direction + click pipeline).
-    const W = Number(req.body?.imageWidth || 1000);
-    const H = Number(req.body?.imageHeight || 1000);
+    // Optional inputs (safe defaults)
+    const distanceYards = Number(req.body.distanceYards || req.body.distance || 100);
+    const moaPerClick = Number(req.body.moaPerClick || 0.25);
 
-    // Bull = center (pilot)
-    const bullX = W / 2;
-    const bullY = H / 2;
+    // Read image metadata (proves sharp works, and catches corrupt uploads)
+    const meta = await sharp(req.file.buffer).metadata();
 
-    // POIB = mean of tap points
-    let sx = 0, sy = 0;
-    for (const p of taps) { sx += Number(p.x || 0); sy += Number(p.y || 0); }
-    const poibX = sx / taps.length;
-    const poibY = sy / taps.length;
+    // ------------------------------------------------------------
+    // TEMP STUB (until real bullet-hole / POIB logic is wired)
+    // We return a valid shape your frontend can render immediately.
+    // ------------------------------------------------------------
+    const correction_in = {
+      // +up means POIB is low -> move impact UP (dial UP)
+      up: 0.00,
+      // +right means POIB is left -> move impact RIGHT (dial RIGHT)
+      right: 0.00
+    };
 
-    // correction in pixels (bull - POIB)
-    const dx_px = bullX - poibX;
-    const dy_px = bullY - poibY;
+    const directions = {
+      elevation: correction_in.up === 0 ? "" : (correction_in.up > 0 ? "UP" : "DOWN"),
+      windage: correction_in.right === 0 ? "" : (correction_in.right > 0 ? "RIGHT" : "LEFT")
+    };
 
-    // Pilot scale: inches per pixel (default 0.01 => 100px = 1 inch)
-    const inchPerPixel = Number(process.env.INCH_PER_PIXEL || 0.01);
+    // True MOA inches per click at distance
+    const inchesPerClick =
+      1.047 * (distanceYards / 100) * moaPerClick;
 
-    const dx_in = dx_px * inchPerPixel;
-    const dy_in = dy_px * inchPerPixel;
+    const clicks = {
+      elevation: inchesPerClick ? (Math.abs(correction_in.up) / inchesPerClick) : 0,
+      windage: inchesPerClick ? (Math.abs(correction_in.right) / inchesPerClick) : 0
+    };
 
-    // Directions for scope adjustment to move POIB to bull
-    const windage = dx_in > 0 ? "RIGHT" : (dx_in < 0 ? "LEFT" : "");
-    // y grows DOWN; if dy_in < 0 => bull is ABOVE POIB => need UP
-    const elevation = dy_in > 0 ? "DOWN" : (dy_in < 0 ? "UP" : "");
+    // 2-decimal rule
+    const round2 = (n) => Number((Number(n) || 0).toFixed(2));
 
     return res.json({
       ok: true,
-      note: "Tap-based analyze (pilot). correction_in uses a fixed inch-per-pixel scale.",
-      poib_px: { x: Number(poibX.toFixed(2)), y: Number(poibY.toFixed(2)) },
-      bull_px: { x: Number(bullX.toFixed(2)), y: Number(bullY.toFixed(2)) },
-      correction_in: { dx: Number(dx_in.toFixed(2)), dy: Number(dy_in.toFixed(2)) },
-      directions: { windage, elevation }
+      secId: String(Date.now()).slice(-6),
+      distanceYards,
+      moaPerClick,
+      image: { width: meta.width || null, height: meta.height || null },
+      correction_in: {
+        up: round2(correction_in.up),
+        right: round2(correction_in.right)
+      },
+      directions,
+      clicks: {
+        elevation: round2(clicks.elevation),
+        windage: round2(clicks.windage)
+      },
+      // placeholder score + tip (your frontend can display these now)
+      score: 614,
+      tip: "Tap N Score pilot — shot(s) recorded."
     });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: String(e?.message || e) });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Server error",
+      where: "POST /api/analyze"
+    });
   }
 });
 
-// ---- Start ----
+// --- Listen ---
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`SCZN3 backend_new listening on ${PORT}`);
