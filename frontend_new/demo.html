@@ -1,1 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SEC Demo Tap Mode</title>
 
+  <style>
+    body { font-family: serif; padding: 18px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .btn {
+      display:inline-block;
+      background:#2f5f73;
+      color:#fff;
+      padding:12px 14px;
+      border-radius:10px;
+      font-weight:700;
+      text-decoration:none;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      border:none;
+    }
+    .btn.secondary { background:#e6eef2; color:#0b66c3; }
+    .pill {
+      display:inline-block;
+      background:#e6eef2;
+      color:#0b66c3;
+      padding:10px 14px;
+      border-radius:999px;
+      font-weight:700;
+      text-decoration:none;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      border:none;
+    }
+    label { font-weight:700; }
+    input[type="number"] { padding:10px; border-radius:10px; border:1px solid #ccc; width:110px; }
+    .hint { margin-top:8px; color:#b00000; font-style:italic; font-weight:700; }
+    .wrap { margin-top:14px; }
+    canvas {
+      width:100%;
+      max-width:520px;
+      height:auto;
+      border-radius:14px;
+      border:2px solid #1e1e1e;
+      display:block;
+      background:#fff;
+      touch-action:none; /* important for tap accuracy */
+    }
+    .status { margin-top:10px; font-weight:700; }
+    .small { font-size: 12px; opacity:0.8; }
+  </style>
+</head>
+
+<body>
+  <h1>SEC Demo<br><span class="small">Tap-Only Test</span></h1>
+
+  <div class="row">
+    <div>
+      <label for="distanceYards">ADJUST DISTANCE (yards)</label><br>
+      <input id="distanceYards" type="number" value="100" min="1" step="1" />
+    </div>
+
+    <button id="undoBtn" class="pill" type="button">UNDO LAST TAP</button>
+    <button id="clearBtn" class="pill" type="button">CLEAR</button>
+  </div>
+
+  <div class="hint">TAP 7 SHOTS — THEN PRESS TO SEE</div>
+
+  <div class="wrap">
+    <canvas id="targetCanvas" width="520" height="520"></canvas>
+    <div id="status" class="status">0 taps</div>
+  </div>
+
+  <div class="row" style="margin-top:14px;">
+    <button id="pressToSee" class="btn" type="button">PRESS TO SEE</button>
+    <a class="btn secondary" href="./index.html">Back to Upload</a>
+  </div>
+
+  <script src="./demo.js"></script>
+</body>
+</html>
