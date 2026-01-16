@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
 
   // ===== DEMO OVERRIDE (manual dx/dy) =====
-  const FORCE_DEMO = false;
+  const FORCE_DEMO = true;
   const DEMO_DX = "-2.00";
   const DEMO_DY = "-3.00";
 
