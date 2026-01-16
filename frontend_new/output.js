@@ -2,6 +2,16 @@
 (() => {
   const $ = (id) => document.getElementById(id);
 
+  // =========================================================
+  // DEMO OVERRIDE (frontend-side)
+  // Set FORCE_DEMO=true to send dx/dy to backend for testing.
+  // dx > 0 => RIGHT, dx < 0 => LEFT
+  // dy > 0 => UP,    dy < 0 => DOWN
+  // =========================================================
+  const FORCE_DEMO = false;
+  const DEMO_DX = "-2.00"; // LEFT
+  const DEMO_DY = "-3.00"; // DOWN
+
   // ===== STORAGE KEYS (must match index.js) =====
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
   const DIST_KEY  = "sczn3_distance_yards";
@@ -77,6 +87,12 @@
       fd.append("image", blob, "target.jpg");
       fd.append("distanceYards", String(yards));
       fd.append("moaPerClick", "0.25");
+
+      // ===== DEMO OVERRIDE (THIS IS THE 2-LINE CHANGE YOU WANTED) =====
+      if (FORCE_DEMO) {
+        fd.append("dx", DEMO_DX);
+        fd.append("dy", DEMO_DY);
+      }
 
       const res = await fetch(ANALYZE_URL, { method: "POST", body: fd });
 
