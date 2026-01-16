@@ -9,7 +9,7 @@
   // dy > 0 => UP,    dy < 0 => DOWN
   // =========================================================
 
-  const FORCE_DEMO = true;
+  const FORCE_DEMO = false;
 const DEMO_DX = "-2.00";
 const DEMO_DY = "-3.00";
 
