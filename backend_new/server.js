@@ -1,165 +1,99 @@
-// backend_new/server.js
-// SCZN3 backend (fresh build) — Analyze target image and return correction_in + directions
-// Correction convention: correction = bull(center) - POIB(impact centroid)
-
+// backend_new/server.js (FULL REPLACEMENT)  ✅ NO JIMP. Tap-based correction_in + directions.
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
-const Jimp = require("jimp");
 
 const app = express();
 
-// ---------- CORS ----------
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || ""; // e.g. https://sczn3-frontend-new.onrender.com
-app.use(
-  cors({
-    origin: FRONTEND_ORIGIN ? [FRONTEND_ORIGIN] : true,
-    credentials: false,
-  })
-);
+// ---- CORS (safe for pilot) ----
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
 
-// ---------- Upload ----------
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB
+// ---- Multer (accept image, but we don’t need it yet) ----
+const upload = multer({ storage: multer.memoryStorage() });
+
+// ---- Health check ----
+app.get("/", (req, res) => {
+  res.type("text").send("SCZN3 backend_new OK");
 });
 
-// ---------- Health ----------
-app.get("/", (_req, res) => {
-  res.type("text/plain").send("SCZN3 backend_new OK");
+// Optional: show useful message if someone hits analyze with GET
+app.get("/api/analyze", (req, res) => {
+  res.status(405).json({ ok:false, error:"Use POST /api/analyze" });
 });
 
-// Helpful message (so you don't see "Cannot GET /api/analyze")
-app.get("/api/analyze", (_req, res) => {
-  res
-    .status(200)
-    .json({ ok: true, note: "Use POST /api/analyze with multipart form-data field 'image'." });
-});
-
-// ---------- Core Analyze ----------
+/**
+ * POST /api/analyze
+ * Accepts multipart/form-data:
+ * - image: file (optional for now)
+ * - taps: JSON string [{x,y}, ...]  (REQUIRED for pilot)
+ * - distanceYards: number (optional)
+ *
+ * Returns:
+ * - correction_in: { dx, dy }  (bull - POIB), inches (pilot scale)
+ * - directions: { windage, elevation } where dx>0 => RIGHT, dx<0 => LEFT; dy>0 => DOWN, dy<0 => UP
+ */
 app.post("/api/analyze", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ ok: false, error: "Missing image file (field name must be 'image')." });
-    }
+    const tapsRaw = req.body?.taps || "[]";
+    let taps;
+    try { taps = JSON.parse(tapsRaw); } catch { taps = []; }
 
-    // Optional calibration: pixels-per-inch (PPI)
-    // If you don't supply this, we assume 100 px per inch (demo default).
-    // You can send as form field: pixelsPerInch
-    const ppi = clampNum(Number(req.body?.pixelsPerInch || process.env.PIXELS_PER_INCH || 100), 10, 2000);
-
-    // Read image
-    const img = await Jimp.read(req.file.buffer);
-    const w = img.bitmap.width;
-    const h = img.bitmap.height;
-
-    // Bull is assumed center of image
-    const cx = w / 2;
-    const cy = h / 2;
-
-    // Detect orange pixels (tap dots / hit markers)
-    // Thresholds tuned for orange-ish markers:
-    // - R high
-    // - G medium
-    // - B low
-    // - and some saturation guard (R-G difference)
-    let sumX = 0;
-    let sumY = 0;
-    let count = 0;
-
-    // Speed: sample every N pixels
-    const step = clampNum(Number(req.body?.sampleStep || process.env.SAMPLE_STEP || 2), 1, 12);
-
-    for (let y = 0; y < h; y += step) {
-      for (let x = 0; x < w; x += step) {
-        const rgba = Jimp.intToRGBA(img.getPixelColor(x, y));
-        const r = rgba.r, g = rgba.g, b = rgba.b;
-
-        // "Orange" heuristic
-        const isOrange =
-          r >= 160 &&
-          g >= 70 &&
-          g <= 190 &&
-          b <= 120 &&
-          (r - g) >= 25 &&
-          (g - b) >= 20;
-
-        if (isOrange) {
-          sumX += x;
-          sumY += y;
-          count++;
-        }
-      }
-    }
-
-    // If nothing detected, return explicit nulls (but still ok:true)
-    if (count < 30) {
-      return res.status(200).json({
+    if (!Array.isArray(taps) || taps.length === 0) {
+      return res.json({
         ok: true,
-        note: "No orange cluster detected (raise marker contrast or lower thresholds).",
+        note: "Backend reached. Provide taps to compute correction_in.",
         correction_in: null,
-        directions: null,
-        debug: {
-          w, h, ppi, sampleStep: step, orangeCount: count,
-        },
+        directions: null
       });
     }
 
-    // POIB centroid (in pixels)
-    const px = sumX / count;
-    const py = sumY / count;
+    // Try to infer image size:
+    // - If image was sent: we can’t decode without an image lib, so we accept optional width/height later.
+    // - For now we use a stable pilot canvas size (works for direction + click pipeline).
+    const W = Number(req.body?.imageWidth || 1000);
+    const H = Number(req.body?.imageHeight || 1000);
 
-    // Correction vector (center - POIB), converted to inches
-    const dx_in = (cx - px) / ppi; // + means dial RIGHT to move impacts RIGHT
-    const dy_in = (cy - py) / ppi; // + means dial UP to move impacts UP
+    // Bull = center (pilot)
+    const bullX = W / 2;
+    const bullY = H / 2;
 
-    // Directions based on correction sign
-    const windageDir = dx_in > 0 ? "RIGHT" : dx_in < 0 ? "LEFT" : "";
-    const elevationDir = dy_in > 0 ? "UP" : dy_in < 0 ? "DOWN" : "";
+    // POIB = mean of tap points
+    let sx = 0, sy = 0;
+    for (const p of taps) { sx += Number(p.x || 0); sy += Number(p.y || 0); }
+    const poibX = sx / taps.length;
+    const poibY = sy / taps.length;
 
-    res.status(200).json({
+    // correction in pixels (bull - POIB)
+    const dx_px = bullX - poibX;
+    const dy_px = bullY - poibY;
+
+    // Pilot scale: inches per pixel (default 0.01 => 100px = 1 inch)
+    const inchPerPixel = Number(process.env.INCH_PER_PIXEL || 0.01);
+
+    const dx_in = dx_px * inchPerPixel;
+    const dy_in = dy_px * inchPerPixel;
+
+    // Directions for scope adjustment to move POIB to bull
+    const windage = dx_in > 0 ? "RIGHT" : (dx_in < 0 ? "LEFT" : "");
+    // y grows DOWN; if dy_in < 0 => bull is ABOVE POIB => need UP
+    const elevation = dy_in > 0 ? "DOWN" : (dy_in < 0 ? "UP" : "");
+
+    return res.json({
       ok: true,
-      correction_in: {
-        dx: round4(dx_in),
-        dy: round4(dy_in),
-      },
-      directions: {
-        windage: windageDir,
-        elevation: elevationDir,
-      },
-      debug: {
-        w,
-        h,
-        ppi,
-        sampleStep: step,
-        orangeCount: count,
-        center_px: { x: round2(cx), y: round2(cy) },
-        poib_px: { x: round2(px), y: round2(py) },
-      },
+      note: "Tap-based analyze (pilot). correction_in uses a fixed inch-per-pixel scale.",
+      poib_px: { x: Number(poibX.toFixed(2)), y: Number(poibY.toFixed(2)) },
+      bull_px: { x: Number(bullX.toFixed(2)), y: Number(bullY.toFixed(2)) },
+      correction_in: { dx: Number(dx_in.toFixed(2)), dy: Number(dy_in.toFixed(2)) },
+      directions: { windage, elevation }
     });
-  } catch (err) {
-    res.status(500).json({
-      ok: false,
-      error: "Analyze failed",
-      detail: String(err && err.message ? err.message : err),
-    });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error: String(e?.message || e) });
   }
 });
 
-// ---------- Start ----------
-const PORT = Number(process.env.PORT || 3000);
+// ---- Start ----
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`SCZN3 backend_new listening on port ${PORT}`);
+  console.log(`SCZN3 backend_new listening on ${PORT}`);
 });
-
-// ---------- helpers ----------
-function clampNum(n, lo, hi) {
-  if (!Number.isFinite(n)) return lo;
-  return Math.max(lo, Math.min(hi, n));
-}
-function round2(n) {
-  return Math.round(n * 100) / 100;
-}
-function round4(n) {
-  return Math.round(n * 10000) / 10000;
-}
