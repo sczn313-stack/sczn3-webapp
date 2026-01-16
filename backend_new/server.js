@@ -1,4 +1,4 @@
-// backend_new/server.js
+// backend_new/server.js  (FULL REPLACEMENT)
 "use strict";
 
 const express = require("express");
@@ -59,8 +59,14 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
     // dy > 0 => dial UP
     // dy < 0 => dial DOWN
     // ------------------------------------------------------------
-    const hasDx = req.body.dx !== undefined && req.body.dx !== null && String(req.body.dx).trim() !== "";
-    const hasDy = req.body.dy !== undefined && req.body.dy !== null && String(req.body.dy).trim() !== "";
+    const hasDx =
+      req.body.dx !== undefined &&
+      req.body.dx !== null &&
+      String(req.body.dx).trim() !== "";
+    const hasDy =
+      req.body.dy !== undefined &&
+      req.body.dy !== null &&
+      String(req.body.dy).trim() !== "";
 
     // Defaults: 0.00 / 0.00 (stub)
     let dx = 0.0;
@@ -74,20 +80,19 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
     if (!Number.isFinite(dy)) dy = 0.0;
 
     const directions = {
-      elevation: dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"),
-      windage: dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT")
+      elevation: dy === 0 ? "" : dy > 0 ? "UP" : "DOWN",
+      windage: dx === 0 ? "" : dx > 0 ? "RIGHT" : "LEFT"
     };
 
     // True MOA inches per click at distance
     const inchesPerClick = 1.047 * (distanceYards / 100) * moaPerClick;
 
-    const clicksElevation = inchesPerClick ? (Math.abs(dy) / inchesPerClick) : 0;
-    const clicksWindage = inchesPerClick ? (Math.abs(dx) / inchesPerClick) : 0;
+    const clicksElevation = inchesPerClick ? Math.abs(dy) / inchesPerClick : 0;
+    const clicksWindage = inchesPerClick ? Math.abs(dx) / inchesPerClick : 0;
 
     // 2-decimal rule
     const round2 = (n) => Number((Number(n) || 0).toFixed(2));
 
-    // Nice debug info you can see in browser devtools if you print it
     const demoOverrideUsed = Boolean(hasDx || hasDy);
 
     return res.json({
