@@ -4,134 +4,86 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SEC Output</title>
-
   <style>
-    body{
-      margin:0;
-      font-family:serif;
-      background:#fff;
-    }
-    .wrap{padding:16px}
-    .panel{
-      border:1px solid rgba(0,0,0,.12);
-      border-radius:14px;
-      padding:14px;
-      margin-bottom:14px;
-    }
-    .title{
-      font-weight:900;
-      letter-spacing:.03em;
-      margin-bottom:10px;
-    }
-    .row{
-      display:flex;
-      gap:14px;
-      flex-wrap:wrap;
-      align-items:flex-start;
-    }
-    img{
-      max-width:100%;
-      border-radius:12px;
-      border:1px solid rgba(0,0,0,.12);
-    }
-    .meta{
-      font-size:16px;
-      line-height:1.35;
-    }
-    .meta .k{font-weight:900}
-    .grid{
-      display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
-      gap:12px;
-    }
-    .card{
-      border:1px solid rgba(0,0,0,.12);
-      border-radius:14px;
-      padding:12px;
-    }
-    .label{
-      font-weight:900;
-      margin-bottom:6px;
-    }
-    .value{
-      font-size:28px;
-      font-weight:900;
-    }
-    .click-line{
-      display:flex;
-      gap:6px;
-      font-size:18px;
-      margin-top:6px;
-    }
-    .dir{font-weight:900}
-    .nodata{
-      background:#fff7e6;
-      border:1px solid rgba(0,0,0,.12);
-      border-radius:12px;
-      padding:10px 12px;
-      font-weight:700;
-    }
-    .hidden{display:none}
-    .secid{
-      font-weight:900;
-      margin-bottom:10px;
-    }
+    body{margin:0;font-family:serif;background:#fff;}
+    .wrap{padding:16px;}
+    .panel{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:14px;margin:0 0 14px 0;}
+    .title{font-weight:800;letter-spacing:.02em;margin:0 0 10px 0;}
+    .row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;}
+    .thumb{max-width:100%;border-radius:12px;border:1px solid rgba(0,0,0,.12);}
+    .meta{font-size:16px;line-height:1.35;}
+    .meta .k{font-weight:800;}
+    .grid{display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:12px;}
+    .card{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:12px;}
+    .label{font-weight:900;letter-spacing:.02em;margin:0 0 8px 0;}
+    .value{font-size:28px;font-weight:900;}
+    .click-line{display:flex;gap:8px;align-items:baseline;font-size:18px;margin:6px 0;}
+    .click-line .k{font-weight:900;}
+    .click-line .v{font-weight:900;}
+    .dir{font-weight:900;}
+    .tip{font-size:16px;line-height:1.25;}
+    .nodata{padding:10px 12px;border-radius:12px;background:#fff7e6;border:1px solid rgba(0,0,0,.12);font-weight:700;}
+    .hidden{display:none;}
+    .secid{font-weight:900;margin:0 0 10px 0;}
   </style>
 </head>
 
 <body>
-<div class="wrap">
+  <div class="wrap">
+    <div class="secid" id="secIdText">SEC-ID —</div>
 
-  <div class="secid" id="secIdText">SEC-ID —</div>
-
-  <div class="panel">
-    <div class="title">TARGET THUMBNAIL</div>
-    <div class="row">
-      <img id="targetThumb" alt="Target thumbnail">
-      <div class="meta">
-        <div><span class="k">Distance:</span> <span id="distanceText">—</span> yards</div>
-        <div><span class="k">Adjustment:</span> <span id="adjText">—</span></div>
+    <div class="panel">
+      <div class="title">TARGET THUMBNAIL</div>
+      <div class="row">
+        <img id="targetThumb" class="thumb" alt="Target thumbnail" />
+        <div class="meta">
+          <div><span class="k">Distance:</span> <span id="distanceText">—</span> yards</div>
+          <div><span class="k">Adjustment:</span> <span id="adjText">—</span></div>
+        </div>
       </div>
+    </div>
+
+    <div class="panel">
+      <div class="title">RESULTS</div>
+
+      <!-- IDs NOW MATCH JS -->
+      <div id="noData" class="nodata">
+        No results found yet. Generate SEC first, then press “YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS”.
+      </div>
+
+      <div id="results" class="grid hidden">
+        <div class="card">
+          <div class="label">SCORE</div>
+          <div class="value" id="scoreText">—</div>
+        </div>
+
+        <div class="card">
+          <div class="label">CLICKS</div>
+
+          <div class="click-line">
+            <span class="k">Elevation:</span>
+            <span class="v" id="elevClicks">—</span>
+            <span class="dir" id="elevDir"></span>
+          </div>
+
+          <div class="click-line">
+            <span class="k">Windage:</span>
+            <span class="v" id="windClicks">—</span>
+            <span class="dir" id="windDir"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label">TIP</div>
+          <div class="tip" id="tipText">—</div>
+        </div>
+      </div>
+
+      <div id="debugBox" class="hidden"></div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="title">RESULTS</div>
-
-    <div id="noData" class="nodata">
-      No results found yet. Generate SEC first, then press
-      “YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS”.
-    </div>
-
-    <div id="results" class="grid hidden">
-      <div class="card">
-        <div class="label">SCORE</div>
-        <div class="value" id="scoreText">—</div>
-      </div>
-
-      <div class="card">
-        <div class="label">CLICKS</div>
-        <div class="click-line">
-          Elevation:
-          <span id="elevClicks">—</span>
-          <span class="dir" id="elevDir"></span>
-        </div>
-        <div class="click-line">
-          Windage:
-          <span id="windClicks">—</span>
-          <span class="dir" id="windDir"></span>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="label">TIP</div>
-        <div id="tipText">—</div>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<script src="./output.js?v=10" defer></script>
+  <!-- bump version to kill iOS caching -->
+  <script src="./output.js?v=10" defer></script>
 </body>
 </html>
