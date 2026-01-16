@@ -8,10 +8,9 @@
   // dx > 0 => RIGHT, dx < 0 => LEFT
   // dy > 0 => UP,    dy < 0 => DOWN
   // =========================================================
-
   const FORCE_DEMO = false;
-const DEMO_DX = "-2.00";
-const DEMO_DY = "-3.00";
+  const DEMO_DX = "-2.00";
+  const DEMO_DY = "-3.00";
 
   // ===== STORAGE KEYS (must match index.js) =====
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
@@ -49,23 +48,31 @@ const DEMO_DY = "-3.00";
   }
 
   // ===== SEC ID =====
-  let sid = sessionStorage.getItem("sczn3_sec_id");
+  let sid = sessionStorage.getItem("sczn3_sec_id") || localStorage.getItem("sczn3_sec_id");
   if (!sid) {
     sid = Math.random().toString(16).slice(2, 8).toUpperCase();
     sessionStorage.setItem("sczn3_sec_id", sid);
+    localStorage.setItem("sczn3_sec_id", sid);
   }
   if (secIdText) secIdText.textContent = `SEC-ID — ${sid}`;
 
-  // ===== LOAD STORED DATA =====
-  const imgData = sessionStorage.getItem(PHOTO_KEY);
-  const yards = Number(sessionStorage.getItem(DIST_KEY) || 100);
+  // ===== LOAD STORED DATA (SESSION FIRST, THEN LOCAL FALLBACK) =====
+  const imgData =
+    sessionStorage.getItem(PHOTO_KEY) ||
+    localStorage.getItem(PHOTO_KEY);
+
+  const yardsRaw =
+    sessionStorage.getItem(DIST_KEY) ||
+    localStorage.getItem(DIST_KEY);
+
+  const yards = Number(yardsRaw || 100);
 
   if (distanceText) distanceText.textContent = String(yards);
   if (adjText) adjText.textContent = "1/4 MOA per click";
 
   if (!imgData) {
     debug(
-      "NO PHOTO FOUND IN sessionStorage.\n\nFix:\n1) Open the FRONTEND URL (sczn3-frontend-new.onrender.com)\n2) Upload photo\n3) Press PRESS TO SEE (don’t open output.html directly)."
+      "NO PHOTO FOUND IN storage.\n\nFix:\n1) Open: https://sczn3-frontend-new2.onrender.com\n2) Upload photo\n3) Press PRESS TO SEE (it must navigate you to output.html in the SAME TAB).\n\nIf you manually open output.html in a new tab, sessionStorage will be empty on iPad."
     );
     return;
   }
@@ -89,7 +96,6 @@ const DEMO_DY = "-3.00";
       fd.append("distanceYards", String(yards));
       fd.append("moaPerClick", "0.25");
 
-      // ===== DEMO OVERRIDE (THIS IS THE 2-LINE CHANGE YOU WANTED) =====
       if (FORCE_DEMO) {
         fd.append("dx", DEMO_DX);
         fd.append("dy", DEMO_DY);
@@ -109,14 +115,10 @@ const DEMO_DY = "-3.00";
         return;
       }
 
-      // Accept either format:
-      // correction_in: { dx, dy }  (preferred)
-      // correction_in: { up, right } (fallback)
       const ci = data.correction_in || {};
       const dx = Number(ci.dx ?? ci.right ?? 0);
       const dy = Number(ci.dy ?? ci.up ?? 0);
 
-      // Click math (True MOA, 0.25 MOA/click)
       const inchPerMOA = 1.047 * (yards / 100);
       const clicks = (inches) => (Math.abs(inches) / inchPerMOA / 0.25).toFixed(2);
 
@@ -129,7 +131,6 @@ const DEMO_DY = "-3.00";
       if (scoreText) scoreText.textContent = String(data.score ?? "—");
       if (tipText) tipText.textContent = String(data.tip ?? "Backend analyze OK.");
 
-      // show results (even if dx/dy are 0.00)
       if (noData) noData.classList.add("hidden");
       if (results) results.classList.remove("hidden");
     } catch (err) {
@@ -137,7 +138,6 @@ const DEMO_DY = "-3.00";
     }
   }
 
-  // iOS-safe dataURL -> Blob
   async function dataUrlToBlob(dataUrl) {
     const parts = String(dataUrl).split(",");
     if (parts.length < 2) throw new Error("Bad dataUrl");
