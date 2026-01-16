@@ -1,28 +1,18 @@
 // sczn3-webapp/frontend_new/output.js
-// FULL REPLACEMENT — Tap N Score + Backend Clicks (True MOA, 2 decimals)
+// SEC Output page logic for output.html
+// - Shows thumbnail + distance
+// - Shows Tap N Score (from sessionStorage taps)
+// - Calls backend /api/analyze to fill True MOA clicks + directions
 //
-// Requires output.html IDs:
-// secIdText, targetThumb, distanceText, adjText,
-// noDataBanner, resultsGrid,
-// scoreText, elevClicksText, elevDirText, windClicksText, windDirText, tipText,
-// debugBox (optional)
-//
-// Storage keys (from index.js):
-// sczn3_targetPhoto_dataUrl
-// sczn3_distance_yards
-// sczn3_tap_points_json (optional for Tap N Score)
+// Backend live:
+//   https://sczn3-backend-new1.onrender.com
 
 (function () {
   function $(id) {
     return document.getElementById(id);
   }
 
-  // ===== BACKEND BASE URL (REQUIRED) =====
-  // Put your backend Render service URL here (the one that serves /api/analyze).
-  // Example: const API_BASE = "https://sczn3-sec-backend-144.onrender.com";
-  const API_BASE = "https://YOUR-BACKEND-SERVICE.onrender.com";
-
-  // ---- Elements ----
+  // ---- Elements (match your output.html that uses noDataBanner + resultsGrid) ----
   const secIdText = $("secIdText");
 
   const targetThumb = $("targetThumb");
@@ -46,34 +36,32 @@
   const DIST_KEY = "sczn3_distance_yards";
   const TAPS_KEY = "sczn3_tap_points_json";
 
-  // ---- Helpers ----
+  // ---- Backend base ----
+  const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
+
+  // ---- UI helpers ----
   function show(el) {
     if (!el) return;
     el.classList.remove("hidden");
   }
-
   function hide(el) {
     if (!el) return;
     el.classList.add("hidden");
   }
-
   function setText(el, value) {
     if (!el) return;
     el.textContent = value == null || value === "" ? "—" : String(value);
   }
-
   function setDir(el, dir) {
     if (!el) return;
     const d = String(dir || "").trim().toUpperCase();
     el.textContent = d ? d : "";
   }
-
   function f2(n) {
     const x = Number(n);
     if (!Number.isFinite(x)) return "0.00";
     return x.toFixed(2);
   }
-
   function safeJsonParse(str) {
     try {
       return JSON.parse(str);
@@ -95,7 +83,7 @@
     return 1.047 * (y / 100);
   }
 
-  // 0.25 MOA per click (pilot default)
+  // 0.25 MOA per click default
   function clicksFromInches(inches, yards, moaPerClick = 0.25) {
     const inch = Math.abs(Number(inches) || 0);
     const moa = inch / moaInchesAtYards(yards);
@@ -103,7 +91,7 @@
     return Number.isFinite(clicks) ? clicks : 0;
   }
 
-  // Converts dataURL -> Blob (for FormData upload)
+  // dataURL -> Blob (FormData upload)
   function dataUrlToBlob(url) {
     const parts = String(url || "").split(",");
     if (parts.length < 2) return new Blob([], { type: "image/jpeg" });
@@ -134,15 +122,13 @@
   // ---- Load basics ----
   const dataUrl = sessionStorage.getItem(PHOTO_KEY);
   const distance = sessionStorage.getItem(DIST_KEY) || "100";
-  const yardsNum = Number(distance) || 100;
 
-  setText(distanceText, yardsNum);
+  setText(distanceText, distance);
   setText(adjText, "1/4 MOA per click");
 
   // Default UI state
   show(noDataBanner);
   hide(resultsGrid);
-
   setText(scoreText, "—");
   setText(elevClicksText, "—");
   setDir(elevDirText, "");
@@ -151,19 +137,12 @@
   setText(tipText, "—");
 
   // If no photo, stop
-  if (!dataUrl || !targetThumb) {
-    setText(tipText, "No target photo found. Go back and upload a photo first.");
-    return;
-  }
+  if (!dataUrl || !targetThumb) return;
 
   // Show thumbnail
   targetThumb.src = dataUrl;
 
-  // ---- Tap N Score (score from taps) ----
-  // Pilot scoring:
-  // - POIB = average of taps
-  // - offsetPx = distance from POIB to image center (in pixels)
-  // - score = max(0, 1000 - offsetPx)
+  // ---- Tap N Score ----
   function computeTapScore() {
     const taps = safeJsonParse(sessionStorage.getItem(TAPS_KEY) || "");
     if (!Array.isArray(taps) || taps.length === 0) return { has: false };
@@ -183,6 +162,7 @@
       sy += y;
       c++;
     }
+
     if (c === 0) return { has: false };
 
     const poibX = sx / c;
@@ -194,13 +174,13 @@
     const dx = poibX - cx;
     const dy = poibY - cy;
 
-    const offsetPx = Math.hypot(dx, dy);
+    const offsetPx = Math.sqrt(dx * dx + dy * dy);
     const score = Math.max(0, 1000 - offsetPx);
 
     return { has: true, count: c, score: Math.round(score) };
   }
 
-  // Fill score after image loads (so naturalWidth exists)
+  // Fill score after image loads (naturalWidth exists)
   targetThumb.onload = () => {
     const tap = computeTapScore();
     if (tap.has) {
@@ -209,125 +189,93 @@
       hide(noDataBanner);
       show(resultsGrid);
     } else {
-      // leave banner until backend returns clicks (or user taps shots)
+      // no taps yet: keep banner until backend fills clicks
       setText(
         tipText,
-        "No Tap N Score shots found yet. (If you’re testing taps: go back and tap the shots.)"
+        "No Tap N Score shots found yet. Go back and tap your shots on the image."
       );
     }
   };
 
-  // ---- Backend analyze -> scope clicks ----
-  async function postAnalyzeToBackend() {
-    // Hard guard: if user forgot to set API_BASE
-    if (!API_BASE || API_BASE.includes("YOUR-BACKEND-SERVICE")) {
-      throw new Error("API_BASE not set");
-    }
-
+  // ---- Backend analyze ----
+  async function postAnalyze(endpoint) {
     const blob = dataUrlToBlob(dataUrl);
     const fd = new FormData();
+    fd.append("image", blob, "target.jpg"); // backend expects field: image
 
-    // BACKEND expects field name "image"
-    fd.append("image", blob, "target.jpg");
-
-    const url = `${API_BASE.replace(/\/$/, "")}/api/analyze`;
-    const res = await fetch(url, { method: "POST", body: fd });
-
+    const res = await fetch(endpoint, { method: "POST", body: fd });
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }
 
-  function fillClicksFromBackend(data) {
-    // Expected:
-    // correction_in: { dx, dy }  (inches)
-    // directions: { windage, elevation }
+  function fillClicks(data) {
+    // expects: correction_in: {dx, dy} inches
+    //          directions: {windage, elevation}
     const dx = Number(data?.correction_in?.dx);
     const dy = Number(data?.correction_in?.dy);
 
-    const windDir = data?.directions?.windage || "";
-    const elevDir = data?.directions?.elevation || "";
-
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) return false;
 
-    const windClicks = clicksFromInches(dx, yardsNum, 0.25);
-    const elevClicks = clicksFromInches(dy, yardsNum, 0.25);
+    const yards = Number(distance) || 100;
 
-    // Always 2 decimals
+    const windClicks = clicksFromInches(dx, yards, 0.25);
+    const elevClicks = clicksFromInches(dy, yards, 0.25);
+
     setText(windClicksText, f2(windClicks));
-    setDir(windDirText, windDir);
+    setDir(windDirText, data?.directions?.windage || "");
 
     setText(elevClicksText, f2(elevClicks));
-    setDir(elevDirText, elevDir);
+    setDir(elevDirText, data?.directions?.elevation || "");
 
     return true;
   }
 
   (async function () {
-    try {
-      const data = await postAnalyzeToBackend();
+    // Try same-origin first, then your backend URL.
+    // NOTE: If CORS is not enabled on backend, the 2nd call will be blocked.
+    const endpoints = [
+      "/api/analyze",
+      "/analyze",
+      BACKEND_BASE + "/api/analyze",
+      BACKEND_BASE + "/analyze",
+    ];
 
-      // Show results area
-      hide(noDataBanner);
-      show(resultsGrid);
+    for (const ep of endpoints) {
+      try {
+        const data = await postAnalyze(ep);
 
-      const filled = fillClicksFromBackend(data);
+        const filled = fillClicks(data);
+        if (filled) {
+          hide(noDataBanner);
+          show(resultsGrid);
 
-      // Tip priority:
-      // - If taps exist, keep Tap N Score tip
-      // - Else add truthful backend note
-      const currentTip = tipText ? String(tipText.textContent || "").trim() : "";
-      if (!currentTip || currentTip === "—") {
-        setText(tipText, "Pilot: directions are locked; clicks are True MOA.");
-      }
-
-      if (!filled) {
-        setText(
-          tipText,
-          "Backend responded, but did not return correction inches. (Check backend response fields.)"
-        );
-      }
-
-      // If you want to see backend payload on screen, uncomment:
-      // debug("Backend data", data);
-    } catch (err) {
-      // If taps were enough to show results, keep them.
-      // Otherwise keep banner and show an honest message.
-      const tap = computeTapScore();
-      if (tap.has) {
-        hide(noDataBanner);
-        show(resultsGrid);
-
-        // clicks not available without backend
-        setText(elevClicksText, "—");
-        setDir(elevDirText, "");
-        setText(windClicksText, "—");
-        setDir(windDirText, "");
-
-        // keep a truthful note
-        setText(
-          tipText,
-          "Tap N Score pilot is working. Scope clicks will appear once the backend /api/analyze is reachable."
-        );
-      } else {
-        show(noDataBanner);
-        hide(resultsGrid);
-
-        // Most common reason: frontend is static + API_BASE not set or CORS blocked
-        if (!API_BASE || API_BASE.includes("YOUR-BACKEND-SERVICE")) {
-          setText(
-            tipText,
-            "Set API_BASE in output.js to your backend Render URL, then refresh."
-          );
-        } else {
-          setText(
-            tipText,
-            "Backend is not reachable yet (or CORS blocked). Confirm backend is live and allows requests from this frontend."
-          );
+          // Only override tip if we still have no useful tip
+          if (tipText && (!tipText.textContent || tipText.textContent === "—")) {
+            setText(tipText, "Pilot: directions locked • True MOA clicks.");
+          }
+          return;
         }
-
-        // Optional on-screen debug
-        // debug("Analyze failed", { message: String(err && err.message ? err.message : err) });
+      } catch (err) {
+        // try next endpoint
       }
     }
+
+    // If we got here: backend not reachable or CORS blocked.
+    // Keep Tap N Score if available; otherwise keep banner.
+    const tap = computeTapScore();
+    if (tap.has) {
+      hide(noDataBanner);
+      show(resultsGrid);
+      setText(
+        tipText,
+        "Tap N Score pilot is working. Scope clicks will appear once /api/analyze is reachable (or CORS is enabled)."
+      );
+    } else {
+      show(noDataBanner);
+      hide(resultsGrid);
+    }
+
+    // If you want to SEE what happened, uncomment:
+    // debug("Backend not reachable (or CORS blocked).", { tried: endpoints });
   })();
 })();
