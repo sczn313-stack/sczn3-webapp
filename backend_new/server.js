@@ -1,4 +1,4 @@
-// backend_new/server.js  (FULL REPLACEMENT)
+// backend_new/server.js
 "use strict";
 
 const express = require("express");
@@ -20,26 +20,16 @@ const upload = multer({
 
 // --- helpers ---
 const round2 = (n) => Number((Number(n) || 0).toFixed(2));
-const asNum = (v, fallback = 0) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-};
 
-// --- Health check ---
-app.get("/", (req, res) => {
-  res.status(200).send("SCZN3 backend_new OK");
-});
+function parseNum(v, fallback = 0) {
+  if (v === undefined || v === null) return fallback;
+  const s = String(v).trim();
+  if (!s) return fallback;
+  const num = Number(s);
+  return Number.isFinite(num) ? num : fallback;
+}
 
-// --- URL TEST ROUTE (NO IMAGE REQUIRED) ---
-// Example:
-// /api/demo?distanceYards=50&moaPerClick=0.25&dx=2&dy=-1
-app.get("/api/demo", (req, res) => {
-  const distanceYards = asNum(req.query.distanceYards || req.query.distance || 100, 100);
-  const moaPerClick = asNum(req.query.moaPerClick || 0.25, 0.25);
-
-  const dx = asNum(req.query.dx, 0);
-  const dy = asNum(req.query.dy, 0);
-
+function buildResponse({ distanceYards, moaPerClick, dx, dy, meta, demoOverrideUsed, source }) {
   const directions = {
     elevation: dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"),
     windage: dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT")
@@ -49,28 +39,65 @@ app.get("/api/demo", (req, res) => {
   const clicksElevation = inchesPerClick ? (Math.abs(dy) / inchesPerClick) : 0;
   const clicksWindage = inchesPerClick ? (Math.abs(dx) / inchesPerClick) : 0;
 
-  return res.json({
+  return {
     ok: true,
-    mode: "demo",
+    source,
+    secId: String(Date.now()).slice(-6),
     distanceYards,
     moaPerClick,
-    correction_in: { dx: round2(dx), dy: round2(dy) },
+    image: meta ? { width: meta.width || null, height: meta.height || null } : null,
+
+    correction_in: {
+      dx: round2(dx),
+      dy: round2(dy)
+    },
+
     directions,
-    clicks: { elevation: round2(clicksElevation), windage: round2(clicksWindage) },
-    tip: `DEMO URL — dx=${round2(dx)} in, dy=${round2(dy)} in`
-  });
+
+    clicks: {
+      elevation: round2(clicksElevation),
+      windage: round2(clicksWindage)
+    },
+
+    score: 614,
+    tip: demoOverrideUsed
+      ? `DEMO OVERRIDE active — dx=${round2(dx)} in, dy=${round2(dy)} in.`
+      : "Stub active — dx/dy defaulted to 0.00."
+  };
+}
+
+// --- Health check ---
+app.get("/", (req, res) => {
+  res.status(200).send("SCZN3 backend_new OK");
 });
 
-// --- Quick GET helper (Safari test) ---
+// --- GET helper (NOW supports querystring dx/dy for quick testing) ---
 app.get("/api/analyze", (req, res) => {
-  res.status(200).json({
-    ok: true,
-    note:
-      "Use POST /api/analyze with multipart field 'image' and optional fields: distanceYards, moaPerClick, dx, dy (inches)."
-  });
+  const distanceYards = parseNum(req.query.distanceYards || req.query.distance, 100);
+  const moaPerClick = parseNum(req.query.moaPerClick, 0.25);
+
+  const hasDx = req.query.dx !== undefined && String(req.query.dx).trim() !== "";
+  const hasDy = req.query.dy !== undefined && String(req.query.dy).trim() !== "";
+
+  const dx = parseNum(req.query.dx, 0);
+  const dy = parseNum(req.query.dy, 0);
+
+  const demoOverrideUsed = Boolean(hasDx || hasDy);
+
+  return res.status(200).json(
+    buildResponse({
+      distanceYards,
+      moaPerClick,
+      dx,
+      dy,
+      meta: null,
+      demoOverrideUsed,
+      source: "GET /api/analyze (query)"
+    })
+  );
 });
 
-// --- Analyze endpoint (POST) ---
+// --- Analyze endpoint (POST multipart) ---
 app.post("/api/analyze", upload.single("image"), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
@@ -80,51 +107,30 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       });
     }
 
-    const distanceYards = asNum(req.body.distanceYards || req.body.distance || 100, 100);
-    const moaPerClick = asNum(req.body.moaPerClick || 0.25, 0.25);
+    const distanceYards = parseNum(req.body.distanceYards || req.body.distance, 100);
+    const moaPerClick = parseNum(req.body.moaPerClick, 0.25);
 
-    // Prove sharp works + catches corrupt uploads
-    const meta = await sharp(req.file.buffer).metadata();
+    const hasDx = req.body.dx !== undefined && String(req.body.dx).trim() !== "";
+    const hasDy = req.body.dy !== undefined && String(req.body.dy).trim() !== "";
 
-    // DEMO OVERRIDE via POST fields dx/dy (inches)
-    const hasDx = req.body.dx !== undefined && req.body.dx !== null && String(req.body.dx).trim() !== "";
-    const hasDy = req.body.dy !== undefined && req.body.dy !== null && String(req.body.dy).trim() !== "";
-
-    let dx = hasDx ? asNum(req.body.dx, 0) : 0.0;
-    let dy = hasDy ? asNum(req.body.dy, 0) : 0.0;
-
-    const directions = {
-      elevation: dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"),
-      windage: dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT")
-    };
-
-    const inchesPerClick = 1.047 * (distanceYards / 100) * moaPerClick;
-    const clicksElevation = inchesPerClick ? (Math.abs(dy) / inchesPerClick) : 0;
-    const clicksWindage = inchesPerClick ? (Math.abs(dx) / inchesPerClick) : 0;
+    const dx = parseNum(req.body.dx, 0);
+    const dy = parseNum(req.body.dy, 0);
 
     const demoOverrideUsed = Boolean(hasDx || hasDy);
 
-    return res.json({
-      ok: true,
-      secId: String(Date.now()).slice(-6),
-      distanceYards,
-      moaPerClick,
-      image: { width: meta.width || null, height: meta.height || null },
+    const meta = await sharp(req.file.buffer).metadata();
 
-      correction_in: { dx: round2(dx), dy: round2(dy) },
-
-      directions,
-
-      clicks: {
-        elevation: round2(clicksElevation),
-        windage: round2(clicksWindage)
-      },
-
-      score: 614,
-      tip: demoOverrideUsed
-        ? `DEMO OVERRIDE active — dx=${round2(dx)} in, dy=${round2(dy)} in.`
-        : "Stub active — dx/dy defaulted to 0.00. Send dx/dy to test directions/clicks."
-    });
+    return res.json(
+      buildResponse({
+        distanceYards,
+        moaPerClick,
+        dx,
+        dy,
+        meta,
+        demoOverrideUsed,
+        source: "POST /api/analyze (multipart)"
+      })
+    );
   } catch (err) {
     return res.status(500).json({
       ok: false,
