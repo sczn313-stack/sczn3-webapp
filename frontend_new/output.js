@@ -6,15 +6,8 @@
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
   const DIST_KEY  = "sczn3_distance_yards";
 
-  // ===== BACKEND =====
-  // IMPORTANT: this must match the backend you are actually deploying.
-  // If you are deploying from the sczn3-webapp-213 service (rootDir backend_new),
-  // set API_BASE to that service URL:
-  //
-  //   const API_BASE = "https://sczn3-webapp-213.onrender.com";
-  //
-  // If you are using your separate backend service sczn3-backend-new1, keep that.
-  const API_BASE = "https://sczn3-webapp-213.onrender.com";
+  // ===== BACKEND (Render web service) =====
+  const API_BASE = "https://sczn3-backend-new1.onrender.com";
   const ANALYZE_URL = `${API_BASE}/api/analyze`;
 
   // ===== DOM =====
@@ -39,6 +32,7 @@
     console.log(msg, obj || "");
     if (debugBox) {
       debugBox.classList.remove("hidden");
+      debugBox.style.whiteSpace = "pre-wrap";
       debugBox.textContent = msg + (obj ? "\n\n" + JSON.stringify(obj, null, 2) : "");
     }
   }
@@ -60,13 +54,14 @@
 
   if (!imgData) {
     debug(
-      "NO PHOTO FOUND IN sessionStorage.\n\nFix:\n1) Open the FRONTEND URL\n2) Upload photo\n3) Generate SEC\n4) Then view output page (same frontend domain)."
+      "NO PHOTO FOUND IN sessionStorage.\n\nFix:\n1) Open the FRONTEND URL (sczn3-frontend-new.onrender.com)\n2) Upload photo\n3) Press PRESS TO SEE (don’t open output.html directly)."
     );
     return;
   }
 
   if (thumb) thumb.src = imgData;
 
+  // Run analyze after thumb loads (more stable on iOS)
   if (thumb) {
     thumb.onload = () => analyzeBackend(imgData, yards);
     thumb.onerror = () => debug("Thumbnail failed to load. Bad dataUrl?");
@@ -93,31 +88,31 @@
 
       const data = await res.json().catch(() => null);
       if (!data || data.ok !== true) {
-        debug("Analyze returned unexpected JSON:", data);
+        debug("Analyze returned bad JSON:", data);
         return;
       }
 
       // Accept either format:
-      //  - { dx, dy }  (preferred)
-      //  - { up, right } (fallback)
-      const c = data.correction_in || {};
-      const dx = Number(c.dx ?? c.right ?? 0);
-      const dy = Number(c.dy ?? c.up ?? 0);
+      // correction_in: { dx, dy }  (preferred)
+      // correction_in: { up, right } (fallback)
+      const ci = data.correction_in || {};
+      const dx = Number(ci.dx ?? ci.right ?? 0);
+      const dy = Number(ci.dy ?? ci.up ?? 0);
 
       // Click math (True MOA, 0.25 MOA/click)
       const inchPerMOA = 1.047 * (yards / 100);
-      const clicksFromInches = (inches) =>
-        (Math.abs(inches) / inchPerMOA / 0.25).toFixed(2);
+      const clicks = (inches) => (Math.abs(inches) / inchPerMOA / 0.25).toFixed(2);
 
-      if (elevClicks) elevClicks.textContent = clicksFromInches(dy);
-      if (windClicks) windClicks.textContent = clicksFromInches(dx);
+      if (elevClicks) elevClicks.textContent = clicks(dy);
+      if (windClicks) windClicks.textContent = clicks(dx);
 
-      if (elevDir) elevDir.textContent = data.directions?.elevation || "";
-      if (windDir) windDir.textContent = data.directions?.windage || "";
+      if (elevDir) elevDir.textContent = data.directions?.elevation || (dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"));
+      if (windDir) windDir.textContent = data.directions?.windage || (dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT"));
 
       if (scoreText) scoreText.textContent = String(data.score ?? "—");
       if (tipText) tipText.textContent = String(data.tip ?? "Backend analyze OK.");
 
+      // show results (even if dx/dy are 0.00)
       if (noData) noData.classList.add("hidden");
       if (results) results.classList.remove("hidden");
     } catch (err) {
@@ -131,8 +126,7 @@
     if (parts.length < 2) throw new Error("Bad dataUrl");
     const header = parts[0];
     const base64 = parts[1];
-    const mime =
-      (header.match(/data:(.*?);base64/i) || [])[1] || "application/octet-stream";
+    const mime = (header.match(/data:(.*?);base64/i) || [])[1] || "application/octet-stream";
 
     const binStr = atob(base64);
     const len = binStr.length;
