@@ -18,6 +18,16 @@ const upload = multer({
   limits: { fileSize: 12 * 1024 * 1024 } // 12MB
 });
 
+// =====================================================
+// DEMO OVERRIDE (for pipeline testing)
+// Set USE_DEMO=true to force non-zero values every time.
+// dx > 0 => RIGHT, dx < 0 => LEFT
+// dy > 0 => UP,    dy < 0 => DOWN
+// =====================================================
+const USE_DEMO = false;
+const DEMO_DX = -2.0; // LEFT
+const DEMO_DY = -3.0; // DOWN
+
 // --- Health check ---
 app.get("/", (req, res) => {
   res.status(200).send("SCZN3 backend_new OK");
@@ -27,7 +37,8 @@ app.get("/", (req, res) => {
 app.get("/api/analyze", (req, res) => {
   res.status(200).json({
     ok: true,
-    note: "Use POST /api/analyze with multipart field 'image' (and optional distanceYards, moaPerClick)."
+    note:
+      "Use POST /api/analyze with multipart field 'image'. Optional fields: distanceYards, moaPerClick, dx, dy (for demo).",
   });
 });
 
@@ -37,7 +48,7 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         ok: false,
-        error: "Missing image file (field name must be: image)"
+        error: "Missing image file (field name must be: image)",
       });
     }
 
@@ -52,20 +63,35 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
     // TEMP STUB (until real bullet-hole / POIB logic is wired)
     // Return the EXACT shape output.js needs:
     // correction_in: { dx, dy }
-    //   dx > 0 => move RIGHT, dx < 0 => move LEFT
-    //   dy > 0 => move UP,    dy < 0 => move DOWN
     // ------------------------------------------------------------
-    const dx = 0.00;
-    const dy = 0.00;
+
+    // If USE_DEMO => always use demo
+    // Else allow POST body overrides (dx, dy). If not provided, 0.
+    let dx = 0.0;
+    let dy = 0.0;
+
+    if (USE_DEMO) {
+      dx = DEMO_DX;
+      dy = DEMO_DY;
+    } else {
+      // Accept dx/dy if provided as form fields (strings are ok)
+      // Example: fd.append("dx", "-2.0"); fd.append("dy", "-3.0");
+      if (req.body && req.body.dx !== undefined) dx = Number(req.body.dx);
+      if (req.body && req.body.dy !== undefined) dy = Number(req.body.dy);
+
+      // If parse failed, fall back to 0
+      if (!Number.isFinite(dx)) dx = 0.0;
+      if (!Number.isFinite(dy)) dy = 0.0;
+    }
 
     const directions = {
-      elevation: dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"),
-      windage: dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT")
+      elevation: dy === 0 ? "" : dy > 0 ? "UP" : "DOWN",
+      windage: dx === 0 ? "" : dx > 0 ? "RIGHT" : "LEFT",
     };
 
     const inchesPerClick = 1.047 * (distanceYards / 100) * moaPerClick;
-    const clicksElevation = inchesPerClick ? (Math.abs(dy) / inchesPerClick) : 0;
-    const clicksWindage = inchesPerClick ? (Math.abs(dx) / inchesPerClick) : 0;
+    const clicksElevation = inchesPerClick ? Math.abs(dy) / inchesPerClick : 0;
+    const clicksWindage = inchesPerClick ? Math.abs(dx) / inchesPerClick : 0;
 
     const round2 = (n) => Number((Number(n) || 0).toFixed(2));
 
@@ -78,24 +104,24 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
 
       correction_in: {
         dx: round2(dx),
-        dy: round2(dy)
+        dy: round2(dy),
       },
 
       directions,
 
       clicks: {
         elevation: round2(clicksElevation),
-        windage: round2(clicksWindage)
+        windage: round2(clicksWindage),
       },
 
       score: 614,
-      tip: "Tap N Score pilot — shot(s) recorded."
+      tip: "Tap N Score pilot — shot(s) recorded.",
     });
   } catch (err) {
     return res.status(500).json({
       ok: false,
       error: err?.message || "Server error",
-      where: "POST /api/analyze"
+      where: "POST /api/analyze",
     });
   }
 });
