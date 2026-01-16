@@ -8,9 +8,10 @@
   // dx > 0 => RIGHT, dx < 0 => LEFT
   // dy > 0 => UP,    dy < 0 => DOWN
   // =========================================================
-  const FORCE_DEMO = false;
-  const DEMO_DX = "-2.00"; // LEFT
-  const DEMO_DY = "-3.00"; // DOWN
+
+  const FORCE_DEMO = true;
+const DEMO_DX = "-2.00";
+const DEMO_DY = "-3.00";
 
   // ===== STORAGE KEYS (must match index.js) =====
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
