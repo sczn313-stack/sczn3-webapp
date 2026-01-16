@@ -2,12 +2,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
 
-  // =========================================================
-  // DEMO OVERRIDE (frontend-side)
-  // Set FORCE_DEMO=true to send dx/dy to backend for testing.
-  // dx > 0 => RIGHT, dx < 0 => LEFT
-  // dy > 0 => UP,    dy < 0 => DOWN
-  // =========================================================
+  // ===== DEMO OVERRIDE (manual dx/dy) =====
   const FORCE_DEMO = false;
   const DEMO_DX = "-2.00";
   const DEMO_DY = "-3.00";
@@ -15,6 +10,7 @@
   // ===== STORAGE KEYS (must match index.js) =====
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
   const DIST_KEY  = "sczn3_distance_yards";
+  const TAPS_KEY  = "sczn3_tap_points_json";
 
   // ===== BACKEND (Render web service) =====
   const API_BASE = "https://sczn3-backend-new1.onrender.com";
@@ -47,39 +43,40 @@
     }
   }
 
+  function safeJsonParse(str){
+    try { return JSON.parse(str); } catch { return null; }
+  }
+
+  function loadTaps(){
+    const raw = sessionStorage.getItem(TAPS_KEY) || "";
+    const arr = safeJsonParse(raw);
+    return Array.isArray(arr) ? arr : [];
+  }
+
   // ===== SEC ID =====
-  let sid = sessionStorage.getItem("sczn3_sec_id") || localStorage.getItem("sczn3_sec_id");
+  let sid = sessionStorage.getItem("sczn3_sec_id");
   if (!sid) {
     sid = Math.random().toString(16).slice(2, 8).toUpperCase();
     sessionStorage.setItem("sczn3_sec_id", sid);
-    localStorage.setItem("sczn3_sec_id", sid);
   }
   if (secIdText) secIdText.textContent = `SEC-ID — ${sid}`;
 
-  // ===== LOAD STORED DATA (SESSION FIRST, THEN LOCAL FALLBACK) =====
-  const imgData =
-    sessionStorage.getItem(PHOTO_KEY) ||
-    localStorage.getItem(PHOTO_KEY);
-
-  const yardsRaw =
-    sessionStorage.getItem(DIST_KEY) ||
-    localStorage.getItem(DIST_KEY);
-
-  const yards = Number(yardsRaw || 100);
+  // ===== LOAD STORED DATA =====
+  const imgData = sessionStorage.getItem(PHOTO_KEY);
+  const yards = Number(sessionStorage.getItem(DIST_KEY) || 100);
 
   if (distanceText) distanceText.textContent = String(yards);
   if (adjText) adjText.textContent = "1/4 MOA per click";
 
   if (!imgData) {
     debug(
-      "NO PHOTO FOUND IN storage.\n\nFix:\n1) Open: https://sczn3-frontend-new2.onrender.com\n2) Upload photo\n3) Press PRESS TO SEE (it must navigate you to output.html in the SAME TAB).\n\nIf you manually open output.html in a new tab, sessionStorage will be empty on iPad."
+      "NO PHOTO FOUND IN sessionStorage.\n\nFix:\n1) Open the FRONTEND URL\n2) Upload photo\n3) Press PRESS TO SEE (don’t open output.html directly / don’t open in a new tab)."
     );
     return;
   }
 
   if (thumb) thumb.src = imgData;
 
-  // Run analyze after thumb loads (more stable on iOS)
   if (thumb) {
     thumb.onload = () => analyzeBackend(imgData, yards);
     thumb.onerror = () => debug("Thumbnail failed to load. Bad dataUrl?");
@@ -96,6 +93,11 @@
       fd.append("distanceYards", String(yards));
       fd.append("moaPerClick", "0.25");
 
+      // ✅ SEND TAPS (Tap N Score)
+      const taps = loadTaps();
+      fd.append("taps", JSON.stringify(taps));
+
+      // Optional manual override (for quick testing)
       if (FORCE_DEMO) {
         fd.append("dx", DEMO_DX);
         fd.append("dy", DEMO_DY);
@@ -116,9 +118,10 @@
       }
 
       const ci = data.correction_in || {};
-      const dx = Number(ci.dx ?? ci.right ?? 0);
-      const dy = Number(ci.dy ?? ci.up ?? 0);
+      const dx = Number(ci.dx ?? 0);
+      const dy = Number(ci.dy ?? 0);
 
+      // Click math (True MOA, 0.25 MOA/click)
       const inchPerMOA = 1.047 * (yards / 100);
       const clicks = (inches) => (Math.abs(inches) / inchPerMOA / 0.25).toFixed(2);
 
@@ -129,7 +132,14 @@
       if (windDir) windDir.textContent = data.directions?.windage || (dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT"));
 
       if (scoreText) scoreText.textContent = String(data.score ?? "—");
-      if (tipText) tipText.textContent = String(data.tip ?? "Backend analyze OK.");
+
+      // Show something useful even while we’re still pixel-based
+      const tapsCount = Array.isArray(taps) ? taps.length : 0;
+      if (tipText) {
+        tipText.textContent =
+          String(data.tip ?? "") ||
+          (tapsCount ? `Taps sent: ${tapsCount}.` : "No taps yet — tap your shots on the image.");
+      }
 
       if (noData) noData.classList.add("hidden");
       if (results) results.classList.remove("hidden");
