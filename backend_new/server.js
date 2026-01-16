@@ -18,9 +18,47 @@ const upload = multer({
   limits: { fileSize: 12 * 1024 * 1024 } // 12MB
 });
 
+// --- helpers ---
+const round2 = (n) => Number((Number(n) || 0).toFixed(2));
+const asNum = (v, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 // --- Health check ---
 app.get("/", (req, res) => {
   res.status(200).send("SCZN3 backend_new OK");
+});
+
+// --- URL TEST ROUTE (NO IMAGE REQUIRED) ---
+// Example:
+// /api/demo?distanceYards=50&moaPerClick=0.25&dx=2&dy=-1
+app.get("/api/demo", (req, res) => {
+  const distanceYards = asNum(req.query.distanceYards || req.query.distance || 100, 100);
+  const moaPerClick = asNum(req.query.moaPerClick || 0.25, 0.25);
+
+  const dx = asNum(req.query.dx, 0);
+  const dy = asNum(req.query.dy, 0);
+
+  const directions = {
+    elevation: dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"),
+    windage: dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT")
+  };
+
+  const inchesPerClick = 1.047 * (distanceYards / 100) * moaPerClick;
+  const clicksElevation = inchesPerClick ? (Math.abs(dy) / inchesPerClick) : 0;
+  const clicksWindage = inchesPerClick ? (Math.abs(dx) / inchesPerClick) : 0;
+
+  return res.json({
+    ok: true,
+    mode: "demo",
+    distanceYards,
+    moaPerClick,
+    correction_in: { dx: round2(dx), dy: round2(dy) },
+    directions,
+    clicks: { elevation: round2(clicksElevation), windage: round2(clicksWindage) },
+    tip: `DEMO URL — dx=${round2(dx)} in, dy=${round2(dy)} in`
+  });
 });
 
 // --- Quick GET helper (Safari test) ---
@@ -42,56 +80,27 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       });
     }
 
-    // Optional inputs (safe defaults)
-    const distanceYards = Number(req.body.distanceYards || req.body.distance || 100);
-    const moaPerClick = Number(req.body.moaPerClick || 0.25);
+    const distanceYards = asNum(req.body.distanceYards || req.body.distance || 100, 100);
+    const moaPerClick = asNum(req.body.moaPerClick || 0.25, 0.25);
 
-    // Read image metadata (proves sharp works + catches corrupt uploads)
+    // Prove sharp works + catches corrupt uploads
     const meta = await sharp(req.file.buffer).metadata();
 
-    // ------------------------------------------------------------
-    // DEMO OVERRIDE (Option #2)
-    // If client sends dx/dy, we use them.
-    // dx/dy are INCHES and represent: correction = bull - POIB
-    //
-    // dx > 0 => dial RIGHT
-    // dx < 0 => dial LEFT
-    // dy > 0 => dial UP
-    // dy < 0 => dial DOWN
-    // ------------------------------------------------------------
-    const hasDx =
-      req.body.dx !== undefined &&
-      req.body.dx !== null &&
-      String(req.body.dx).trim() !== "";
-    const hasDy =
-      req.body.dy !== undefined &&
-      req.body.dy !== null &&
-      String(req.body.dy).trim() !== "";
+    // DEMO OVERRIDE via POST fields dx/dy (inches)
+    const hasDx = req.body.dx !== undefined && req.body.dx !== null && String(req.body.dx).trim() !== "";
+    const hasDy = req.body.dy !== undefined && req.body.dy !== null && String(req.body.dy).trim() !== "";
 
-    // Defaults: 0.00 / 0.00 (stub)
-    let dx = 0.0;
-    let dy = 0.0;
-
-    if (hasDx) dx = Number(req.body.dx);
-    if (hasDy) dy = Number(req.body.dy);
-
-    // If bad numbers come in, force 0
-    if (!Number.isFinite(dx)) dx = 0.0;
-    if (!Number.isFinite(dy)) dy = 0.0;
+    let dx = hasDx ? asNum(req.body.dx, 0) : 0.0;
+    let dy = hasDy ? asNum(req.body.dy, 0) : 0.0;
 
     const directions = {
-      elevation: dy === 0 ? "" : dy > 0 ? "UP" : "DOWN",
-      windage: dx === 0 ? "" : dx > 0 ? "RIGHT" : "LEFT"
+      elevation: dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"),
+      windage: dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT")
     };
 
-    // True MOA inches per click at distance
     const inchesPerClick = 1.047 * (distanceYards / 100) * moaPerClick;
-
-    const clicksElevation = inchesPerClick ? Math.abs(dy) / inchesPerClick : 0;
-    const clicksWindage = inchesPerClick ? Math.abs(dx) / inchesPerClick : 0;
-
-    // 2-decimal rule
-    const round2 = (n) => Number((Number(n) || 0).toFixed(2));
+    const clicksElevation = inchesPerClick ? (Math.abs(dy) / inchesPerClick) : 0;
+    const clicksWindage = inchesPerClick ? (Math.abs(dx) / inchesPerClick) : 0;
 
     const demoOverrideUsed = Boolean(hasDx || hasDy);
 
@@ -102,11 +111,7 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       moaPerClick,
       image: { width: meta.width || null, height: meta.height || null },
 
-      // Shape your output.js expects
-      correction_in: {
-        dx: round2(dx),
-        dy: round2(dy)
-      },
+      correction_in: { dx: round2(dx), dy: round2(dy) },
 
       directions,
 
