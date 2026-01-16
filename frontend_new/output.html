@@ -1,3 +1,4 @@
+<!-- output.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -25,46 +26,13 @@
     .nodata{padding:10px 12px;border-radius:12px;background:#fff7e6;border:1px solid rgba(0,0,0,.12);font-weight:700;}
     .hidden{display:none;}
     .secid{font-weight:900;margin:0 0 10px 0;}
-
-    /* --- ADDED: backend bar --- */
-    .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-    .input{
-      flex:1;min-width:240px;
-      padding:10px 12px;border-radius:12px;
-      border:1px solid rgba(0,0,0,.18);
-      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size:14px;
-    }
-    .btn{
-      padding:10px 12px;border-radius:12px;
-      border:1px solid rgba(0,0,0,.18);
-      background:#fff;
-      font-weight:900;
-      cursor:pointer;
-    }
-    .btn:active{transform:translateY(1px);}
-    .small{font-size:13px;opacity:.85;line-height:1.25;margin-top:8px;}
+    #debugBox{margin-top:10px;font-family:monospace;font-size:13px;white-space:pre-wrap;}
   </style>
 </head>
 
 <body>
   <div class="wrap">
     <div class="secid" id="secIdText">SEC-ID —</div>
-
-    <!-- ADDED: backend selector -->
-    <div class="panel">
-      <div class="title">BACKEND (Render)</div>
-      <div class="bar">
-        <input id="backendUrlInput" class="input" placeholder="https://sczn3-backend-new1.onrender.com" />
-        <button id="saveBackendBtn" class="btn">SAVE</button>
-        <button id="testBackendBtn" class="btn">TEST</button>
-        <button id="rerunBtn" class="btn">RE-RUN ANALYZE</button>
-      </div>
-      <div class="small">
-        Tip: paste your backend URL above (example: <b>https://sczn3-backend-new1.onrender.com</b>) then press <b>SAVE</b>.
-        This stores it in <code>sessionStorage.sczn3_backend_url</code> so <code>output.js</code> will call the right domain.
-      </div>
-    </div>
 
     <div class="panel">
       <div class="title">TARGET THUMBNAIL</div>
@@ -117,67 +85,6 @@
   </div>
 
   <!-- bump version to kill iOS caching -->
-  <script src="./output.js?v=10" defer></script>
-
-  <!-- ADDED: backend URL save/test + rerun hooks -->
-  <script>
-    (function(){
-      const KEY = "sczn3_backend_url";
-
-      const input = document.getElementById("backendUrlInput");
-      const saveBtn = document.getElementById("saveBackendBtn");
-      const testBtn = document.getElementById("testBackendBtn");
-      const rerunBtn = document.getElementById("rerunBtn");
-      const debugBox = document.getElementById("debugBox");
-
-      function showDebug(msg, obj){
-        const text = obj ? (msg + "\n" + JSON.stringify(obj, null, 2)) : String(msg || "");
-        debugBox.textContent = text;
-        debugBox.style.whiteSpace = "pre-wrap";
-        debugBox.classList.remove("hidden");
-      }
-
-      function normalize(url){
-        url = String(url || "").trim();
-        url = url.replace(/\/+$/, "");
-        return url;
-      }
-
-      // load saved backend
-      const saved = normalize(sessionStorage.getItem(KEY) || "");
-      if (saved) input.value = saved;
-
-      saveBtn.addEventListener("click", () => {
-        const v = normalize(input.value);
-        if (!v) {
-          sessionStorage.removeItem(KEY);
-          showDebug("Backend URL cleared. output.js will try same-origin /api/analyze.", { key: KEY });
-          return;
-        }
-        sessionStorage.setItem(KEY, v);
-        showDebug("Backend URL saved.", { key: KEY, value: v });
-        // reload so output.js runs fresh using the saved URL
-        location.reload();
-      });
-
-      testBtn.addEventListener("click", async () => {
-        const v = normalize(input.value || sessionStorage.getItem(KEY) || "");
-        if (!v) return showDebug("No backend URL set yet.", { example: "https://sczn3-backend-new1.onrender.com" });
-
-        try {
-          const res = await fetch(v + "/", { method: "GET" });
-          const text = await res.text();
-          showDebug("Backend responded:", { url: v + "/", status: res.status, bodyStart: text.slice(0,120) });
-        } catch (e) {
-          showDebug("Backend test failed (network/CORS).", { url: v + "/", error: String(e) });
-        }
-      });
-
-      rerunBtn.addEventListener("click", () => {
-        // simplest reliable rerun on iOS cache: reload page
-        location.reload();
-      });
-    })();
-  </script>
+  <script src="./output.js?v=11" defer></script>
 </body>
 </html>
