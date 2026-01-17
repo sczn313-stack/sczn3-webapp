@@ -14,6 +14,7 @@
   const TAPS_KEY  = "sczn3_tap_points_json";
 
   const RESULT_KEY = "tapnscore_result";
+  const AUTOSTART_KEY = "tapnscore_autostart";
 
   function $(id){ return document.getElementById(id); }
 
@@ -270,6 +271,15 @@
 
     saveDistance();
     showAnalyzeOverlay(false);
+
+    // AUTO-OPEN SHEET when coming from Results -> Retake
+    const auto = sessionStorage.getItem(AUTOSTART_KEY);
+    if (auto === "1"){
+      sessionStorage.removeItem(AUTOSTART_KEY);
+      setTimeout(() => {
+        openSheet();
+      }, 60);
+    }
   })();
 
   // ===== OPEN MENU =====
