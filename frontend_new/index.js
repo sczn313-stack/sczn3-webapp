@@ -1,5 +1,5 @@
 // sczn3-webapp/frontend_new/index.js
-// Upload page + Tap N Score capture (pilot) — iOS-safe picker menu
+// Upload page + Tap N Score capture (iOS-safe menu: Choose vs Camera)
 //
 // Stores:
 //  sczn3_targetPhoto_dataUrl
@@ -15,26 +15,27 @@
 
   function $(id){ return document.getElementById(id); }
 
-  // UI
-  const uploadBtn     = $("uploadBtn");
-  const fileLibrary   = $("targetPhotoLibrary");
-  const fileCamera    = $("targetPhotoCamera");
+  // ===== DOM (must match your HTML) =====
+  const uploadBtn          = $("uploadBtn");
 
-  const pickOverlay   = $("pickOverlay");
-  const pickChoose    = $("pickChoose");
-  const pickCameraBtn = $("pickCamera");
-  const pickCancel    = $("pickCancel");
+  const fileLibrary        = $("targetPhotoLibrary");
+  const fileCamera         = $("targetPhotoCamera");
 
-  const thumb         = $("thumb");
-  const thumbWrap     = $("thumbWrap");
-  const tapLayer      = $("tapLayer");
-  const tapTools      = $("tapTools");
-  const clearTapsBtn  = $("clearTapsBtn");
+  const pickOverlay        = $("pickOverlay");
+  const pickChoose         = $("pickChoose");
+  const pickCamera         = $("pickCamera");
+  const pickCancel         = $("pickCancel");
 
-  const distanceInput = $("distanceYards");
-  const pressToSee    = $("pressToSee");
-  const buyMoreBtn    = $("buyMoreBtn");
-  const miniStatus    = $("miniStatus");
+  const thumb              = $("thumb");
+  const thumbWrap          = $("thumbWrap");
+  const tapLayer           = $("tapLayer");
+  const tapTools           = $("tapTools");
+  const clearTapsBtn       = $("clearTapsBtn");
+
+  const distanceInput      = $("distanceYards");
+  const pressToSee         = $("pressToSee");
+  const buyMoreBtn         = $("buyMoreBtn");
+  const miniStatus         = $("miniStatus");
 
   function status(msg){
     if (!miniStatus) return;
@@ -60,15 +61,6 @@
     if (v) sessionStorage.setItem(DIST_KEY, v);
   }
 
-  function readFileAsDataURL(file){
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("File read failed."));
-      reader.onload = (e) => resolve(String(e.target && e.target.result ? e.target.result : ""));
-      reader.readAsDataURL(file);
-    });
-  }
-
   function safeJsonParse(str){
     try { return JSON.parse(str); } catch { return null; }
   }
@@ -83,22 +75,13 @@
     sessionStorage.setItem(TAPS_KEY, JSON.stringify(arr || []));
   }
 
-  function openPicker(){
-    if (!pickOverlay) {
-      // fallback: open library input if overlay missing
-      if (fileLibrary) {
-        fileLibrary.value = "";
-        status("Opening photo picker...");
-        fileLibrary.click();
-      }
-      return;
-    }
-    pickOverlay.style.display = "flex";
-  }
-
-  function closePicker(){
-    if (!pickOverlay) return;
-    pickOverlay.style.display = "none";
+  function readFileAsDataURL(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("File read failed."));
+      reader.onload = (e) => resolve(String(e.target && e.target.result ? e.target.result : ""));
+      reader.readAsDataURL(file);
+    });
   }
 
   // Map tap (client coords on displayed image) -> NATURAL image pixel coords
@@ -115,7 +98,7 @@
     const x = ((clientX - rect.left) / rect.width) * nw;
     const y = ((clientY - rect.top) / rect.height) * nh;
 
-    return { x, y, nw, nh };
+    return { x, y };
   }
 
   function redrawTapLayer(){
@@ -164,7 +147,23 @@
     };
   }
 
-  async function handlePickedFileFrom(inputEl, sourceLabel){
+  function openSheet(){
+    if (!pickOverlay) return;
+    pickOverlay.style.display = "flex";
+  }
+
+  function closeSheet(){
+    if (!pickOverlay) return;
+    pickOverlay.style.display = "none";
+  }
+
+  function resetInput(input){
+    if (!input) return;
+    // iOS: selecting the same photo won't fire change unless we clear value
+    input.value = "";
+  }
+
+  async function handlePickedFileFrom(inputEl){
     const file = inputEl && inputEl.files && inputEl.files[0];
 
     if (!file){
@@ -172,11 +171,11 @@
       return;
     }
 
-    status(`Selected (${sourceLabel}): ${file.name || "photo"} (${file.type || "unknown"})`);
+    status(`Selected: ${file.name || "photo"}`);
 
     if (!file.type || !file.type.startsWith("image/")){
       alert("Please choose an image file.");
-      inputEl.value = "";
+      resetInput(inputEl);
       setPressEnabled(false);
       status("ERROR: Not an image.");
       return;
@@ -201,7 +200,7 @@
 
       saveDistance();
       setPressEnabled(true);
-      closePicker();
+      status("Photo loaded. Tap your holes.");
     } catch (err){
       alert("Photo load failed. Please try again.");
       setPressEnabled(false);
@@ -209,9 +208,9 @@
     }
   }
 
-  // ---- Init ----
+  // ===== INIT =====
   (function init(){
-    status("Ready. Press UPLOAD.");
+    status("Ready. Tap UPLOAD.");
 
     const savedDist = sessionStorage.getItem(DIST_KEY);
     if (distanceInput && savedDist) distanceInput.value = savedDist;
@@ -230,62 +229,61 @@
     saveDistance();
   })();
 
-  // ---- Upload button opens our menu ----
+  // ===== OPEN MENU =====
   if (uploadBtn){
     uploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      openPicker();
+      openSheet();
     });
   }
 
-  // ---- Picker sheet buttons ----
+  // Close sheet if you tap outside
   if (pickOverlay){
-    // tap outside sheet to close
     pickOverlay.addEventListener("click", (e) => {
-      if (e.target === pickOverlay) closePicker();
+      if (e.target === pickOverlay) closeSheet();
     });
   }
 
+  // ===== MENU ACTIONS =====
   if (pickCancel){
-    pickCancel.addEventListener("click", () => closePicker());
+    pickCancel.addEventListener("click", () => closeSheet());
   }
 
   if (pickChoose && fileLibrary){
     pickChoose.addEventListener("click", () => {
-      // CRITICAL: clear so iOS fires event even if same photo chosen
-      fileLibrary.value = "";
-      status("Opening Library / Files...");
+      closeSheet();
+      resetInput(fileLibrary);
+      status("Opening library/files picker...");
       fileLibrary.click();
     });
   }
 
-  if (pickCameraBtn && fileCamera){
-    pickCameraBtn.addEventListener("click", () => {
-      // CRITICAL: clear so iOS fires event even if same photo chosen
-      fileCamera.value = "";
-      status("Opening Camera...");
+  if (pickCamera && fileCamera){
+    pickCamera.addEventListener("click", () => {
+      closeSheet();
+      resetInput(fileCamera);
+      status("Opening camera...");
       fileCamera.click();
     });
   }
 
+  // ===== INPUT EVENTS =====
   // iOS sometimes fires "input" more reliably than "change"
-  if (fileLibrary){
-    fileLibrary.addEventListener("change", () => handlePickedFileFrom(fileLibrary, "library"));
-    fileLibrary.addEventListener("input",  () => handlePickedFileFrom(fileLibrary, "library"));
+  function bindInput(inputEl){
+    if (!inputEl) return;
+    inputEl.addEventListener("change", () => handlePickedFileFrom(inputEl));
+    inputEl.addEventListener("input",  () => handlePickedFileFrom(inputEl));
   }
+  bindInput(fileLibrary);
+  bindInput(fileCamera);
 
-  if (fileCamera){
-    fileCamera.addEventListener("change", () => handlePickedFileFrom(fileCamera, "camera"));
-    fileCamera.addEventListener("input",  () => handlePickedFileFrom(fileCamera, "camera"));
-  }
-
-  // ---- Distance save ----
+  // ===== Distance save =====
   if (distanceInput){
     distanceInput.addEventListener("input", saveDistance);
     distanceInput.addEventListener("change", saveDistance);
   }
 
-  // ---- Tap capture on overlay ----
+  // ===== Tap capture =====
   if (tapLayer){
     const onTap = (e) => {
       e.preventDefault();
@@ -306,7 +304,7 @@
     tapLayer.addEventListener("touchstart", onTap, { passive: false });
   }
 
-  // ---- Clear taps ----
+  // ===== Clear taps =====
   if (clearTapsBtn){
     clearTapsBtn.addEventListener("click", () => {
       saveTaps([]);
@@ -315,7 +313,7 @@
     });
   }
 
-  // ---- PRESS TO SEE -> output.html ----
+  // ===== PRESS TO SEE =====
   if (pressToSee){
     pressToSee.addEventListener("click", (e) => {
       e.preventDefault();
