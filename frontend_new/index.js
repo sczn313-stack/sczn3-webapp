@@ -41,9 +41,16 @@
   const buyMoreBtn         = $("buyMoreBtn");
   const miniStatus         = $("miniStatus");
 
+  const analyzeOverlay     = $("analyzeOverlay");
+
   function status(msg){
     if (!miniStatus) return;
     miniStatus.textContent = String(msg || "");
+  }
+
+  function showAnalyzeOverlay(on){
+    if (!analyzeOverlay) return;
+    analyzeOverlay.style.display = on ? "flex" : "none";
   }
 
   function setPressEnabled(enabled){
@@ -228,6 +235,13 @@
     return new File([blob], filename, { type: blob.type || "image/jpeg" });
   }
 
+  // enforce “earned” dwell time on analyze screen
+  async function enforceMinDwell(startMs, minMs){
+    const elapsed = Date.now() - startMs;
+    const remaining = minMs - elapsed;
+    if (remaining > 0) await new Promise(r => setTimeout(r, remaining));
+  }
+
   // ===== INIT =====
   (function init(){
     status("Ready. Tap UPLOAD.");
@@ -236,7 +250,10 @@
     if (distanceInput && savedDist) distanceInput.value = savedDist;
 
     const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
-    if (buyMoreBtn && buyUrl) buyMoreBtn.href = buyUrl;
+    if (buyMoreBtn && buyUrl){
+      buyMoreBtn.href = buyUrl;
+      buyMoreBtn.style.display = "block";
+    }
 
     const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
     if (savedPhoto){
@@ -248,11 +265,11 @@
       if (tapStage) tapStage.style.display = "none";
     }
 
-    // ensure taps UI reflects storage on load
     const taps = loadTaps();
     setTapCount(taps.length);
 
     saveDistance();
+    showAnalyzeOverlay(false);
   })();
 
   // ===== OPEN MENU =====
@@ -294,7 +311,6 @@
   }
 
   // ===== INPUT EVENTS =====
-  // iOS sometimes fires "input" more reliably than "change"
   function bindInput(inputEl){
     if (!inputEl) return;
     inputEl.addEventListener("change", () => handlePickedFileFrom(inputEl));
@@ -340,7 +356,7 @@
     });
   }
 
-  // ===== PRESS TO SEE (NOW IT ANALYZES FIRST) =====
+  // ===== PRESS TO SEE (ANALYZE TAKEOVER + MIN DWELL) =====
   if (pressToSee){
     pressToSee.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -373,14 +389,20 @@
 
       const nw = (thumb && thumb.naturalWidth) ? thumb.naturalWidth : 0;
       const nh = (thumb && thumb.naturalHeight) ? thumb.naturalHeight : 0;
+      if (!nw || !nh){
+        alert("Photo not fully loaded yet. Please wait a moment and try again.");
+        status("ERROR: missing natural size.");
+        return;
+      }
+
+      // Start takeover
+      const start = Date.now();
+      setPressEnabled(false);
+      showAnalyzeOverlay(true);
 
       try{
-        setPressEnabled(false);
-        status("After-Shot Intelligence™");
-
         const file = await dataUrlToFile(savedPhoto, fileName);
 
-        // Call backend_new Tap-N-Score mode
         const data = await window.SEC_API.analyzeTapNScore({
           file,
           distanceYards,
@@ -392,9 +414,13 @@
           targetHIn: 11
         });
 
+        // Make it feel earned (0.95s minimum)
+        await enforceMinDwell(start, 950);
+
         sessionStorage.setItem(RESULT_KEY, JSON.stringify(data));
         window.location.href = "./output.html";
       } catch (err){
+        showAnalyzeOverlay(false);
         setPressEnabled(true);
         alert(String(err && err.message ? err.message : err));
         status(`ERROR: ${String(err && err.message ? err.message : err)}`);
