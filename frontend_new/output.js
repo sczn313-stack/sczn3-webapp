@@ -1,27 +1,31 @@
 // sczn3-webapp/frontend_new/output.js
+// Tap N Score -> deterministic clicks (NO BACKEND REQUIRED)
+
 (() => {
   const $ = (id) => document.getElementById(id);
-
-  // ===== DEMO OVERRIDE (frontend-side) =====
-  // Set FORCE_DEMO=true to send dx/dy IN INCHES to backend for testing.
-  const FORCE_DEMO = false;
-  const DEMO_DX = "-2.00"; // inches (cluster right/left of bull)
-  const DEMO_DY = "-3.00"; // inches (cluster up/down of bull)
 
   // ===== STORAGE KEYS (must match index.js) =====
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
   const DIST_KEY  = "sczn3_distance_yards";
   const TAPS_KEY  = "sczn3_tap_points_json";
 
-  // ===== BACKEND =====
-  const API_BASE = "https://sczn3-backend-new.onrender.com";
-  const ANALYZE_URL = `${API_BASE}/api/analyze`;
+  // ===== LOCKED TARGET ASSUMPTIONS (Tap N Score pilot) =====
+  const TARGET_W_IN = 8.5;
+  const TARGET_H_IN = 11.0;
+
+  // Bull position in inches (8.5x11 Grid v1)
+  const BULL_X_IN = 4.25;
+  const BULL_Y_IN = 5.50;
+
+  // Optic click size
+  const MOA_PER_CLICK = 0.25;
 
   // ===== DOM =====
   const secIdText     = $("secIdText");
   const thumb         = $("targetThumb");
   const distanceText  = $("distanceText");
   const adjText       = $("adjText");
+  const tapCount      = $("tapCount");
 
   const noData   = $("noData");
   const results  = $("results");
@@ -35,13 +39,18 @@
 
   const debugBox = $("debugBox");
 
+  function round2(n){
+    const x = Number(n);
+    if (!Number.isFinite(x)) return 0;
+    return Math.round(x * 100) / 100;
+  }
+  function fmt2(n){ return round2(n).toFixed(2); }
+
   function debug(msg, obj) {
     console.log(msg, obj || "");
-    if (debugBox) {
-      debugBox.classList.remove("hidden");
-      debugBox.style.whiteSpace = "pre-wrap";
-      debugBox.textContent = msg + (obj ? "\n\n" + JSON.stringify(obj, null, 2) : "");
-    }
+    if (!debugBox) return;
+    debugBox.classList.remove("hidden");
+    debugBox.textContent = msg + (obj ? "\n\n" + JSON.stringify(obj, null, 2) : "");
   }
 
   // ===== SEC ID =====
@@ -57,7 +66,7 @@
   const yards = Number(sessionStorage.getItem(DIST_KEY) || 100);
 
   if (distanceText) distanceText.textContent = String(yards);
-  if (adjText) adjText.textContent = "1/4 MOA per click";
+  if (adjText) adjText.textContent = "0.25 MOA per click (True MOA)";
 
   if (!imgData) {
     debug("NO PHOTO FOUND IN sessionStorage.\nUpload on the FRONT page, then PRESS TO SEE.");
@@ -66,95 +75,122 @@
 
   if (thumb) thumb.src = imgData;
 
-  // Run analyze after thumb loads (more stable on iOS)
-  if (thumb) {
-    thumb.onload = () => analyzeBackend(imgData, yards, thumb.naturalWidth || 0, thumb.naturalHeight || 0);
-    thumb.onerror = () => debug("Thumbnail failed to load. Bad dataUrl?");
-  } else {
-    analyzeBackend(imgData, yards, 0, 0);
+  // ===== TAPS =====
+  const taps = safeLoadTaps();
+  if (tapCount) tapCount.textContent = String(taps.length);
+
+  if (!taps.length) {
+    // show noData, keep results hidden
+    if (noData) noData.classList.remove("hidden");
+    if (results) results.classList.add("hidden");
+    tipText && (tipText.textContent = "Go back and tap holes (Tap N Score), then press again.");
+    return;
   }
 
-  async function analyzeBackend(dataUrl, yards, nw, nh) {
+  // Compute group center in NATURAL pixels
+  const gcPx = averagePoint(taps);
+
+  // Need natural image size (saved taps are in natural px already)
+  // We can derive it from max tap values OR from thumb.naturalWidth once loaded.
+  const runCompute = () => {
+    const nw = thumb && thumb.naturalWidth ? thumb.naturalWidth : estimateNwFromTaps(taps);
+    const nh = thumb && thumb.naturalHeight ? thumb.naturalHeight : estimateNhFromTaps(taps);
+
+    if (!nw || !nh) {
+      debug("Could not determine natural image size.", { nw, nh, tapsLen: taps.length });
+      return;
+    }
+
+    // Map px -> inches (simple linear mapping across full image)
+    // xIn: 0..TARGET_W_IN, yIn: 0..TARGET_H_IN (image down is positive)
+    const xIn = (gcPx.x / nw) * TARGET_W_IN;
+    const yIn = (gcPx.y / nh) * TARGET_H_IN;
+
+    // POIB inches: Right +, Up +  (flip Y exactly once)
+    const poibX = xIn - BULL_X_IN;
+    const poibY = -(yIn - BULL_Y_IN);
+
+    // Correction inches = bull - POIB point = -POIB
+    const corrX = -poibX;
+    const corrY = -poibY;
+
+    // True MOA inches at distance
+    const inchesPerMoa = 1.047 * (yards / 100);
+    const inchesPerClick = inchesPerMoa * MOA_PER_CLICK;
+
+    const windClicksSigned = corrX / inchesPerClick;
+    const elevClicksSigned = corrY / inchesPerClick;
+
+    const windDirText = windClicksSigned > 0 ? "RIGHT" : windClicksSigned < 0 ? "LEFT" : "CENTER";
+    const elevDirText = elevClicksSigned > 0 ? "UP" : elevClicksSigned < 0 ? "DOWN" : "LEVEL";
+
+    // Display absolute clicks (two decimals)
+    windClicks && (windClicks.textContent = fmt2(Math.abs(windClicksSigned)));
+    elevClicks && (elevClicks.textContent = fmt2(Math.abs(elevClicksSigned)));
+    windDir && (windDir.textContent = windDirText === "CENTER" ? "CENTER" : windDirText);
+    elevDir && (elevDir.textContent = elevDirText === "LEVEL" ? "LEVEL" : elevDirText);
+
+    // Simple score placeholder (you can swap later)
+    scoreText && (scoreText.textContent = "—");
+
+    // Tip (deterministic)
+    tipText && (tipText.textContent =
+      `Dial ${elevDirText} ${fmt2(Math.abs(elevClicksSigned))} and ${windDirText} ${fmt2(Math.abs(windClicksSigned))}. Then shoot a fresh 3–5 shot group to confirm.`);
+
+    if (noData) noData.classList.add("hidden");
+    if (results) results.classList.remove("hidden");
+
+    // Debug payload (helpful while stabilizing)
+    debug("Tap N Score compute OK", {
+      yards,
+      target: { wIn: TARGET_W_IN, hIn: TARGET_H_IN, bullIn: { x: BULL_X_IN, y: BULL_Y_IN } },
+      image: { nw, nh },
+      taps: taps.length,
+      groupCenterPx: { x: round2(gcPx.x), y: round2(gcPx.y) },
+      groupCenterIn: { x: round2(xIn), y: round2(yIn) },
+      poibIn: { x: round2(poibX), y: round2(poibY) },
+      correctionIn: { x: round2(corrX), y: round2(corrY) },
+      clicksSigned: { windage: round2(windClicksSigned), elevation: round2(elevClicksSigned) }
+    });
+  };
+
+  if (thumb) {
+    // iOS is more stable if we wait for thumb naturalWidth/Height
+    if (thumb.complete && thumb.naturalWidth) runCompute();
+    else thumb.onload = runCompute;
+  } else {
+    runCompute();
+  }
+
+  // ===== helpers =====
+  function safeLoadTaps(){
+    const raw = sessionStorage.getItem(TAPS_KEY) || "";
     try {
-      const blob = await dataUrlToBlob(dataUrl);
-
-      const fd = new FormData();
-      fd.append("image", blob, "target.jpg");
-      fd.append("distanceYards", String(yards));
-      fd.append("moaPerClick", "0.25");
-
-      // Send Tap-N-Score taps if present
-      const tapsRaw = sessionStorage.getItem(TAPS_KEY) || "";
-      if (tapsRaw) {
-        fd.append("tapsJson", tapsRaw);
-      }
-
-      // Send natural image size (helps px->inch mapping)
-      if (nw && nh) {
-        fd.append("nw", String(nw));
-        fd.append("nh", String(nh));
-      }
-
-      // Target dimensions assumption (your current Tap-N-Score pilot is 8.5x11)
-      fd.append("targetWIn", "8.5");
-      fd.append("targetHIn", "11");
-
-      // DEMO override
-      if (FORCE_DEMO) {
-        fd.append("dx", DEMO_DX);
-        fd.append("dy", DEMO_DY);
-      }
-
-      const res = await fetch(ANALYZE_URL, { method: "POST", body: fd });
-
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        debug(`Analyze failed: HTTP ${res.status}`, t ? { body: t } : null);
-        return;
-      }
-
-      const data = await res.json().catch(() => null);
-      if (!data || data.ok !== true) {
-        debug("Analyze returned bad JSON:", data);
-        return;
-      }
-
-      const ci = data.correction_in || {};
-      const dx = Number(ci.dx ?? 0);
-      const dy = Number(ci.dy ?? 0);
-
-      // Click math (True MOA, 0.25 MOA/click)
-      const inchPerMOA = 1.047 * (yards / 100);
-      const clicks = (inches) => (Math.abs(inches) / inchPerMOA / 0.25).toFixed(2);
-
-      if (elevClicks) elevClicks.textContent = clicks(dy);
-      if (windClicks) windClicks.textContent = clicks(dx);
-
-      if (elevDir) elevDir.textContent = data.directions?.elevation || (dy === 0 ? "" : (dy > 0 ? "UP" : "DOWN"));
-      if (windDir) windDir.textContent = data.directions?.windage || (dx === 0 ? "" : (dx > 0 ? "RIGHT" : "LEFT"));
-
-      if (scoreText) scoreText.textContent = String(data.score ?? "—");
-      if (tipText) tipText.textContent = String(data.tip ?? "Backend analyze OK.");
-
-      if (noData) noData.classList.add("hidden");
-      if (results) results.classList.remove("hidden");
-    } catch (err) {
-      debug("Analyze exception:", { error: String(err) });
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map(p => ({ x: Number(p.x), y: Number(p.y) }))
+        .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+    } catch {
+      return [];
     }
   }
 
-  async function dataUrlToBlob(dataUrl) {
-    const parts = String(dataUrl).split(",");
-    if (parts.length < 2) throw new Error("Bad dataUrl");
-    const header = parts[0];
-    const base64 = parts[1];
-    const mime = (header.match(/data:(.*?);base64/i) || [])[1] || "application/octet-stream";
+  function averagePoint(arr){
+    let sx = 0, sy = 0;
+    for (const p of arr){ sx += p.x; sy += p.y; }
+    return { x: sx / arr.length, y: sy / arr.length };
+  }
 
-    const binStr = atob(base64);
-    const len = binStr.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i);
-
-    return new Blob([bytes], { type: mime });
+  function estimateNwFromTaps(arr){
+    // conservative fallback: assume taps are within image; use max*1.25
+    let mx = 0;
+    for (const p of arr) mx = Math.max(mx, p.x);
+    return mx ? Math.round(mx * 1.25) : 0;
+  }
+  function estimateNhFromTaps(arr){
+    let my = 0;
+    for (const p of arr) my = Math.max(my, p.y);
+    return my ? Math.round(my * 1.25) : 0;
   }
 })();
