@@ -2,89 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SEC Output</title>
-  <style>
-    body{margin:0;font-family:serif;background:#fff;}
-    .wrap{padding:16px;}
-    .panel{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:14px;margin:0 0 14px 0;}
-    .title{font-weight:800;letter-spacing:.02em;margin:0 0 10px 0;}
-    .row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;}
-    .thumb{max-width:100%;border-radius:12px;border:1px solid rgba(0,0,0,.12);}
-    .meta{font-size:16px;line-height:1.35;}
-    .meta .k{font-weight:800;}
-    .grid{display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:12px;}
-    .card{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:12px;}
-    .label{font-weight:900;letter-spacing:.02em;margin:0 0 8px 0;}
-    .value{font-size:28px;font-weight:900;}
-    .click-line{display:flex;gap:8px;align-items:baseline;font-size:18px;margin:6px 0;}
-    .click-line .k{font-weight:900;}
-    .click-line .v{font-weight:900;}
-    .dir{font-weight:900;}
-    .tip{font-size:16px;line-height:1.25;}
-    .nodata{padding:10px 12px;border-radius:12px;background:#fff7e6;border:1px solid rgba(0,0,0,.12);font-weight:700;}
-    .hidden{display:none;}
-    .secid{font-weight:900;margin:0 0 10px 0;}
-    #debugBox{margin-top:10px;font-family:monospace;font-size:13px;white-space:pre-wrap;}
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Tap-n-Score — Results</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
-  <div class="wrap">
-    <div class="secid" id="secIdText">SEC-ID —</div>
+  <section class="screen">
+    <div id="out"></div>
+  </section>
 
-    <div class="panel">
-      <div class="title">TARGET THUMBNAIL</div>
-      <div class="row">
-        <img id="targetThumb" class="thumb" alt="Target thumbnail" />
-        <div class="meta">
-          <div><span class="k">Distance:</span> <span id="distanceText">—</span> yards</div>
-          <div><span class="k">Adjustment:</span> <span id="adjText">—</span></div>
-          <div><span class="k">Taps:</span> <span id="tapCount">—</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="title">RESULTS</div>
-
-      <div id="noData" class="nodata">
-        No Tap N Score taps found. Go back and tap your holes on the thumbnail first.
-      </div>
-
-      <div id="results" class="grid hidden">
-        <div class="card">
-          <div class="label">SCORE</div>
-          <div class="value" id="scoreText">—</div>
-        </div>
-
-        <div class="card">
-          <div class="label">CLICKS</div>
-
-          <div class="click-line">
-            <span class="k">Elevation:</span>
-            <span class="v" id="elevClicks">—</span>
-            <span class="dir" id="elevDir"></span>
-          </div>
-
-          <div class="click-line">
-            <span class="k">Windage:</span>
-            <span class="v" id="windClicks">—</span>
-            <span class="dir" id="windDir"></span>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="label">TIP</div>
-          <div class="tip" id="tipText">—</div>
-        </div>
-      </div>
-
-      <div id="debugBox" class="hidden"></div>
-    </div>
-  </div>
-
-  <!-- bump version to kill iOS caching -->
-  <script src="output.js?v=100" defer></script>
+  <script type="module" src="output.js"></script>
 </body>
 </html>
