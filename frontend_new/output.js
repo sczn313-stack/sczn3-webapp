@@ -1,13 +1,13 @@
 // sczn3-webapp/frontend_new/output.js (FULL REPLACEMENT)
-// Receipt-style results renderer for Tap-n-Score
+// Receipt-style results renderer + Save Sessions + Navigate to Saved screen
 //
 // Reads: sessionStorage["tapnscore_result"]
-// Expects backend_new payload shape:
-//  ok, clicks{windage,elevation}, directions{windage,elevation},
-//  correction_in{dx,dy}, score, tip, mode, build, distanceYards, moaPerClick
+// Saves: localStorage["tapnscore_saved_index"] + localStorage["tapnscore_saved_<id>"]
 
 (function () {
   const RESULT_KEY = "tapnscore_result";
+  const INDEX_KEY  = "tapnscore_saved_index";
+  const ITEM_PREFIX = "tapnscore_saved_";
 
   function esc(s){
     return String(s || "")
@@ -20,6 +20,39 @@
 
   const out = $("out") || document.body;
 
+  function readIndex(){
+    try{
+      const raw = localStorage.getItem(INDEX_KEY) || "[]";
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  }
+
+  function writeIndex(arr){
+    try{
+      localStorage.setItem(INDEX_KEY, JSON.stringify(arr || []));
+      return true;
+    } catch { return false; }
+  }
+
+  function makeId(){
+    return `${Date.now()}_${Math.random().toString(16).slice(2,8).toUpperCase()}`;
+  }
+
+  function summarizeResult(r){
+    const windClicks = r?.clicks?.windage || "0.00";
+    const elevClicks = r?.clicks?.elevation || "0.00";
+    const windDir = r?.directions?.windage || "";
+    const elevDir = r?.directions?.elevation || "";
+    const distance = Number.isFinite(Number(r?.distanceYards)) ? Number(r.distanceYards) : null;
+
+    return {
+      wind: `${windClicks} ${windDir}`.trim(),
+      elev: `${elevClicks} ${elevDir}`.trim(),
+      distanceYards: distance
+    };
+  }
+
   const raw = sessionStorage.getItem(RESULT_KEY);
   if (!raw){
     out.innerHTML = `
@@ -31,6 +64,7 @@
 
         <div class="resultsActions">
           <a class="btnPrimary" href="index.html">Start next session</a>
+          <a class="btnSecondary" href="saved.html">Saved sessions</a>
         </div>
       </div>
     `;
@@ -51,6 +85,7 @@
 
         <div class="resultsActions">
           <a class="btnPrimary" href="index.html">Start next session</a>
+          <a class="btnSecondary" href="saved.html">Saved sessions</a>
         </div>
       </div>
     `;
@@ -76,7 +111,6 @@
   const mode = r.mode ? esc(r.mode) : "";
   const tip = r.tip ? esc(r.tip) : "";
 
-  // “Impact Summary” lines: simple, calm, factual
   const impactLines = [
     "Pattern detected",
     "POIB calculated",
@@ -154,6 +188,8 @@
 
         <button id="saveBtn" class="btnSecondary" type="button">Save this result</button>
 
+        <a class="btnSecondary" href="saved.html">Saved sessions</a>
+
         <button id="exportBtn" class="btnSecondary" type="button">Export receipt</button>
       </div>
 
@@ -164,23 +200,43 @@
     </div>
   `;
 
-  // Save: store the receipt HTML + result JSON (simple local save)
+  // SAVE SESSION (compact)
   const saveBtn = document.getElementById("saveBtn");
   if (saveBtn){
     saveBtn.addEventListener("click", () => {
+      const id = makeId();
       const stamp = new Date();
-      const key = `tapnscore_saved_${stamp.getTime()}`;
-      const payload = { savedAt: stamp.toISOString(), result: r };
+
+      const summary = summarizeResult(r);
+
+      // Compact record (store full result too, but in one place)
+      const record = {
+        id,
+        savedAt: stamp.toISOString(),
+        distanceYards: summary.distanceYards,
+        wind: summary.wind,
+        elev: summary.elev,
+        score: Number.isFinite(Number(r.score)) ? Number(r.score) : null,
+        result: r
+      };
+
       try{
-        localStorage.setItem(key, JSON.stringify(payload));
+        localStorage.setItem(ITEM_PREFIX + id, JSON.stringify(record));
+
+        const idx = readIndex();
+        idx.unshift({ id, savedAt: record.savedAt });
+        const ok = writeIndex(idx);
+
+        if (!ok) throw new Error("Index write failed.");
+
         alert("Saved.");
-      } catch {
+      } catch (err){
         alert("Save failed (storage full).");
       }
     });
   }
 
-  // Export: creates a downloadable HTML “receipt” file (no server needed)
+  // EXPORT RECEIPT HTML
   const exportBtn = document.getElementById("exportBtn");
   if (exportBtn){
     exportBtn.addEventListener("click", () => {
@@ -205,7 +261,6 @@
   }
 
   function exportCss(){
-    // Minimal standalone styling for the receipt
     return `
       body{margin:0;padding:18px;background:#0b0b0c;color:#f4f4f5;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
       .receiptCard{border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.05);border-radius:14px;padding:16px;max-width:560px;margin:0 auto;}
