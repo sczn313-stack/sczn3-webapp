@@ -1,297 +1,104 @@
-<!-- sczn3-webapp/frontend_new/index.html  (FULL REPLACEMENT) -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Shooter Experience Card</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <style>
-    body{
-      font-family: serif;
-      padding: 20px;
-      margin: 0;
-      text-align: center;
-    }
-
-    h1{
-      line-height: 1.1;
-      margin: 0 0 26px 0;
-      font-weight: 500;
-    }
-
-    .sec-word{
-      font-weight: 900;
-      color: #b00000;
-      margin-left: 10px;
-      display: inline-block;
-    }
-
-    .uploadBlock{
-      width: 100%;
-      margin: 26px 0 10px 0;
-      text-align: center;
-    }
-
-    .uploadBtn{
-      display: inline-block;
-      background: #2f5f73;
-      color: #fff;
-      padding: 14px 22px;
-      border-radius: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      text-decoration: none;
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-      touch-action: manipulation;
-      border: none;
-    }
-
-    /* hidden inputs */
-    #targetPhotoLibrary, #targetPhotoCamera { display:none; }
-
-    #miniStatus{
-      margin-top: 10px;
-      font-family: ui-monospace, Menlo, Consolas, monospace;
-      font-size: 14px;
-      color: #333;
-      min-height: 18px;
-    }
-
-    /* ===== TAP STAGE ===== */
-    #tapStage{
-      display:none;
-      max-width: 92%;
-      margin: 16px auto 0 auto;
-      border: 1px solid #cfcfcf;
-      border-radius: 14px;
-      overflow: hidden;
-      background: #fff;
-    }
-
-    #tapStageHeader{
-      padding: 10px 12px;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      font-weight: 900;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      border-bottom: 1px solid #eee;
-    }
-
-    #tapCountText{
-      font-weight: 900;
-    }
-
-    .thumbWrap{
-      position: relative;
-      width: 100%;
-      margin: 0;
-      border: none;
-      border-radius: 0;
-      overflow: hidden;
-    }
-
-    img#thumb{
-      display:block;
-      width: 100%;
-      height: auto;
-      user-select: none;
-      -webkit-user-drag: none;
-      pointer-events: none; /* taps go to overlay */
-    }
-
-    svg#tapLayer{
-      position:absolute;
-      inset:0;
-      width:100%;
-      height:100%;
-      pointer-events:auto;
-      touch-action: manipulation;
-    }
-
-    #tapStageFooter{
-      padding: 10px 12px;
-      display:flex;
-      justify-content:center;
-      border-top: 1px solid #eee;
-    }
-
-    .toolBtn{
-      display:inline-block;
-      padding: 10px 14px;
-      border-radius: 999px;
-      border: 2px solid rgba(0,0,0,.18);
-      background: #fff;
-      font-weight: 900;
-      cursor: pointer;
-      user-select:none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    label.dist{
-      display: block;
-      margin-top: 26px;
-      font-weight: 600;
-    }
-
-    input[type="number"]{
-      margin-top: 6px;
-      padding: 8px 10px;
-      font-size: 18px;
-      width: 220px;
-      text-align: left;
-    }
-
-    .pillBtn{
-      display: inline-block;
-      margin-top: 22px;
-      padding: 12px 22px;
-      border-radius: 999px;
-      font-weight: 600;
-      text-decoration: none;
-      text-align: center;
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-      touch-action: manipulation;
-    }
-
-    .primary{
-      background: #e6f0ff;
-      color: #1f4fd8;
-    }
-
-    #pressToSee{
-      margin-top: 26px;
-      display: inline-block;
-      padding: 10px 12px;
-      border: 3px solid #2f5f73;
-      border-radius: 10px;
-      background: #ffffff;
-      color: #2f5f73;
-      font-weight: 900;
-      text-decoration: none;
-      max-width: 92%;
-      line-height: 1.15;
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-      touch-action: manipulation;
-    }
-
-    #pressToSee.disabled{
-      border-color: #d7d7d7;
-      color: #9aa0a6;
-      background: #f5f5f5;
-      pointer-events: none;
-      opacity: 0.7;
-    }
-
-    /* ===== OUR OWN PICKER MENU (iOS-safe) ===== */
-    #pickOverlay{
-      display:none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      z-index: 9999;
-      align-items: flex-end;
-      justify-content: center;
-      padding: 12px;
-    }
-
-    #pickSheet{
-      width: min(520px, 96vw);
-      background: #fff;
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 14px 40px rgba(0,0,0,.22);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    }
-
-    .sheetBtn{
-      width: 100%;
-      padding: 16px 14px;
-      font-size: 18px;
-      border: none;
-      background: #fff;
-      cursor: pointer;
-      font-weight: 800;
-    }
-
-    .sheetBtn + .sheetBtn{ border-top: 1px solid #eee; }
-
-    .sheetBtn.primarySheet{ color: #0b5bd3; }
-    .sheetBtn.dangerSheet{ color: #b00000; }
-
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Tap-n-Score</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
 
-  <h1>
-    Shooter<br>
-    Experience<br>
-    Card<span class="sec-word">SEC</span>
-  </h1>
+  <!-- LANDING (NO CTA) -->
+  <section id="landing" class="screen screen-center">
+    <div class="stack">
+      <div class="h1">Tap-n-Score™</div>
 
-  <div class="uploadBlock">
+      <div class="gap"></div>
 
-    <!-- Button that opens our menu -->
-    <button class="uploadBtn" id="uploadBtn" type="button">
-      UPLOAD TARGET PHOTO or TAKE PICTURE
-    </button>
+      <div class="h2">One tap.</div>
+      <div class="h2">One score.</div>
+      <div class="h2">Real results.</div>
 
-    <!-- Hidden inputs (library vs camera) -->
-    <!-- LIBRARY: NO capture -->
-    <input id="targetPhotoLibrary" type="file" accept="image/*" />
-    <!-- CAMERA: YES capture -->
-    <input id="targetPhotoCamera" type="file" accept="image/*" capture="environment" />
+      <div class="gap"></div>
 
-    <div id="miniStatus"></div>
+      <div class="sig">After-Shot Intelligence™</div>
+    </div>
+  </section>
 
-    <!-- Tap N Score Stage -->
-    <div id="tapStage">
-      <div id="tapStageHeader">
-        <span>Tap N Score</span>
-        <span id="tapCountText">Taps: 0</span>
+  <!-- UPLOAD / TAP STAGE -->
+  <section id="main" class="screen" style="display:none;">
+
+    <div class="topBar">
+      <button id="uploadBtn" class="primaryBtn">Upload</button>
+
+      <div class="distanceWrap">
+        <label for="distanceYards">Distance</label>
+        <input id="distanceYards" inputmode="numeric" type="number" min="1" step="1" placeholder="100" />
+        <span class="unit">yds</span>
+      </div>
+    </div>
+
+    <div id="miniStatus" class="miniStatus">Ready.</div>
+
+    <!-- Hidden inputs (Choose vs Camera) -->
+    <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
+    <input id="targetPhotoCamera"  type="file" accept="image/*" capture="environment" style="display:none;" />
+
+    <!-- Tap stage (hidden until photo is loaded) -->
+    <div id="tapStage" style="display:none;">
+      <div class="tapHeader">
+        <div id="tapCountText" class="tapCount">Taps: 0</div>
+        <button id="clearTapsBtn" class="secondaryBtn">Clear taps</button>
       </div>
 
-      <div class="thumbWrap" id="thumbWrap">
-        <img id="thumb" alt="Target thumbnail preview" />
-        <svg id="tapLayer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <div id="thumbWrap" class="thumbWrap">
+        <img id="thumb" alt="Target" />
+        <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100" aria-label="Tap layer"></svg>
       </div>
 
-      <div id="tapStageFooter">
-        <button class="toolBtn" id="clearTapsBtn" type="button">CLEAR TAPS</button>
+      <div class="hint">
+        Tap bull first, then tap holes.
       </div>
+
+      <button id="pressToSee" class="primaryBtn disabled">Press to see results</button>
+
+      <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
+        Buy more targets
+      </a>
+    </div>
+
+  </section>
+
+  <!-- PICK OVERLAY (Choose / Camera) -->
+  <div id="pickOverlay" class="sheetOverlay" style="display:none;">
+    <div class="sheet">
+      <div class="sheetTitle">Add target photo</div>
+
+      <button id="pickChoose" class="sheetBtn">Choose from Library</button>
+      <button id="pickCamera" class="sheetBtn">Use Camera</button>
+
+      <button id="pickCancel" class="sheetCancel">Cancel</button>
     </div>
   </div>
 
-  <label class="dist" for="distanceYards">ADJUST DISTANCE (yards)</label>
-  <input id="distanceYards" type="number" value="100" min="1" step="1" />
+  <script type="module" src="api.js"></script>
+  <script type="module" src="index.js"></script>
 
-  <br><br>
-
-  <a href="#" class="pillBtn primary" id="buyMoreBtn">BUY MORE TARGETS</a>
-
-  <br>
-
-  <a href="#" class="disabled" id="pressToSee">
-    YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS
-  </a>
-
-  <!-- Our iOS-safe picker sheet -->
-  <div id="pickOverlay">
-    <div id="pickSheet">
-      <button class="sheetBtn primarySheet" id="pickChoose" type="button">Choose Photo (Library / Files)</button>
-      <button class="sheetBtn primarySheet" id="pickCamera" type="button">Take Picture (Camera)</button>
-      <button class="sheetBtn dangerSheet" id="pickCancel" type="button">Cancel</button>
-    </div>
-  </div>
-
-  <!-- cache-bust this number whenever iOS acts sticky -->
-  <script src="./index.js?v=201"></script>
-
+  <!-- AUTO FLOW: Tap landing -> show main -> open sheet (no CTA) -->
+  <script>
+    (function(){
+      const landing = document.getElementById("landing");
+      const main = document.getElementById("main");
+      const uploadBtn = document.getElementById("uploadBtn");
+      function go(){
+        landing.style.display = "none";
+        main.style.display = "block";
+        // open sheet via same user gesture
+        if (uploadBtn) uploadBtn.click();
+      }
+      landing.addEventListener("click", go);
+      landing.addEventListener("touchstart", function(e){ e.preventDefault(); go(); }, { passive:false });
+    })();
+  </script>
 </body>
 </html>
