@@ -1,196 +1,81 @@
-// sczn3-webapp/frontend_new/output.js
-// Tap N Score -> deterministic clicks (NO BACKEND REQUIRED)
+// sczn3-webapp/frontend_new/output.js  (FULL REPLACEMENT)
+// Renders Tap-N-Score results from sessionStorage "tapnscore_result"
 
-(() => {
-  const $ = (id) => document.getElementById(id);
+(function () {
+  const RESULT_KEY = "tapnscore_result";
 
-  // ===== STORAGE KEYS (must match index.js) =====
-  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
-  const DIST_KEY  = "sczn3_distance_yards";
-  const TAPS_KEY  = "sczn3_tap_points_json";
+  function $(id){ return document.getElementById(id); }
 
-  // ===== LOCKED TARGET ASSUMPTIONS (Tap N Score pilot) =====
-  const TARGET_W_IN = 8.5;
-  const TARGET_H_IN = 11.0;
+  const out = $("out") || document.body;
 
-  // Bull position in inches (8.5x11 Grid v1)
-  const BULL_X_IN = 4.25;
-  const BULL_Y_IN = 5.50;
-
-  // Optic click size
-  const MOA_PER_CLICK = 0.25;
-
-  // ===== DOM =====
-  const secIdText     = $("secIdText");
-  const thumb         = $("targetThumb");
-  const distanceText  = $("distanceText");
-  const adjText       = $("adjText");
-  const tapCount      = $("tapCount");
-
-  const noData   = $("noData");
-  const results  = $("results");
-
-  const scoreText   = $("scoreText");
-  const elevClicks  = $("elevClicks");
-  const windClicks  = $("windClicks");
-  const elevDir     = $("elevDir");
-  const windDir     = $("windDir");
-  const tipText     = $("tipText");
-
-  const debugBox = $("debugBox");
-
-  function round2(n){
-    const x = Number(n);
-    if (!Number.isFinite(x)) return 0;
-    return Math.round(x * 100) / 100;
-  }
-  function fmt2(n){ return round2(n).toFixed(2); }
-
-  function debug(msg, obj) {
-    console.log(msg, obj || "");
-    if (!debugBox) return;
-    debugBox.classList.remove("hidden");
-    debugBox.textContent = msg + (obj ? "\n\n" + JSON.stringify(obj, null, 2) : "");
+  function esc(s){
+    return String(s || "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;");
   }
 
-  // ===== SEC ID =====
-  let sid = sessionStorage.getItem("sczn3_sec_id");
-  if (!sid) {
-    sid = Math.random().toString(16).slice(2, 8).toUpperCase();
-    sessionStorage.setItem("sczn3_sec_id", sid);
-  }
-  if (secIdText) secIdText.textContent = `SEC-ID — ${sid}`;
-
-  // ===== LOAD STORED DATA =====
-  const imgData = sessionStorage.getItem(PHOTO_KEY);
-  const yards = Number(sessionStorage.getItem(DIST_KEY) || 100);
-
-  if (distanceText) distanceText.textContent = String(yards);
-  if (adjText) adjText.textContent = "0.25 MOA per click (True MOA)";
-
-  if (!imgData) {
-    debug("NO PHOTO FOUND IN sessionStorage.\nUpload on the FRONT page, then PRESS TO SEE.");
+  const raw = sessionStorage.getItem(RESULT_KEY);
+  if (!raw){
+    out.innerHTML = `
+      <div style="padding:18px;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+        <div style="opacity:0.8;margin-bottom:10px;">Results</div>
+        <div style="font-size:22px;font-weight:650;margin-bottom:10px;">No result found.</div>
+        <a href="index.html" style="color:#fff;text-decoration:underline;">Back</a>
+      </div>
+    `;
     return;
   }
 
-  if (thumb) thumb.src = imgData;
+  let r = null;
+  try { r = JSON.parse(raw); } catch { r = null; }
 
-  // ===== TAPS =====
-  const taps = safeLoadTaps();
-  if (tapCount) tapCount.textContent = String(taps.length);
-
-  if (!taps.length) {
-    // show noData, keep results hidden
-    if (noData) noData.classList.remove("hidden");
-    if (results) results.classList.add("hidden");
-    tipText && (tipText.textContent = "Go back and tap holes (Tap N Score), then press again.");
+  if (!r || r.ok !== true){
+    out.innerHTML = `
+      <div style="padding:18px;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+        <div style="opacity:0.8;margin-bottom:10px;">Results</div>
+        <div style="font-size:22px;font-weight:650;margin-bottom:10px;">Invalid result payload.</div>
+        <a href="index.html" style="color:#fff;text-decoration:underline;">Back</a>
+      </div>
+    `;
     return;
   }
 
-  // Compute group center in NATURAL pixels
-  const gcPx = averagePoint(taps);
+  const windDir = r?.directions?.windage || "";
+  const elevDir = r?.directions?.elevation || "";
+  const windClicks = r?.clicks?.windage || "0.00";
+  const elevClicks = r?.clicks?.elevation || "0.00";
 
-  // Need natural image size (saved taps are in natural px already)
-  // We can derive it from max tap values OR from thumb.naturalWidth once loaded.
-  const runCompute = () => {
-    const nw = thumb && thumb.naturalWidth ? thumb.naturalWidth : estimateNwFromTaps(taps);
-    const nh = thumb && thumb.naturalHeight ? thumb.naturalHeight : estimateNhFromTaps(taps);
+  const score = Number.isFinite(Number(r.score)) ? String(r.score) : "";
+  const tip = r.tip ? esc(r.tip) : "";
 
-    if (!nw || !nh) {
-      debug("Could not determine natural image size.", { nw, nh, tapsLen: taps.length });
-      return;
-    }
+  out.innerHTML = `
+    <div style="padding:18px;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;">
+      <div style="opacity:0.7;letter-spacing:1.4px;text-transform:uppercase;font-size:12px;margin-bottom:10px;">Results</div>
 
-    // Map px -> inches (simple linear mapping across full image)
-    // xIn: 0..TARGET_W_IN, yIn: 0..TARGET_H_IN (image down is positive)
-    const xIn = (gcPx.x / nw) * TARGET_W_IN;
-    const yIn = (gcPx.y / nh) * TARGET_H_IN;
+      <div style="font-size:26px;font-weight:650;margin-bottom:6px;">Measured Outcome</div>
+      <div style="opacity:0.75;font-size:14px;margin-bottom:14px;">Confirmed hits analyzed.</div>
 
-    // POIB inches: Right +, Up +  (flip Y exactly once)
-    const poibX = xIn - BULL_X_IN;
-    const poibY = -(yIn - BULL_Y_IN);
+      <div style="border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.05);border-radius:14px;padding:16px;">
+        <div style="font-size:16px;font-weight:650;margin-bottom:10px;">Recommended Adjustment</div>
 
-    // Correction inches = bull - POIB point = -POIB
-    const corrX = -poibX;
-    const corrY = -poibY;
+        <div style="line-height:1.55;">
+          <div><b>Windage:</b> ${esc(windClicks)} clicks ${esc(windDir)}</div>
+          <div><b>Elevation:</b> ${esc(elevClicks)} clicks ${esc(elevDir)}</div>
+          ${score ? `<div style="margin-top:10px;"><b>Score:</b> ${esc(score)}</div>` : ``}
+        </div>
 
-    // True MOA inches at distance
-    const inchesPerMoa = 1.047 * (yards / 100);
-    const inchesPerClick = inchesPerMoa * MOA_PER_CLICK;
+        <div style="margin-top:12px;font-size:14px;font-weight:650;opacity:0.9;">After-Shot Intelligence™</div>
+      </div>
 
-    const windClicksSigned = corrX / inchesPerClick;
-    const elevClicksSigned = corrY / inchesPerClick;
+      ${tip ? `<div style="margin-top:12px;opacity:0.75;font-size:13px;">${tip}</div>` : ``}
 
-    const windDirText = windClicksSigned > 0 ? "RIGHT" : windClicksSigned < 0 ? "LEFT" : "CENTER";
-    const elevDirText = elevClicksSigned > 0 ? "UP" : elevClicksSigned < 0 ? "DOWN" : "LEVEL";
-
-    // Display absolute clicks (two decimals)
-    windClicks && (windClicks.textContent = fmt2(Math.abs(windClicksSigned)));
-    elevClicks && (elevClicks.textContent = fmt2(Math.abs(elevClicksSigned)));
-    windDir && (windDir.textContent = windDirText === "CENTER" ? "CENTER" : windDirText);
-    elevDir && (elevDir.textContent = elevDirText === "LEVEL" ? "LEVEL" : elevDirText);
-
-    // Simple score placeholder (you can swap later)
-    scoreText && (scoreText.textContent = "—");
-
-    // Tip (deterministic)
-    tipText && (tipText.textContent =
-      `Dial ${elevDirText} ${fmt2(Math.abs(elevClicksSigned))} and ${windDirText} ${fmt2(Math.abs(windClicksSigned))}. Then shoot a fresh 3–5 shot group to confirm.`);
-
-    if (noData) noData.classList.add("hidden");
-    if (results) results.classList.remove("hidden");
-
-    // Debug payload (helpful while stabilizing)
-    debug("Tap N Score compute OK", {
-      yards,
-      target: { wIn: TARGET_W_IN, hIn: TARGET_H_IN, bullIn: { x: BULL_X_IN, y: BULL_Y_IN } },
-      image: { nw, nh },
-      taps: taps.length,
-      groupCenterPx: { x: round2(gcPx.x), y: round2(gcPx.y) },
-      groupCenterIn: { x: round2(xIn), y: round2(yIn) },
-      poibIn: { x: round2(poibX), y: round2(poibY) },
-      correctionIn: { x: round2(corrX), y: round2(corrY) },
-      clicksSigned: { windage: round2(windClicksSigned), elevation: round2(elevClicksSigned) }
-    });
-  };
-
-  if (thumb) {
-    // iOS is more stable if we wait for thumb naturalWidth/Height
-    if (thumb.complete && thumb.naturalWidth) runCompute();
-    else thumb.onload = runCompute;
-  } else {
-    runCompute();
-  }
-
-  // ===== helpers =====
-  function safeLoadTaps(){
-    const raw = sessionStorage.getItem(TAPS_KEY) || "";
-    try {
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return [];
-      return arr
-        .map(p => ({ x: Number(p.x), y: Number(p.y) }))
-        .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
-    } catch {
-      return [];
-    }
-  }
-
-  function averagePoint(arr){
-    let sx = 0, sy = 0;
-    for (const p of arr){ sx += p.x; sy += p.y; }
-    return { x: sx / arr.length, y: sy / arr.length };
-  }
-
-  function estimateNwFromTaps(arr){
-    // conservative fallback: assume taps are within image; use max*1.25
-    let mx = 0;
-    for (const p of arr) mx = Math.max(mx, p.x);
-    return mx ? Math.round(mx * 1.25) : 0;
-  }
-  function estimateNhFromTaps(arr){
-    let my = 0;
-    for (const p of arr) my = Math.max(my, p.y);
-    return my ? Math.round(my * 1.25) : 0;
-  }
+      <div style="margin-top:16px;">
+        <a href="index.html"
+           style="display:inline-block;width:100%;text-align:center;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.12);color:#fff;text-decoration:none;font-weight:650;">
+          Start next session
+        </a>
+      </div>
+    </div>
+  `;
 })();
