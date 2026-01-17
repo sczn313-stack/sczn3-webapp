@@ -1,13 +1,15 @@
 // sczn3-webapp/frontend_new/output.js (FULL REPLACEMENT)
-// Receipt-style results renderer + Save Sessions + Navigate to Saved screen
+// Receipt-style results renderer + Save Sessions + Retake/New Photo loop
 //
 // Reads: sessionStorage["tapnscore_result"]
 // Saves: localStorage["tapnscore_saved_index"] + localStorage["tapnscore_saved_<id>"]
+// Retake: sessionStorage["tapnscore_autostart"] = "1" then go index.html
 
 (function () {
   const RESULT_KEY = "tapnscore_result";
   const INDEX_KEY  = "tapnscore_saved_index";
   const ITEM_PREFIX = "tapnscore_saved_";
+  const AUTOSTART_KEY = "tapnscore_autostart";
 
   function esc(s){
     return String(s || "")
@@ -184,7 +186,7 @@
       ` : ``}
 
       <div class="resultsActions">
-        <a class="btnPrimary" href="index.html">Start next session</a>
+        <button id="retakeBtn" class="btnPrimary" type="button">Retake / New Photo</button>
 
         <button id="saveBtn" class="btnSecondary" type="button">Save this result</button>
 
@@ -200,6 +202,15 @@
     </div>
   `;
 
+  // RETAKE LOOP
+  const retakeBtn = document.getElementById("retakeBtn");
+  if (retakeBtn){
+    retakeBtn.addEventListener("click", () => {
+      sessionStorage.setItem(AUTOSTART_KEY, "1");
+      window.location.href = "index.html";
+    });
+  }
+
   // SAVE SESSION (compact)
   const saveBtn = document.getElementById("saveBtn");
   if (saveBtn){
@@ -209,7 +220,6 @@
 
       const summary = summarizeResult(r);
 
-      // Compact record (store full result too, but in one place)
       const record = {
         id,
         savedAt: stamp.toISOString(),
