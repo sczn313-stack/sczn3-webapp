@@ -1,17 +1,22 @@
 // sczn3-webapp/frontend_new/api.js
-// Frontend API helper for SEC
+// Frontend API helper for Tap-n-Score / SEC
 //
-// Uses full backend URL because Render Static Site is a different origin.
 // Optional override (recommended):
 //   sessionStorage.setItem("sczn3_backend_base","https://sczn3-backend-new1.onrender.com")
 
 window.SEC_API = {
-  async analyzeTarget({ file, distanceYards }) {
+  async analyzeTarget({ file, distanceYards, moaPerClick = 0.25, targetWIn = 8.5, targetHIn = 11 }) {
     const backendBase =
       sessionStorage.getItem("sczn3_backend_base") ||
       "https://sczn3-backend-new1.onrender.com";
 
     if (!file) throw new Error("No file provided.");
+
+    // distanceYards is REQUIRED by backend_new
+    const dy = Number(distanceYards);
+    if (!Number.isFinite(dy) || dy <= 0) {
+      throw new Error("distanceYards must be > 0 (required).");
+    }
 
     // 1) Create thumbnail locally (fast + reliable)
     const thumbDataUrl = await fileToDataUrl(file);
@@ -19,21 +24,31 @@ window.SEC_API = {
     // 2) Send image to backend for analysis
     const fd = new FormData();
     fd.append("image", file, file.name || "target.jpg");
-    fd.append("distanceYards", String(distanceYards || 100)); // optional, only if backend uses it
+    fd.append("distanceYards", String(dy));          // REQUIRED
+    fd.append("moaPerClick", String(moaPerClick));   // optional (default 0.25)
+    fd.append("targetWIn", String(targetWIn));       // optional (default 8.5)
+    fd.append("targetHIn", String(targetHIn));       // optional (default 11)
 
     const res = await fetch(`${backendBase}/api/analyze`, {
       method: "POST",
       body: fd
     });
 
+    const txt = await safeText(res);
+    let data = null;
+    try { data = txt ? JSON.parse(txt) : null; } catch { data = null; }
+
+    // 3) Handle errors (HTTP or ok:false)
     if (!res.ok) {
-      const txt = await safeText(res);
-      throw new Error(`Backend analyze failed (${res.status}). ${txt}`);
+      const msg = data?.error?.message || txt || `Backend analyze failed (${res.status}).`;
+      throw new Error(msg);
+    }
+    if (!data || data.ok !== true) {
+      const msg = data?.error?.message || "Backend returned ok:false.";
+      throw new Error(msg);
     }
 
-    const data = await res.json();
-
-    // You can keep a stable secId here if backend returns one
+    // 4) Stable secId (keep your existing behavior)
     const secId =
       (data && (data.secId || data.sec_id || data.id)) ||
       sessionStorage.getItem("sczn3_sec_id") ||
@@ -43,9 +58,9 @@ window.SEC_API = {
 
     return {
       secId,
-      distanceYards: Number(distanceYards || 100),
+      distanceYards: dy,
       thumbDataUrl,
-      data // <-- includes correction_in + directions if backend provides them
+      data // includes: correction_in, directions, clicks, score, tip, mode, build...
     };
   }
 };
