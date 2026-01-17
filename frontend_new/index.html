@@ -1,3 +1,4 @@
+<!-- sczn3-webapp/frontend_new/index.html  (FULL REPLACEMENT) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,7 +39,7 @@
       color: #fff;
       padding: 14px 22px;
       border-radius: 12px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       text-decoration: none;
       -webkit-tap-highlight-color: transparent;
@@ -50,12 +51,6 @@
     /* hidden inputs */
     #targetPhotoLibrary, #targetPhotoCamera { display:none; }
 
-    .uploadHint{
-      margin-top: 10px;
-      font-style: italic;
-      color: #8b0000;
-    }
-
     #miniStatus{
       margin-top: 10px;
       font-family: ui-monospace, Menlo, Consolas, monospace;
@@ -64,14 +59,37 @@
       min-height: 18px;
     }
 
-    /* ===== THUMB + TAP LAYER ===== */
-    .thumbWrap{
+    /* ===== TAP STAGE ===== */
+    #tapStage{
       display:none;
-      margin: 16px auto 0 auto;
       max-width: 92%;
-      position: relative;
+      margin: 16px auto 0 auto;
       border: 1px solid #cfcfcf;
-      border-radius: 10px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    #tapStageHeader{
+      padding: 10px 12px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-weight: 900;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      border-bottom: 1px solid #eee;
+    }
+
+    #tapCountText{
+      font-weight: 900;
+    }
+
+    .thumbWrap{
+      position: relative;
+      width: 100%;
+      margin: 0;
+      border: none;
+      border-radius: 0;
       overflow: hidden;
     }
 
@@ -93,22 +111,20 @@
       touch-action: manipulation;
     }
 
-    .tapTools{
-      display:none;
-      margin: 10px auto 0 auto;
-      max-width: 92%;
-      text-align: center;
-      gap: 10px;
+    #tapStageFooter{
+      padding: 10px 12px;
+      display:flex;
+      justify-content:center;
+      border-top: 1px solid #eee;
     }
 
     .toolBtn{
       display:inline-block;
-      margin: 6px 6px 0 6px;
       padding: 10px 14px;
       border-radius: 999px;
       border: 2px solid rgba(0,0,0,.18);
       background: #fff;
-      font-weight: 800;
+      font-weight: 900;
       cursor: pointer;
       user-select:none;
       -webkit-tap-highlight-color: transparent;
@@ -155,7 +171,7 @@
       border-radius: 10px;
       background: #ffffff;
       color: #2f5f73;
-      font-weight: 800;
+      font-weight: 900;
       text-decoration: none;
       max-width: 92%;
       line-height: 1.15;
@@ -200,7 +216,7 @@
       border: none;
       background: #fff;
       cursor: pointer;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .sheetBtn + .sheetBtn{ border-top: 1px solid #eee; }
@@ -232,16 +248,23 @@
     <!-- CAMERA: YES capture -->
     <input id="targetPhotoCamera" type="file" accept="image/*" capture="environment" />
 
-    <div class="uploadHint">INSURE ALL 4 CORNERS</div>
     <div id="miniStatus"></div>
 
-    <div class="thumbWrap" id="thumbWrap">
-      <img id="thumb" alt="Target thumbnail preview" />
-      <svg id="tapLayer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-    </div>
+    <!-- Tap N Score Stage -->
+    <div id="tapStage">
+      <div id="tapStageHeader">
+        <span>Tap N Score</span>
+        <span id="tapCountText">Taps: 0</span>
+      </div>
 
-    <div class="tapTools" id="tapTools">
-      <button class="toolBtn" id="clearTapsBtn" type="button">CLEAR TAPS</button>
+      <div class="thumbWrap" id="thumbWrap">
+        <img id="thumb" alt="Target thumbnail preview" />
+        <svg id="tapLayer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      </div>
+
+      <div id="tapStageFooter">
+        <button class="toolBtn" id="clearTapsBtn" type="button">CLEAR TAPS</button>
+      </div>
     </div>
   </div>
 
@@ -268,7 +291,7 @@
   </div>
 
   <!-- cache-bust this number whenever iOS acts sticky -->
-  <script src="./index.js?v=200"></script>
+  <script src="./index.js?v=201"></script>
 
 </body>
 </html>
