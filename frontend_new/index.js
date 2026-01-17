@@ -1,4 +1,4 @@
-// sczn3-webapp/frontend_new/index.js
+// sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
 // Upload page + Tap N Score capture (iOS-safe menu: Choose vs Camera)
 //
 // Stores:
@@ -26,10 +26,12 @@
   const pickCamera         = $("pickCamera");
   const pickCancel         = $("pickCancel");
 
+  const tapStage           = $("tapStage");
+  const tapCountText       = $("tapCountText");
+
   const thumb              = $("thumb");
   const thumbWrap          = $("thumbWrap");
   const tapLayer           = $("tapLayer");
-  const tapTools           = $("tapTools");
   const clearTapsBtn       = $("clearTapsBtn");
 
   const distanceInput      = $("distanceYards");
@@ -101,22 +103,24 @@
     return { x, y };
   }
 
+  function setTapCount(n){
+    if (tapCountText) tapCountText.textContent = `Taps: ${Number(n) || 0}`;
+  }
+
   function redrawTapLayer(){
     if (!tapLayer || !thumb) return;
 
     const taps = loadTaps();
+    setTapCount(taps.length);
+
     const nw = thumb.naturalWidth || 1;
     const nh = thumb.naturalHeight || 1;
-
     tapLayer.setAttribute("viewBox", `0 0 ${nw} ${nh}`);
 
     if (!taps.length){
       tapLayer.innerHTML = "";
-      if (tapTools) tapTools.style.display = "none";
       return;
     }
-
-    if (tapTools) tapTools.style.display = "block";
 
     tapLayer.innerHTML = taps.map((p) => {
       const x = Number(p.x);
@@ -132,12 +136,13 @@
   }
 
   function showThumb(dataUrl){
-    if (!thumb || !thumbWrap) return;
+    if (!thumb) return;
+
+    if (tapStage) tapStage.style.display = "block";
 
     thumb.src = dataUrl;
 
     thumb.onload = () => {
-      thumbWrap.style.display = "block";
       redrawTapLayer();
       status("Photo loaded. Tap the holes (Tap N Score).");
     };
@@ -190,8 +195,11 @@
         return;
       }
 
-      // new photo = reset taps
+      // ===== HARD RESET: new photo = new tap session (kills “ghost” taps forever) =====
       saveTaps([]);
+      if (tapLayer) tapLayer.innerHTML = "";
+      if (tapLayer) tapLayer.setAttribute("viewBox", "0 0 100 100");
+      setTapCount(0);
 
       // show + store
       showThumb(dataUrl);
@@ -224,7 +232,13 @@
       setPressEnabled(true);
     } else {
       setPressEnabled(false);
+      setTapCount(0);
+      if (tapStage) tapStage.style.display = "none";
     }
+
+    // also ensure taps UI reflects storage on load
+    const taps = loadTaps();
+    setTapCount(taps.length);
 
     saveDistance();
   })();
@@ -308,7 +322,8 @@
   if (clearTapsBtn){
     clearTapsBtn.addEventListener("click", () => {
       saveTaps([]);
-      redrawTapLayer();
+      if (tapLayer) tapLayer.innerHTML = "";
+      setTapCount(0);
       status("Taps cleared.");
     });
   }
