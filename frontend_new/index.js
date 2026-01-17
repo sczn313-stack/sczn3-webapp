@@ -1,5 +1,5 @@
 // sczn3-webapp/frontend_new/index.js
-// Upload page + Tap N Score capture (pilot)
+// Upload page + Tap N Score capture (pilot) — iOS-safe picker menu
 //
 // Stores:
 //  sczn3_targetPhoto_dataUrl
@@ -15,8 +15,16 @@
 
   function $(id){ return document.getElementById(id); }
 
+  // UI
   const uploadBtn     = $("uploadBtn");
-  const fileInput     = $("targetPhoto");
+  const fileLibrary   = $("targetPhotoLibrary");
+  const fileCamera    = $("targetPhotoCamera");
+
+  const pickOverlay   = $("pickOverlay");
+  const pickChoose    = $("pickChoose");
+  const pickCameraBtn = $("pickCamera");
+  const pickCancel    = $("pickCancel");
+
   const thumb         = $("thumb");
   const thumbWrap     = $("thumbWrap");
   const tapLayer      = $("tapLayer");
@@ -73,6 +81,24 @@
 
   function saveTaps(arr){
     sessionStorage.setItem(TAPS_KEY, JSON.stringify(arr || []));
+  }
+
+  function openPicker(){
+    if (!pickOverlay) {
+      // fallback: open library input if overlay missing
+      if (fileLibrary) {
+        fileLibrary.value = "";
+        status("Opening photo picker...");
+        fileLibrary.click();
+      }
+      return;
+    }
+    pickOverlay.style.display = "flex";
+  }
+
+  function closePicker(){
+    if (!pickOverlay) return;
+    pickOverlay.style.display = "none";
   }
 
   // Map tap (client coords on displayed image) -> NATURAL image pixel coords
@@ -138,61 +164,19 @@
     };
   }
 
-  // ---- Init ----
-  (function init(){
-    status("Ready. Press UPLOAD.");
-
-    const savedDist = sessionStorage.getItem(DIST_KEY);
-    if (distanceInput && savedDist) distanceInput.value = savedDist;
-
-    const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
-    if (buyMoreBtn && buyUrl) buyMoreBtn.href = buyUrl;
-
-    const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
-    if (savedPhoto){
-      showThumb(savedPhoto);
-      setPressEnabled(true);
-    } else {
-      setPressEnabled(false);
-    }
-
-    saveDistance();
-  })();
-
-  // ---- Upload button forces input.click ----
-  if (uploadBtn && fileInput){
-    uploadBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-
-      // CRITICAL FIX:
-      // iOS often won't fire "change" if user selects the SAME photo again.
-      // Clearing the value forces the next pick to trigger change every time.
-      fileInput.value = "";
-
-      status("Opening photo picker...");
-      fileInput.click();
-    });
-  }
-
-  // ---- Distance save ----
-  if (distanceInput){
-    distanceInput.addEventListener("input", saveDistance);
-    distanceInput.addEventListener("change", saveDistance);
-  }
-
-  async function handlePickedFile(){
-    const file = fileInput.files && fileInput.files[0];
+  async function handlePickedFileFrom(inputEl, sourceLabel){
+    const file = inputEl && inputEl.files && inputEl.files[0];
 
     if (!file){
       status("No file selected.");
       return;
     }
 
-    status(`Selected: ${file.name || "photo"} (${file.type || "unknown"})`);
+    status(`Selected (${sourceLabel}): ${file.name || "photo"} (${file.type || "unknown"})`);
 
     if (!file.type || !file.type.startsWith("image/")){
       alert("Please choose an image file.");
-      fileInput.value = "";
+      inputEl.value = "";
       setPressEnabled(false);
       status("ERROR: Not an image.");
       return;
@@ -217,6 +201,7 @@
 
       saveDistance();
       setPressEnabled(true);
+      closePicker();
     } catch (err){
       alert("Photo load failed. Please try again.");
       setPressEnabled(false);
@@ -224,10 +209,80 @@
     }
   }
 
+  // ---- Init ----
+  (function init(){
+    status("Ready. Press UPLOAD.");
+
+    const savedDist = sessionStorage.getItem(DIST_KEY);
+    if (distanceInput && savedDist) distanceInput.value = savedDist;
+
+    const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
+    if (buyMoreBtn && buyUrl) buyMoreBtn.href = buyUrl;
+
+    const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
+    if (savedPhoto){
+      showThumb(savedPhoto);
+      setPressEnabled(true);
+    } else {
+      setPressEnabled(false);
+    }
+
+    saveDistance();
+  })();
+
+  // ---- Upload button opens our menu ----
+  if (uploadBtn){
+    uploadBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openPicker();
+    });
+  }
+
+  // ---- Picker sheet buttons ----
+  if (pickOverlay){
+    // tap outside sheet to close
+    pickOverlay.addEventListener("click", (e) => {
+      if (e.target === pickOverlay) closePicker();
+    });
+  }
+
+  if (pickCancel){
+    pickCancel.addEventListener("click", () => closePicker());
+  }
+
+  if (pickChoose && fileLibrary){
+    pickChoose.addEventListener("click", () => {
+      // CRITICAL: clear so iOS fires event even if same photo chosen
+      fileLibrary.value = "";
+      status("Opening Library / Files...");
+      fileLibrary.click();
+    });
+  }
+
+  if (pickCameraBtn && fileCamera){
+    pickCameraBtn.addEventListener("click", () => {
+      // CRITICAL: clear so iOS fires event even if same photo chosen
+      fileCamera.value = "";
+      status("Opening Camera...");
+      fileCamera.click();
+    });
+  }
+
   // iOS sometimes fires "input" more reliably than "change"
-  if (fileInput){
-    fileInput.addEventListener("change", handlePickedFile);
-    fileInput.addEventListener("input", handlePickedFile);
+  if (fileLibrary){
+    fileLibrary.addEventListener("change", () => handlePickedFileFrom(fileLibrary, "library"));
+    fileLibrary.addEventListener("input",  () => handlePickedFileFrom(fileLibrary, "library"));
+  }
+
+  if (fileCamera){
+    fileCamera.addEventListener("change", () => handlePickedFileFrom(fileCamera, "camera"));
+    fileCamera.addEventListener("input",  () => handlePickedFileFrom(fileCamera, "camera"));
+  }
+
+  // ---- Distance save ----
+  if (distanceInput){
+    distanceInput.addEventListener("input", saveDistance);
+    distanceInput.addEventListener("change", saveDistance);
   }
 
   // ---- Tap capture on overlay ----
