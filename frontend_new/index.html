@@ -81,6 +81,14 @@
     </div>
   </div>
 
+  <!-- ANALYZE TAKEOVER (FULL SCREEN) -->
+  <div id="analyzeOverlay" class="analyzeOverlay" style="display:none;">
+    <div class="analyzeBox">
+      <div class="sig">After-Shot Intelligence™</div>
+      <div class="analyzeSub">Analyzing confirmed hits</div>
+    </div>
+  </div>
+
   <script type="module" src="api.js"></script>
   <script type="module" src="index.js"></script>
 
@@ -93,8 +101,7 @@
       function go(){
         landing.style.display = "none";
         main.style.display = "block";
-        // open sheet via same user gesture
-        if (uploadBtn) uploadBtn.click();
+        if (uploadBtn) uploadBtn.click(); // open sheet in same user gesture
       }
       landing.addEventListener("click", go);
       landing.addEventListener("touchstart", function(e){ e.preventDefault(); go(); }, { passive:false });
