@@ -1,40 +1,216 @@
-/* ===== Modal sizing: modal scrolls, stays fully on-screen ===== */
-#secModalOverlay{
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;            /* keeps space from screen edges */
-  background: rgba(0,0,0,.35);
-  z-index: 9999;
+:root{
+  --bg:#0b0b0c;
+  --fg:#f4f4f5;
+  --muted:rgba(244,244,245,0.75);
+  --muted2:rgba(244,244,245,0.55);
+  --border:rgba(255,255,255,0.14);
+  --panel:rgba(255,255,255,0.05);
+  --btn:rgba(255,255,255,0.12);
+  --btnBorder:rgba(255,255,255,0.22);
 }
 
-#secModal{
-  width: min(720px, 96vw);
-  max-height: 88vh;         /* KEY: never exceed screen height */
-  overflow: hidden;         /* body scroll handled inside */
-  border-radius: 18px;
-  background: #f5f6f7;
-  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
 }
 
-/* Header stays visible */
-#secModalHeader{
-  padding: 18px 20px 10px;
-  font-weight: 700;
-  font-size: 18px;
+.screen{
+  min-height:100vh;
+  max-width:560px;
+  margin:0 auto;
+  padding:18px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
 }
 
-/* Body becomes the scroll container */
-#secModalBody{
-  padding: 12px 20px 18px;
-  max-height: calc(88vh - 70px); /* modal height minus header */
-  overflow: auto;                /* modal-only scrolling */
-  -webkit-overflow-scrolling: touch;
+.screen-center{
+  justify-content:center;
+  align-items:center;
+  text-align:center;
 }
 
-/* Close button area stays reachable */
-#secModalClose{
-  cursor: pointer;
+.stack{ display:flex; flex-direction:column; align-items:center; }
+
+.h1{ font-size:34px; font-weight:650; letter-spacing:0.2px; }
+.h2{ font-size:26px; font-weight:450; line-height:1.12; }
+.sig{ font-size:16px; font-weight:650; opacity:0.92; }
+.gap{ height:16px; }
+
+.topBar{
+  display:flex;
+  gap:12px;
+  align-items:flex-end;
+  justify-content:space-between;
+}
+
+.distanceWrap{
+  display:flex;
+  align-items:flex-end;
+  gap:8px;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--panel);
+}
+
+.distanceWrap label{
+  font-size:12px;
+  opacity:0.7;
+  margin-bottom:2px;
+}
+
+.distanceWrap input{
+  width:86px;
+  border:none;
+  outline:none;
+  background:transparent;
+  color:var(--fg);
+  font-size:16px;
+  font-weight:650;
+}
+
+.distanceWrap .unit{
+  font-size:12px;
+  opacity:0.7;
+  padding-bottom:2px;
+}
+
+.miniStatus{
+  font-size:13px;
+  color:var(--muted);
+  margin-top:-6px;
+}
+
+.primaryBtn, .secondaryBtn{
+  width:auto;
+  border-radius:12px;
+  padding:14px 16px;
+  font-size:16px;
+  font-weight:650;
+  cursor:pointer;
+}
+
+.primaryBtn{
+  border:1px solid var(--btnBorder);
+  background:var(--btn);
+  color:var(--fg);
+}
+
+.secondaryBtn{
+  border:1px solid rgba(255,255,255,0.18);
+  background:transparent;
+  color:var(--fg);
+}
+
+.primaryBtn.disabled{
+  opacity:0.7;
+  pointer-events:none;
+}
+
+.thumbWrap{
+  position:relative;
+  width:100%;
+  border-radius:14px;
+  overflow:hidden;
+  border:1px solid var(--border);
+  background:#000;
+}
+
+#thumb{
+  display:block;
+  width:100%;
+  height:auto;
+}
+
+.tapLayer{
+  position:absolute;
+  left:0; top:0;
+  width:100%;
+  height:100%;
+  touch-action:none;
+}
+
+.tapHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.tapCount{
+  font-size:14px;
+  color:var(--muted);
+}
+
+.hint{
+  font-size:13px;
+  color:var(--muted);
+  text-align:center;
+}
+
+.linkBtn{
+  display:block;
+  text-align:center;
+  color:var(--fg);
+  opacity:0.85;
+  text-decoration:underline;
+  margin-top:8px;
+}
+
+.sheetOverlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.6);
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  padding:18px 16px;
+}
+
+.sheet{
+  width:100%;
+  max-width:560px;
+  background:#101012;
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.sheetTitle{
+  font-size:14px;
+  color:var(--muted);
+  padding:6px 4px 10px 4px;
+}
+
+.sheetBtn{
+  width:100%;
+  border-radius:12px;
+  padding:14px 16px;
+  font-size:16px;
+  font-weight:650;
+  border:1px solid rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.06);
+  color:var(--fg);
+  cursor:pointer;
+}
+
+.sheetCancel{
+  width:100%;
+  border-radius:12px;
+  padding:14px 16px;
+  font-size:16px;
+  font-weight:650;
+  border:1px solid rgba(255,255,255,0.18);
+  background:transparent;
+  color:var(--fg);
+  cursor:pointer;
+  opacity:0.9;
 }
