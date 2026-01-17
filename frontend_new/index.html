@@ -44,17 +44,11 @@
       -webkit-tap-highlight-color: transparent;
       user-select: none;
       touch-action: manipulation;
+      border: none;
     }
 
-    /* IMPORTANT: iOS Safari can be flaky if the file input is display:none.
-       Keep it "present" but invisible/off-screen. */
-    #targetPhoto{
-      position: absolute;
-      left: -9999px;
-      width: 1px;
-      height: 1px;
-      opacity: 0.001;
-    }
+    /* hidden inputs */
+    #targetPhotoLibrary, #targetPhotoCamera { display:none; }
 
     .uploadHint{
       margin-top: 10px;
@@ -62,6 +56,15 @@
       color: #8b0000;
     }
 
+    #miniStatus{
+      margin-top: 10px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 14px;
+      color: #333;
+      min-height: 18px;
+    }
+
+    /* ===== THUMB + TAP LAYER ===== */
     .thumbWrap{
       display:none;
       margin: 16px auto 0 auto;
@@ -95,6 +98,7 @@
       margin: 10px auto 0 auto;
       max-width: 92%;
       text-align: center;
+      gap: 10px;
     }
 
     .toolBtn{
@@ -168,15 +172,42 @@
       opacity: 0.7;
     }
 
-    #miniStatus{
-      margin: 14px auto 0 auto;
-      max-width: 92%;
-      font-family: monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-      text-align: left;
-      opacity: 0.85;
+    /* ===== OUR OWN PICKER MENU (iOS-safe) ===== */
+    #pickOverlay{
+      display:none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 9999;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 12px;
     }
+
+    #pickSheet{
+      width: min(520px, 96vw);
+      background: #fff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 14px 40px rgba(0,0,0,.22);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .sheetBtn{
+      width: 100%;
+      padding: 16px 14px;
+      font-size: 18px;
+      border: none;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .sheetBtn + .sheetBtn{ border-top: 1px solid #eee; }
+
+    .sheetBtn.primarySheet{ color: #0b5bd3; }
+    .sheetBtn.dangerSheet{ color: #b00000; }
+
   </style>
 </head>
 
@@ -189,12 +220,20 @@
   </h1>
 
   <div class="uploadBlock">
-    <a href="#" class="uploadBtn" id="uploadBtn">UPLOAD TARGET PHOTO or TAKE PICTURE</a>
 
-    <!-- capture="environment" helps iOS offer camera -->
-    <input id="targetPhoto" type="file" accept="image/*" capture="environment" />
+    <!-- Button that opens our menu -->
+    <button class="uploadBtn" id="uploadBtn" type="button">
+      UPLOAD TARGET PHOTO or TAKE PICTURE
+    </button>
+
+    <!-- Hidden inputs (library vs camera) -->
+    <!-- LIBRARY: NO capture -->
+    <input id="targetPhotoLibrary" type="file" accept="image/*" />
+    <!-- CAMERA: YES capture -->
+    <input id="targetPhotoCamera" type="file" accept="image/*" capture="environment" />
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
+    <div id="miniStatus"></div>
 
     <div class="thumbWrap" id="thumbWrap">
       <img id="thumb" alt="Target thumbnail preview" />
@@ -204,8 +243,6 @@
     <div class="tapTools" id="tapTools">
       <button class="toolBtn" id="clearTapsBtn" type="button">CLEAR TAPS</button>
     </div>
-
-    <div id="miniStatus"></div>
   </div>
 
   <label class="dist" for="distanceYards">ADJUST DISTANCE (yards)</label>
@@ -221,7 +258,16 @@
     YOUR SCORE / SCOPE CLICKS / SHOOTING TIPS
   </a>
 
-  <!-- bump if iOS cache acts up -->
+  <!-- Our iOS-safe picker sheet -->
+  <div id="pickOverlay">
+    <div id="pickSheet">
+      <button class="sheetBtn primarySheet" id="pickChoose" type="button">Choose Photo (Library / Files)</button>
+      <button class="sheetBtn primarySheet" id="pickCamera" type="button">Take Picture (Camera)</button>
+      <button class="sheetBtn dangerSheet" id="pickCancel" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <!-- cache-bust this number whenever iOS acts sticky -->
   <script src="./index.js?v=200"></script>
 
 </body>
