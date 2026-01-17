@@ -170,6 +170,7 @@ body{
   align-items:flex-end;
   justify-content:center;
   padding:18px 16px;
+  z-index:50;
 }
 
 .sheet{
@@ -213,4 +214,26 @@ body{
   color:var(--fg);
   cursor:pointer;
   opacity:0.9;
+}
+
+/* ANALYZE TAKEOVER */
+.analyzeOverlay{
+  position:fixed;
+  inset:0;
+  background:var(--bg);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  z-index:100;
+}
+
+.analyzeBox{
+  text-align:center;
+  padding:18px 16px;
+}
+
+.analyzeSub{
+  margin-top:8px;
+  font-size:14px;
+  opacity:0.75;
 }
