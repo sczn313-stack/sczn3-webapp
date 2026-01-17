@@ -237,3 +237,184 @@ body{
   font-size:14px;
   opacity:0.75;
 }
+
+/* RESULTS / RECEIPT */
+.resultsWrap{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.resultsTop{
+  margin-top:6px;
+}
+
+.resultsKicker{
+  opacity:0.7;
+  letter-spacing:1.4px;
+  text-transform:uppercase;
+  font-size:12px;
+  margin-bottom:10px;
+}
+
+.resultsTitle{
+  font-size:28px;
+  font-weight:650;
+  margin-bottom:6px;
+}
+
+.resultsSub{
+  opacity:0.75;
+  font-size:14px;
+}
+
+.receiptCard{
+  border:1px solid var(--border);
+  background:var(--panel);
+  border-radius:14px;
+  padding:16px;
+}
+
+.receiptHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.receiptTitle{
+  font-size:16px;
+  font-weight:650;
+}
+
+.receiptBadge{
+  font-size:12px;
+  padding:6px 10px;
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:999px;
+  opacity:0.9;
+  white-space:nowrap;
+}
+
+.receiptList{
+  opacity:0.85;
+  font-size:14px;
+  line-height:1.55;
+  margin-bottom:10px;
+}
+
+.receiptItem{
+  margin:2px 0;
+}
+
+.receiptDivider{
+  height:1px;
+  background:rgba(255,255,255,0.14);
+  margin:12px 0;
+}
+
+.adjGrid{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:10px;
+}
+
+.adjRow{
+  display:grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap:10px;
+  align-items:baseline;
+}
+
+.adjLabel{
+  opacity:0.75;
+  font-size:13px;
+}
+
+.adjValue{
+  font-weight:650;
+}
+
+.adjDir{
+  opacity:0.9;
+}
+
+.receiptMeta{
+  margin-top:10px;
+  opacity:0.75;
+  font-size:13px;
+}
+
+.metaKey{
+  opacity:0.8;
+}
+
+.receiptFooter{
+  margin-top:12px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.receiptSig{
+  font-size:14px;
+  font-weight:650;
+  opacity:0.92;
+}
+
+.receiptTiny{
+  font-size:12px;
+  opacity:0.7;
+}
+
+.resultsNote{
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.03);
+  border-radius:12px;
+  padding:12px 12px;
+}
+
+.noteLine{
+  font-size:13px;
+  line-height:1.45;
+  opacity:0.88;
+}
+
+.subtle{
+  opacity:0.7;
+}
+
+.resultsActions{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.btnPrimary, .btnSecondary{
+  display:inline-block;
+  width:100%;
+  text-align:center;
+  padding:14px 16px;
+  border-radius:12px;
+  font-weight:650;
+  text-decoration:none;
+  color:var(--fg);
+  cursor:pointer;
+}
+
+.btnPrimary{
+  border:1px solid var(--btnBorder);
+  background:var(--btn);
+}
+
+.btnSecondary{
+  border:1px solid rgba(255,255,255,0.18);
+  background:transparent;
+}
+
+.resultsBottom{
+  text-align:center;
+  margin-top:6px;
+}
