@@ -5,13 +5,15 @@
 //  sczn3_targetPhoto_dataUrl
 //  sczn3_targetPhoto_fileName
 //  sczn3_distance_yards
-//  sczn3_tap_points_json   <-- array of {x,y} in NATURAL image pixels
+//  sczn3_tap_points_json   <-- array of {x,y} in NATURAL image pixels (bull first)
 
 (function () {
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
   const FILE_KEY  = "sczn3_targetPhoto_fileName";
   const DIST_KEY  = "sczn3_distance_yards";
   const TAPS_KEY  = "sczn3_tap_points_json";
+
+  const RESULT_KEY = "tapnscore_result";
 
   function $(id){ return document.getElementById(id); }
 
@@ -144,7 +146,7 @@
 
     thumb.onload = () => {
       redrawTapLayer();
-      status("Photo loaded. Tap the holes (Tap N Score).");
+      status("Photo loaded. Tap bull first, then tap holes.");
     };
 
     thumb.onerror = () => {
@@ -201,6 +203,9 @@
       if (tapLayer) tapLayer.setAttribute("viewBox", "0 0 100 100");
       setTapCount(0);
 
+      // clear last result whenever a new photo is chosen
+      sessionStorage.removeItem(RESULT_KEY);
+
       // show + store
       showThumb(dataUrl);
       sessionStorage.setItem(PHOTO_KEY, dataUrl);
@@ -208,12 +213,19 @@
 
       saveDistance();
       setPressEnabled(true);
-      status("Photo loaded. Tap your holes.");
+      status("Photo loaded. Tap bull first, then tap holes.");
     } catch (err){
       alert("Photo load failed. Please try again.");
       setPressEnabled(false);
       status(`ERROR: ${String(err && err.message ? err.message : err)}`);
     }
+  }
+
+  // helper: DataURL -> File (for multipart upload)
+  async function dataUrlToFile(dataUrl, filename){
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], filename, { type: blob.type || "image/jpeg" });
   }
 
   // ===== INIT =====
@@ -236,7 +248,7 @@
       if (tapStage) tapStage.style.display = "none";
     }
 
-    // also ensure taps UI reflects storage on load
+    // ensure taps UI reflects storage on load
     const taps = loadTaps();
     setTapCount(taps.length);
 
@@ -328,21 +340,65 @@
     });
   }
 
-  // ===== PRESS TO SEE =====
+  // ===== PRESS TO SEE (NOW IT ANALYZES FIRST) =====
   if (pressToSee){
-    pressToSee.addEventListener("click", (e) => {
+    pressToSee.addEventListener("click", async (e) => {
       e.preventDefault();
 
-      const hasPhoto = !!sessionStorage.getItem(PHOTO_KEY);
-      if (!hasPhoto){
+      const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
+      const fileName = sessionStorage.getItem(FILE_KEY) || "target.jpg";
+
+      if (!savedPhoto){
         alert("Please upload a target photo first.");
         setPressEnabled(false);
         status("ERROR: no photo in sessionStorage.");
         return;
       }
 
+      const taps = loadTaps();
+      if (!Array.isArray(taps) || taps.length < 2){
+        alert("Tap bull first, then tap at least one hole.");
+        status("ERROR: need bull + at least one hole.");
+        return;
+      }
+
       saveDistance();
-      window.location.href = "./output.html";
+
+      const distanceYards = Number(sessionStorage.getItem(DIST_KEY) || (distanceInput ? distanceInput.value : "") || 100);
+      if (!Number.isFinite(distanceYards) || distanceYards <= 0){
+        alert("Please enter a valid distance in yards.");
+        status("ERROR: invalid distance.");
+        return;
+      }
+
+      const nw = (thumb && thumb.naturalWidth) ? thumb.naturalWidth : 0;
+      const nh = (thumb && thumb.naturalHeight) ? thumb.naturalHeight : 0;
+
+      try{
+        setPressEnabled(false);
+        status("After-Shot Intelligence™");
+
+        const file = await dataUrlToFile(savedPhoto, fileName);
+
+        // Call backend_new Tap-N-Score mode
+        const data = await window.SEC_API.analyzeTapNScore({
+          file,
+          distanceYards,
+          taps,
+          nw,
+          nh,
+          moaPerClick: 0.25,
+          targetWIn: 8.5,
+          targetHIn: 11
+        });
+
+        sessionStorage.setItem(RESULT_KEY, JSON.stringify(data));
+        window.location.href = "./output.html";
+      } catch (err){
+        setPressEnabled(true);
+        alert(String(err && err.message ? err.message : err));
+        status(`ERROR: ${String(err && err.message ? err.message : err)}`);
+      }
     });
   }
 })();
