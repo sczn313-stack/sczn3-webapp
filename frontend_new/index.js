@@ -159,10 +159,16 @@
     saveDistance();
   })();
 
-  // ---- Upload button forces input.click (more reliable than label-for with hidden input) ----
+  // ---- Upload button forces input.click ----
   if (uploadBtn && fileInput){
     uploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
+
+      // CRITICAL FIX:
+      // iOS often won't fire "change" if user selects the SAME photo again.
+      // Clearing the value forces the next pick to trigger change every time.
+      fileInput.value = "";
+
       status("Opening photo picker...");
       fileInput.click();
     });
@@ -174,51 +180,54 @@
     distanceInput.addEventListener("change", saveDistance);
   }
 
-  // ---- Upload change ----
+  async function handlePickedFile(){
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file){
+      status("No file selected.");
+      return;
+    }
+
+    status(`Selected: ${file.name || "photo"} (${file.type || "unknown"})`);
+
+    if (!file.type || !file.type.startsWith("image/")){
+      alert("Please choose an image file.");
+      fileInput.value = "";
+      setPressEnabled(false);
+      status("ERROR: Not an image.");
+      return;
+    }
+
+    try{
+      const dataUrl = await readFileAsDataURL(file);
+      if (!dataUrl){
+        alert("Could not load the photo. Please try again.");
+        setPressEnabled(false);
+        status("ERROR: dataUrl empty.");
+        return;
+      }
+
+      // new photo = reset taps
+      saveTaps([]);
+
+      // show + store
+      showThumb(dataUrl);
+      sessionStorage.setItem(PHOTO_KEY, dataUrl);
+      sessionStorage.setItem(FILE_KEY, file.name || "target.jpg");
+
+      saveDistance();
+      setPressEnabled(true);
+    } catch (err){
+      alert("Photo load failed. Please try again.");
+      setPressEnabled(false);
+      status(`ERROR: ${String(err && err.message ? err.message : err)}`);
+    }
+  }
+
+  // iOS sometimes fires "input" more reliably than "change"
   if (fileInput){
-    fileInput.addEventListener("change", async () => {
-      const file = fileInput.files && fileInput.files[0];
-
-      if (!file){
-        status("No file selected.");
-        return;
-      }
-
-      status(`Selected: ${file.name || "photo"} (${file.type || "unknown"})`);
-
-      if (!file.type || !file.type.startsWith("image/")){
-        alert("Please choose an image file.");
-        fileInput.value = "";
-        setPressEnabled(false);
-        status("ERROR: Not an image.");
-        return;
-      }
-
-      try{
-        const dataUrl = await readFileAsDataURL(file);
-        if (!dataUrl){
-          alert("Could not load the photo. Please try again.");
-          setPressEnabled(false);
-          status("ERROR: dataUrl empty.");
-          return;
-        }
-
-        // new photo = reset taps
-        saveTaps([]);
-
-        // show + store
-        showThumb(dataUrl);
-        sessionStorage.setItem(PHOTO_KEY, dataUrl);
-        sessionStorage.setItem(FILE_KEY, file.name || "target.jpg");
-
-        saveDistance();
-        setPressEnabled(true);
-      } catch (err){
-        alert("Photo load failed. Please try again.");
-        setPressEnabled(false);
-        status(`ERROR: ${String(err && err.message ? err.message : err)}`);
-      }
-    });
+    fileInput.addEventListener("change", handlePickedFile);
+    fileInput.addEventListener("input", handlePickedFile);
   }
 
   // ---- Tap capture on overlay ----
