@@ -1,3 +1,4 @@
+<!-- index.html (FULL REPLACEMENT) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -46,7 +47,14 @@
       touch-action: manipulation;
     }
 
-    #targetPhoto{ display:none; }
+    /* iOS SAFARI FIX: DO NOT use display:none on the file input */
+    #targetPhoto{
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
 
     .uploadHint{
       margin-top: 10px;
@@ -161,10 +169,6 @@
       pointer-events: none;
       opacity: 0.7;
     }
-
-    /* ===== MODAL (kept in place; output page opens normally) ===== */
-    #secModalOverlay{ display:none; }
-
   </style>
 </head>
 
@@ -185,7 +189,6 @@
 
     <div class="uploadHint">INSURE ALL 4 CORNERS</div>
 
-    <!-- NEW: wrapper + tap overlay -->
     <div class="thumbWrap" id="thumbWrap">
       <img id="thumb" alt="Target thumbnail preview" />
       <svg id="tapLayer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
@@ -210,7 +213,6 @@
   </a>
 
   <!-- cache-bust this number whenever iOS acts sticky -->
-  <script src="./index.js?v=100"></script>
-
+  <script src="./index.js?v=101"></script>
 </body>
 </html>
