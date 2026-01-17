@@ -1,10 +1,5 @@
-// sczn3-webapp/frontend_new/saved.js (FULL FILE)
-// Lists saved sessions from localStorage.
-//
-// Index:  localStorage["tapnscore_saved_index"] = [{id, savedAt}, ...]
-// Item:   localStorage["tapnscore_saved_<id>"]  = record JSON
-//
-// Open: loads record.result into sessionStorage["tapnscore_result"] and redirects to output.html
+// sczn3-webapp/frontend_new/saved.js (FULL FILE REPLACEMENT)
+// Lists saved sessions from localStorage and ALWAYS navigates reliably on iOS.
 
 (function () {
   const INDEX_KEY   = "tapnscore_saved_index";
@@ -58,6 +53,12 @@
     } catch { return iso || ""; }
   }
 
+  function goUpload(){
+    // Cache-bust so iOS Safari ALWAYS navigates
+    const bust = Date.now();
+    window.location.href = `./index.html?v=${bust}`;
+  }
+
   function render(){
     const idx = readIndex();
     const items = idx
@@ -78,7 +79,7 @@
           </div>
 
           <div class="resultsActions">
-            <a class="btnPrimary" href="index.html">Start new session</a>
+            <button id="startBtn" class="btnPrimary" type="button">Start new session</button>
             <button id="clearAllBtn" class="btnSecondary" type="button">Clear all saved</button>
           </div>
         ` : `
@@ -88,7 +89,7 @@
           </div>
 
           <div class="resultsActions">
-            <a class="btnPrimary" href="index.html">Start new session</a>
+            <button id="startBtn" class="btnPrimary" type="button">Start new session</button>
           </div>
         `}
 
@@ -98,10 +99,17 @@
       </div>
     `;
 
+    // Start new session (reliable)
+    const startBtn = document.getElementById("startBtn");
+    if (startBtn){
+      startBtn.addEventListener("click", goUpload);
+      startBtn.addEventListener("touchstart", goUpload, { passive: true });
+    }
+
     // Bind open/delete
     const openBtns = document.querySelectorAll("[data-open-id]");
     openBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
+      const open = () => {
         const id = btn.getAttribute("data-open-id");
         const rec = readItem(id);
         if (!rec || !rec.result){
@@ -109,19 +117,22 @@
           return;
         }
         sessionStorage.setItem(RESULT_KEY, JSON.stringify(rec.result));
-        window.location.href = "output.html";
-      });
+        window.location.href = `./output.html?v=${Date.now()}`;
+      };
+      btn.addEventListener("click", open);
+      btn.addEventListener("touchstart", open, { passive: true });
     });
 
     const delBtns = document.querySelectorAll("[data-del-id]");
     delBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
+      const del = () => {
         const id = btn.getAttribute("data-del-id");
         if (!id) return;
         if (!confirm("Delete this saved session?")) return;
         deleteItem(id);
         render();
-      });
+      };
+      btn.addEventListener("click", del);
     });
 
     const clearAllBtn = document.getElementById("clearAllBtn");
