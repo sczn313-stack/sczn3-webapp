@@ -1,3 +1,4 @@
+<!-- frontend_new/index.html (FULL CUT + PASTE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -14,7 +15,7 @@
   </style>
 
   <!-- cache-bust: change v= when you deploy -->
-  <link rel="stylesheet" href="./styles.css?v=20260118x">
+  <link rel="stylesheet" href="./styles.css?v=20260118y">
 </head>
 
 <body>
@@ -22,13 +23,19 @@
     <div class="brand">TAP-N-SCORE™</div>
 
     <h1 class="h1">Upload</h1>
-    <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
+    <div id="statusLine" class="subtle">Ready. Choose CAMERA or LIBRARY.</div>
 
     <section class="row">
-      <!-- CAMERA ONLY: keep capture. If you want camera+library, remove capture attribute. -->
+      <!-- CAMERA -->
       <label class="btn btnPrimary">
-        Add photo
-        <input id="photoInput" type="file" accept="image/*" capture="environment" />
+        Camera
+        <input id="photoInputCam" type="file" accept="image/*" capture="environment" />
+      </label>
+
+      <!-- LIBRARY -->
+      <label class="btn btnSecondary">
+        Library
+        <input id="photoInputLib" type="file" accept="image/*" />
       </label>
 
       <div class="distanceBox">
@@ -76,7 +83,7 @@
   </main>
 
   <!-- cache-bust scripts -->
-  <script src="./api.js?v=20260118x"></script>
-  <script src="./index.js?v=20260118x"></script>
+  <script src="./api.js?v=20260118y"></script>
+  <script src="./index.js?v=20260118y"></script>
 </body>
 </html>
