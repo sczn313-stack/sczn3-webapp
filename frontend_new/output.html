@@ -1,33 +1,45 @@
-<!-- sczn3-webapp/frontend_new/output.html (FULL FILE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Tap-n-Score — Results</title>
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Tap-n-Score™ — Results</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <div class="appFender">
+    <div class="wrap">
+      <div class="card">
 
-  <main class="resultsWrap">
-    <div class="resultsTop">
-      <div class="resultsKicker">RESULTS</div>
-      <div class="resultsTitle">Tap-n-Score™</div>
-      <div id="inlineMsg" class="resultsSub">Loading…</div>
+        <div class="kicker">RESULTS</div>
+        <div class="title" id="resultsTitle">Tap-n-Score™</div>
+        <div class="sub" id="resultsMsg">Ready.</div>
+
+        <div class="resultsGrid" style="margin-top:14px;">
+          <div class="receiptLine"><span class="k">Score</span><span class="v" id="scoreVal">--</span></div>
+          <div class="receiptLine"><span class="k">Windage</span><span class="v" id="windVal">--</span></div>
+          <div class="receiptLine"><span class="k">Elevation</span><span class="v" id="elevVal">--</span></div>
+          <div class="receiptLine"><span class="k">Distance</span><span class="v" id="distVal">--</span></div>
+          <div class="receiptLine"><span class="k">POIB</span><span class="v" id="poibVal">--</span></div>
+        </div>
+
+        <div class="vendorRow">
+          <a id="buyMoreBtn" class="btnGhost" href="#" target="_blank" rel="noopener" style="display:none;">Buy more targets</a>
+        </div>
+
+        <pre id="rawBox" style="white-space:pre-wrap; color:rgba(255,255,255,.55); margin-top:12px;"></pre>
+
+        <div class="row" style="margin-top:14px;">
+          <button id="backBtn" class="btnSecondary" type="button">Back</button>
+          <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+          <button id="receiptBtn" class="btnPrimary" type="button">Receipt</button>
+        </div>
+
+        <div class="bottomMark">Tap-n-Score™</div>
+      </div>
     </div>
-
-    <section id="detailsBox"></section>
-
-    <div class="resultsActions">
-      <button id="backBtn" class="btnSecondary" type="button">Back</button>
-      <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
-      <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
-    </div>
-
-    <div class="resultsActions">
-      <a id="buyMoreBtn" class="btnPrimary" href="#" style="display:none">Buy more targets</a>
-    </div>
-  </main>
+  </div>
 
   <script src="./output.js"></script>
 </body>
