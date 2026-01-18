@@ -23,3 +23,38 @@
 .tapDot{
   pointer-events: none;
 }
+/* ===== Tap-n-Score iOS hardening ===== */
+
+html, body {
+  background: #000;
+  color: #fff;
+}
+
+#targetImageWrap{
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  touch-action: none;        /* critical */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#targetImage{
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;      /* wrapper gets taps */
+}
+
+#emptyHint{
+  pointer-events: none;      /* never blocks taps */
+}
+
+.tapDot{
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
