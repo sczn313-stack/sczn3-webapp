@@ -7,32 +7,39 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118zFULL1">
+  <link rel="stylesheet" href="./styles.css?v=20260118zHERO1">
 </head>
 
 <body>
   <main class="page">
-    <div class="brand">TAP-N-SCORE™</div>
+    <div class="brandRow">
+      <div class="brand">TAP-N-SCORE™</div>
+    </div>
 
-    <h1 class="h1">Upload</h1>
+    <!-- STATUS: stays quiet until there is a photo -->
+    <div id="statusLine" class="status"></div>
 
-    <div id="statusLine" class="status">Ready. Tap <span class="statusStrong">UPLOAD TARGET PHOTO</span>.</div>
+    <!-- HERO UPLOAD BOX (single button; opens Camera OR Photo Library) -->
+    <button id="uploadBtn" class="uploadHero fileBtn" type="button" aria-label="Upload target photo">
+      <div class="uploadHeroInner">
+        <div class="uploadHeroTitle">Upload target photo</div>
+        <div class="uploadHeroSub">Camera or Photo Library</div>
+      </div>
 
-    <!-- BIG UPLOAD BOX (camera-only) -->
-    <button id="cameraBtn" class="btn uploadBtn fileBtn" type="button" aria-label="Upload target photo (camera)">
-      Upload target photo
-      <!-- IMPORTANT: NOT display:none (kept tappable) -->
+      <!-- IMPORTANT:
+           - single input
+           - NO capture attribute (this is what re-enables Photo Library)
+      -->
       <input
-        id="photoInputCam"
+        id="photoInput"
         class="fileInput"
         type="file"
         accept="image/*"
-        capture="environment"
       />
     </button>
 
-    <!-- Distance + Taps row -->
-    <section class="row rowBetween mt12">
+    <!-- Controls row -->
+    <section class="row rowBetween mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceInput" type="number" value="100" min="1" step="1" />
@@ -45,7 +52,7 @@
       </div>
     </section>
 
-    <!-- Target preview + tap layer -->
+    <!-- Target -->
     <section class="card mt14">
       <div class="subtle strong mb8">Target</div>
 
@@ -54,7 +61,7 @@
         <div id="dotsLayer" class="dotsLayer"></div>
       </div>
 
-      <div id="emptyHint" class="subtle mt10">Add a photo, then tap bull first, then holes.</div>
+      <div id="emptyHint" class="subtle mt10">Tap bull first, then holes.</div>
     </section>
 
     <div class="subtle mt14 mb6">Vendor link (optional)</div>
@@ -76,7 +83,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118zFULL1"></script>
-  <script src="./index.js?v=20260118zFULL1"></script>
+  <script src="./api.js?v=20260118zHERO1"></script>
+  <script src="./index.js?v=20260118zHERO1"></script>
 </body>
 </html>
