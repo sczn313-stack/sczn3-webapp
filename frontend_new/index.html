@@ -1,10 +1,4 @@
-<!-- frontend_new/index.html  (FULL CUT/PASTE REPLACEMENT)
-     Purpose:
-     - One clean upload/tap page (no duplicate inline scripts)
-     - Camera + Photo Library (NO capture attr)
-     - IDs match index.js exactly
-     - iOS-safe dark base + cache-busted assets
--->
+<!-- frontend_new/index.html  (FULL CUT/PASTE REPLACEMENT — with Fender Plug version.js) -->
 
 <!doctype html>
 <html lang="en">
@@ -13,10 +7,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#000000" />
-
   <title>Tap-n-Score™</title>
 
-  <!-- HARD BASE: prevents white/unstyled flash even if CSS fails -->
   <style>
     html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
     a{color:inherit}
@@ -32,7 +24,6 @@
     <div id="statusLine" class="subtle" style="margin-bottom:14px;">Ready. Tap ADD PHOTO.</div>
 
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-      <!-- BOTH camera + photo library -->
       <label class="btnPrimary" style="display:inline-block; cursor:pointer;">
         Add photo
         <input id="photoInput" type="file" accept="image/*" style="display:none;">
@@ -53,7 +44,6 @@
     <div class="targetBox" style="margin-bottom:14px;">
       <div class="subtle" style="margin-bottom:8px; font-weight:600;">Target</div>
 
-      <!-- TAP AREA (wrapper receives taps; image does not intercept taps) -->
       <div id="targetImageWrap">
         <img id="targetImage" alt="Target preview" />
       </div>
@@ -66,14 +56,15 @@
     <div class="subtle" style="margin-bottom:6px;">Vendor link (optional)</div>
     <input id="vendorInput" type="url" placeholder="Paste vendor buy link here" style="margin-bottom:12px;">
 
-    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">
-      See results
-    </button>
+    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">See results</button>
 
     <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
   </div>
 
-  <!-- Cache-bust scripts -->
+  <!-- Fender Plug -->
+  <script src="./version.js?v=20260118f"></script>
+
+  <!-- App -->
   <script src="./api.js?v=20260118f"></script>
   <script src="./index.js?v=20260118f"></script>
 </body>
