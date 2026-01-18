@@ -1,7 +1,6 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
 
-const uploadBtn   = document.getElementById("uploadBtn");
 const photoInput  = document.getElementById("photoInput");
 
 const targetImage = document.getElementById("targetImage");
@@ -33,12 +32,10 @@ let bullTap = null;     // {x,y} normalized 0..1
 let taps = [];          // bullet holes only (normalized)
 
 function instruction(){
-  // No “Ready…” nagging when empty
   if (!hasPhoto()){
     setStatus("");
     return;
   }
-
   if (!bullTap){
     setStatus("Tap 1: Tap the bull’s-eye (aim point) FIRST.");
     return;
@@ -71,13 +68,6 @@ function clearAll(){
   clearDots();
   setTapsCount(0);
   instruction();
-}
-
-/** --- Make button open picker reliably --- **/
-if (uploadBtn && photoInput){
-  uploadBtn.addEventListener("click", () => {
-    photoInput.click();
-  });
 }
 
 /** --- Photo load --- **/
