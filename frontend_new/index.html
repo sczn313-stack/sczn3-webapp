@@ -1,5 +1,3 @@
-<!-- frontend_new/index.html  (FULL CUT/PASTE REPLACEMENT — with Fender Plug version.js) -->
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,63 +7,76 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
+  <!-- HARD BASE: prevents white flash even if CSS fails -->
   <style>
     html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
     a{color:inherit}
   </style>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118f">
+  <!-- cache-bust: change v= when you deploy -->
+  <link rel="stylesheet" href="./styles.css?v=20260118x">
 </head>
 
 <body>
-  <div class="page" style="padding:16px; max-width:720px; margin:0 auto;">
-    <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">TAP-N-SCORE™</div>
-    <h1 style="margin:8px 0 4px 0;">Upload</h1>
-    <div id="statusLine" class="subtle" style="margin-bottom:14px;">Ready. Tap ADD PHOTO.</div>
+  <main class="page">
+    <div class="brand">TAP-N-SCORE™</div>
 
-    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-      <label class="btnPrimary" style="display:inline-block; cursor:pointer;">
+    <h1 class="h1">Upload</h1>
+    <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
+
+    <section class="row">
+      <!-- CAMERA ONLY: keep capture. If you want camera+library, remove capture attribute. -->
+      <label class="btn btnPrimary">
         Add photo
-        <input id="photoInput" type="file" accept="image/*" style="display:none;">
+        <input id="photoInput" type="file" accept="image/*" capture="environment" />
       </label>
 
-      <div style="display:flex; gap:8px; align-items:center;">
-        <div class="subtle" style="font-weight:600;">Distance</div>
-        <input id="distanceInput" type="number" value="100" min="1" step="1" style="width:110px;">
-        <div class="subtle" style="font-weight:600;">yds</div>
+      <div class="distanceBox">
+        <div class="subtle strong">Distance</div>
+        <input id="distanceInput" type="number" value="100" min="1" step="1" />
+        <div class="subtle strong">yds</div>
       </div>
-    </div>
+    </section>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0 10px 0;">
-      <div class="subtle" style="font-size:16px;">Taps: <span id="tapsCount">0</span></div>
-      <button id="clearTapsBtn" class="btnSecondary" type="button">Clear taps</button>
-    </div>
+    <section class="row rowBetween">
+      <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
+      <button id="clearTapsBtn" class="btn btnSecondary" type="button">Clear taps</button>
+    </section>
 
-    <div class="targetBox" style="margin-bottom:14px;">
-      <div class="subtle" style="margin-bottom:8px; font-weight:600;">Target</div>
+    <section class="card">
+      <div class="subtle strong mb8">Target</div>
 
-      <div id="targetImageWrap">
-        <img id="targetImage" alt="Target preview" />
+      <!-- TAP AREA -->
+      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
+        <img id="targetImage" class="targetImg" alt="Target preview" />
+        <div id="dotsLayer" class="dotsLayer"></div>
       </div>
 
-      <div id="emptyHint" class="subtle" style="margin-top:10px;">
-        Add a photo, then tap bullet holes.
+      <div id="emptyHint" class="subtle mt10">Add a photo, then tap bullet holes.</div>
+    </section>
+
+    <div class="subtle mb6">Vendor link (optional)</div>
+    <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
+
+    <button id="seeResultsBtn" class="btn btnPrimary w100" type="button">See results</button>
+
+    <!-- RESULTS -->
+    <section id="resultsBox" class="card mt18" style="display:none;">
+      <div class="subtle strong mb8">Results</div>
+      <div id="resultsText" class="mono"></div>
+
+      <div class="row mt12">
+        <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
+        <button id="savedBtn" class="btn btnSecondary" type="button">Saved</button>
+        <button id="receiptBtn" class="btn btnSecondary" type="button">Receipt</button>
       </div>
-    </div>
+    </section>
 
-    <div class="subtle" style="margin-bottom:6px;">Vendor link (optional)</div>
-    <input id="vendorInput" type="url" placeholder="Paste vendor buy link here" style="margin-bottom:12px;">
+    <div class="footer subtle">Tap-n-Score™</div>
+  </main>
 
-    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">See results</button>
-
-    <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
-  </div>
-
-  <!-- Fender Plug -->
-  <script src="./version.js?v=20260118f"></script>
-
-  <!-- App -->
-  <script src="./api.js?v=20260118f"></script>
-  <script src="./index.js?v=20260118f"></script>
+  <!-- cache-bust scripts -->
+  <script src="./api.js?v=20260118x"></script>
+  <script src="./index.js?v=20260118x"></script>
 </body>
 </html>
