@@ -1,11 +1,7 @@
 // sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
 // Upload page + Tap N Score capture (iOS-safe menu: Choose vs Camera)
-//
-// Stores:
-//  sczn3_targetPhoto_dataUrl
-//  sczn3_targetPhoto_fileName
-//  sczn3_distance_yards
-//  sczn3_tap_points_json   <-- array of {x,y} in NATURAL image pixels (bull first)
+// FIX: Remove redundancy by making Upload open ONLY the custom sheet.
+// The native iOS picker will appear ONLY after choosing "Library" or "Camera".
 
 (function () {
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
@@ -13,12 +9,9 @@
   const DIST_KEY  = "sczn3_distance_yards";
   const TAPS_KEY  = "sczn3_tap_points_json";
 
-  const RESULT_KEY = "tapnscore_result";
-  const AUTOSTART_KEY = "tapnscore_autostart";
-
   function $(id){ return document.getElementById(id); }
 
-  // ===== DOM (must match your HTML) =====
+  // ===== DOM =====
   const uploadBtn          = $("uploadBtn");
 
   const fileLibrary        = $("targetPhotoLibrary");
@@ -33,7 +26,6 @@
   const tapCountText       = $("tapCountText");
 
   const thumb              = $("thumb");
-  const thumbWrap          = $("thumbWrap");
   const tapLayer           = $("tapLayer");
   const clearTapsBtn       = $("clearTapsBtn");
 
@@ -42,16 +34,9 @@
   const buyMoreBtn         = $("buyMoreBtn");
   const miniStatus         = $("miniStatus");
 
-  const analyzeOverlay     = $("analyzeOverlay");
-
   function status(msg){
     if (!miniStatus) return;
     miniStatus.textContent = String(msg || "");
-  }
-
-  function showAnalyzeOverlay(on){
-    if (!analyzeOverlay) return;
-    analyzeOverlay.style.display = on ? "flex" : "none";
   }
 
   function setPressEnabled(enabled){
@@ -154,7 +139,7 @@
 
     thumb.onload = () => {
       redrawTapLayer();
-      status("Photo loaded. Tap bull first, then tap holes.");
+      status("Photo loaded. Tap the holes (Tap-n-Score).");
     };
 
     thumb.onerror = () => {
@@ -174,8 +159,7 @@
 
   function resetInput(input){
     if (!input) return;
-    // iOS: selecting the same photo won't fire change unless we clear value
-    input.value = "";
+    input.value = ""; // iOS: selecting same file won't fire change without this
   }
 
   async function handlePickedFileFrom(inputEl){
@@ -205,14 +189,11 @@
         return;
       }
 
-      // ===== HARD RESET: new photo = new tap session (kills “ghost” taps forever) =====
+      // HARD RESET: new photo = new tap session
       saveTaps([]);
       if (tapLayer) tapLayer.innerHTML = "";
       if (tapLayer) tapLayer.setAttribute("viewBox", "0 0 100 100");
       setTapCount(0);
-
-      // clear last result whenever a new photo is chosen
-      sessionStorage.removeItem(RESULT_KEY);
 
       // show + store
       showThumb(dataUrl);
@@ -221,26 +202,12 @@
 
       saveDistance();
       setPressEnabled(true);
-      status("Photo loaded. Tap bull first, then tap holes.");
+      status("Photo loaded. Tap bull first, then holes.");
     } catch (err){
       alert("Photo load failed. Please try again.");
       setPressEnabled(false);
       status(`ERROR: ${String(err && err.message ? err.message : err)}`);
     }
-  }
-
-  // helper: DataURL -> File (for multipart upload)
-  async function dataUrlToFile(dataUrl, filename){
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    return new File([blob], filename, { type: blob.type || "image/jpeg" });
-  }
-
-  // enforce “earned” dwell time on analyze screen
-  async function enforceMinDwell(startMs, minMs){
-    const elapsed = Date.now() - startMs;
-    const remaining = minMs - elapsed;
-    if (remaining > 0) await new Promise(r => setTimeout(r, remaining));
   }
 
   // ===== INIT =====
@@ -253,7 +220,7 @@
     const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
     if (buyMoreBtn && buyUrl){
       buyMoreBtn.href = buyUrl;
-      buyMoreBtn.style.display = "block";
+      buyMoreBtn.style.display = "inline-block";
     }
 
     const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
@@ -266,23 +233,11 @@
       if (tapStage) tapStage.style.display = "none";
     }
 
-    const taps = loadTaps();
-    setTapCount(taps.length);
-
+    setTapCount(loadTaps().length);
     saveDistance();
-    showAnalyzeOverlay(false);
-
-    // AUTO-OPEN SHEET when coming from Results -> Retake
-    const auto = sessionStorage.getItem(AUTOSTART_KEY);
-    if (auto === "1"){
-      sessionStorage.removeItem(AUTOSTART_KEY);
-      setTimeout(() => {
-        openSheet();
-      }, 60);
-    }
   })();
 
-  // ===== OPEN MENU =====
+  // ===== UPLOAD BUTTON: OPEN SHEET ONLY (NO NATIVE PICKER HERE) =====
   if (uploadBtn){
     uploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -366,75 +321,21 @@
     });
   }
 
-  // ===== PRESS TO SEE (ANALYZE TAKEOVER + MIN DWELL) =====
+  // ===== PRESS TO SEE =====
   if (pressToSee){
-    pressToSee.addEventListener("click", async (e) => {
+    pressToSee.addEventListener("click", (e) => {
       e.preventDefault();
 
-      const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
-      const fileName = sessionStorage.getItem(FILE_KEY) || "target.jpg";
-
-      if (!savedPhoto){
+      const hasPhoto = !!sessionStorage.getItem(PHOTO_KEY);
+      if (!hasPhoto){
         alert("Please upload a target photo first.");
         setPressEnabled(false);
         status("ERROR: no photo in sessionStorage.");
         return;
       }
 
-      const taps = loadTaps();
-      if (!Array.isArray(taps) || taps.length < 2){
-        alert("Tap bull first, then tap at least one hole.");
-        status("ERROR: need bull + at least one hole.");
-        return;
-      }
-
       saveDistance();
-
-      const distanceYards = Number(sessionStorage.getItem(DIST_KEY) || (distanceInput ? distanceInput.value : "") || 100);
-      if (!Number.isFinite(distanceYards) || distanceYards <= 0){
-        alert("Please enter a valid distance in yards.");
-        status("ERROR: invalid distance.");
-        return;
-      }
-
-      const nw = (thumb && thumb.naturalWidth) ? thumb.naturalWidth : 0;
-      const nh = (thumb && thumb.naturalHeight) ? thumb.naturalHeight : 0;
-      if (!nw || !nh){
-        alert("Photo not fully loaded yet. Please wait a moment and try again.");
-        status("ERROR: missing natural size.");
-        return;
-      }
-
-      // Start takeover
-      const start = Date.now();
-      setPressEnabled(false);
-      showAnalyzeOverlay(true);
-
-      try{
-        const file = await dataUrlToFile(savedPhoto, fileName);
-
-        const data = await window.SEC_API.analyzeTapNScore({
-          file,
-          distanceYards,
-          taps,
-          nw,
-          nh,
-          moaPerClick: 0.25,
-          targetWIn: 8.5,
-          targetHIn: 11
-        });
-
-        // Make it feel earned (0.95s minimum)
-        await enforceMinDwell(start, 950);
-
-        sessionStorage.setItem(RESULT_KEY, JSON.stringify(data));
-        window.location.href = "./output.html";
-      } catch (err){
-        showAnalyzeOverlay(false);
-        setPressEnabled(true);
-        alert(String(err && err.message ? err.message : err));
-        status(`ERROR: ${String(err && err.message ? err.message : err)}`);
-      }
+      window.location.href = "./output.html";
     });
   }
 })();
