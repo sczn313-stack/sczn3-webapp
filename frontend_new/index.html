@@ -7,13 +7,16 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118zHERO3">
+  <link rel="stylesheet" href="./styles.css?v=20260118zHERO4">
 </head>
 
 <body>
   <main class="page">
+    <!-- Brand (upper-left) with red/white/blue accents -->
     <div class="brandRow">
-      <div class="brand">TAP-N-SCORE™</div>
+      <div class="brand">
+        <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
+      </div>
     </div>
 
     <!-- REAL file input (outside hero). Hidden but NOT display:none. -->
@@ -27,8 +30,8 @@
       </div>
     </label>
 
-    <!-- Controls row -->
-    <section class="row rowBetween mt14">
+    <!-- Controls row (tight + safe on mobile) -->
+    <section class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceInput" type="number" value="100" min="1" step="1" />
@@ -37,14 +40,16 @@
 
       <div class="tapsBlock">
         <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnSecondary" type="button">Clear taps</button>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
       </div>
     </section>
 
     <!-- Target -->
     <section class="card mt14">
-      <!-- HARD-WIRED line (single source of truth) -->
-      <div class="subtle strong mb8">Target — Tap Bullseye or Aim Point 1st, then tap Bullet holes.</div>
+      <!-- HARD-WIRED line, but hidden until a photo exists -->
+      <div id="targetInstr" class="subtle strong mb8" style="display:none;">
+        Target — Tap Bullseye or Aim Point 1st, then tap Bullet holes.
+      </div>
 
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
         <img id="targetImage" class="targetImg" alt="Target preview" />
@@ -71,7 +76,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118zHERO3"></script>
-  <script src="./index.js?v=20260118zHERO3"></script>
+  <script src="./api.js?v=20260118zHERO4"></script>
+  <script src="./index.js?v=20260118zHERO4"></script>
 </body>
 </html>
