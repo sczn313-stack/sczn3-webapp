@@ -42,22 +42,28 @@ html,body{
 .strong{font-weight:800}
 .mono{white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:14px}
 
-/* Smaller "Upload" */
+/* Headline */
 .h1{
-  margin: 6px 0 10px;
-  font-size: clamp(26px, 6.4vw, 42px);
+  margin: 8px 0 10px;
+  font-size: clamp(36px, 8vw, 54px);
   letter-spacing: -0.02em;
 }
 
 /* Brand */
-.brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:8px}
-.brand{font-weight:900; letter-spacing:.6px; font-size:18px; opacity:.95; user-select:none}
+.brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:10px}
+.brand{
+  font-weight:900;
+  letter-spacing:.6px;
+  font-size:18px;
+  opacity:.95;
+  user-select:none;
+}
 .brandTap{color:var(--red)}
 .brandN{color:#fff}
 .brandScore{color:var(--blue)}
 .brandTm{color:#fff; opacity:.9}
 
-/* Hidden inputs (must NOT be display:none) */
+/* Hidden real input (must NOT be display:none) */
 .fileInputReal{
   position:absolute;
   left:-9999px;
@@ -87,12 +93,12 @@ html,body{
 .uploadHero:active{transform:translateY(1px)}
 .uploadHeroInner{
   padding:18px 18px;
-  min-height:86px;
+  min-height:84px;
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
-  gap:6px;
+  gap:4px;
 }
 .uploadHeroTitle{
   font-weight:900;
@@ -101,9 +107,9 @@ html,body{
   color:#fff;
 }
 .uploadHeroSub{
-  font-size:13px;
+  font-size:14px;
   color:rgba(255,255,255,.60);
-  font-weight:800;
+  font-weight:700;
 }
 
 /* Controls row (tight + no run-off) */
@@ -123,7 +129,7 @@ html,body{
 }
 
 .distanceBox input{
-  width:102px;
+  width:108px;
   padding:10px 12px;
   border-radius:16px;
   border:1px solid var(--border);
@@ -136,7 +142,7 @@ html,body{
 .tapsBlock{
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:10px;
   flex-wrap:nowrap;
   margin-left:auto;
 }
@@ -171,18 +177,40 @@ html,body{
 
 /* Pinch hint */
 .pinchHint{
-  flex:1;
+  width:100%;
   border-radius:18px;
   padding:12px 14px;
   border:1px solid rgba(255,255,255,.12);
   background:rgba(255,255,255,.05);
   color:rgba(255,255,255,.78);
-  font-weight:900;
+  font-weight:800;
   font-size:14px;
   letter-spacing:.01em;
 }
 
-/* Green See results (ACTIVE) */
+/* Vendor CTA */
+.vendorBuyBtn{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+  text-decoration:none;
+  border-radius:18px;
+  padding:14px 14px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+}
+.vendorIcon{font-size:18px}
+.vendorText{
+  flex:1;
+  font-weight:900;
+  letter-spacing:.2px;
+  color:rgba(255,255,255,.92);
+}
+.vendorArrow{ font-size:22px; opacity:.65; }
+
+/* ✅ Green boxed whisper (ACTIVE button) */
 .seeResultsHint{
   display:inline-flex;
   align-items:center;
@@ -200,23 +228,6 @@ html,body{
 }
 .seeResultsHint:active{transform:translateY(1px)}
 
-/* Vendor CTA */
-.vendorBuyBtn{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  width:100%;
-  text-decoration:none;
-  border-radius:18px;
-  padding:14px 14px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.06);
-}
-.vendorIcon{font-size:18px}
-.vendorText{flex:1; font-weight:900; letter-spacing:.2px; color:rgba(255,255,255,.92)}
-.vendorArrow{ font-size:22px; opacity:.65; }
-
 /* Inputs */
 .input{
   width:100%;
@@ -229,7 +240,6 @@ html,body{
   outline:none;
 }
 
-/* Card */
 .card{
   background:linear-gradient(180deg,var(--card2),var(--card));
   border:1px solid var(--border);
@@ -237,19 +247,8 @@ html,body{
   padding:14px;
 }
 
-/* Anchor instruction line */
-.anchorLine{
-  font-weight:900;
-  color:rgba(255,255,255,.82);
-  font-size:15px;
-  padding:10px 10px 12px;
-  border-bottom:1px solid rgba(255,255,255,.08);
-  margin:-14px -14px 12px;
-}
-
-/* Target container */
+/* Target container (FIT) */
 .targetWrap{
-  position:relative;
   width:100%;
   border-radius:18px;
   overflow:hidden;
@@ -258,13 +257,16 @@ html,body{
   padding:10px;
 }
 
+/* The tap canvas sizes itself to the IMAGE (so dots align perfectly) */
 .targetCanvas{
   position:relative;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  width:100%;
+  display:inline-block;
+  max-width:100%;
+  margin:0 auto;
 }
+
+/* Allow zoom/pinch on the page; we handle multi-touch taps in JS */
+.targetCanvas, .targetWrap { touch-action: auto; }
 
 .targetImg{
   display:block;
@@ -275,10 +277,12 @@ html,body{
   border-radius:14px;
 }
 
-/* Overlay */
+/* Overlay exactly on top of the image */
 .dotsLayer{
   position:absolute;
-  inset:0;
+  left:0; top:0;
+  width:100%;
+  height:100%;
   pointer-events:none;
 }
 
@@ -299,52 +303,8 @@ html,body{
   opacity:.65;
 }
 
-/* Modal (chooser) */
-.modal{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.55);
-  display:none;
-  align-items:flex-end;
-  justify-content:center;
-  padding:16px;
-  z-index:9999;
-}
-.modal.show{display:flex}
-.modalSheet{
-  width:min(520px, 100%);
-  border-radius:22px;
-  border:1px solid rgba(255,255,255,.12);
-  background:linear-gradient(180deg, rgba(30,30,30,.98), rgba(14,14,14,.98));
-  box-shadow:0 18px 40px rgba(0,0,0,.7);
-  padding:14px;
-}
-.modalTitle{
-  font-weight:900;
-  font-size:16px;
-  color:rgba(255,255,255,.8);
-  margin:2px 6px 10px;
-}
-.modalBtn{
-  width:100%;
-  border-radius:18px;
-  padding:14px 14px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.06);
-  color:#fff;
-  font-weight:900;
-  font-size:16px;
-  margin:8px 0;
-  -webkit-tap-highlight-color:transparent;
-}
-.modalBtn:active{transform:translateY(1px)}
-.modalCancel{
-  background:rgba(255,59,48,.12);
-  border:1px solid rgba(255,59,48,.25);
-}
-
 @media (max-width:420px){
-  .distanceBox input{width:92px}
+  .distanceBox input{width:96px}
   .tapsLine{font-size:16px}
   .btnTight{padding:9px 10px}
   .seeResultsHint{padding:11px 12px}
