@@ -20,20 +20,23 @@
     <div class="brand">TAP-N-SCORE™</div>
 
     <h1 class="h1">Upload</h1>
-    <div id="statusLine" class="subtle">Ready. Choose CAMERA or LIBRARY.</div>
+    <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
 
     <section class="row">
-      <!-- CAMERA BUTTON (input is invisible but NOT display:none) -->
-      <button id="cameraBtn" class="btn btnPrimary fileBtn" type="button">
-        Camera
-        <input id="photoInputCam" class="fileInput" type="file" accept="image/*" capture="environment" />
+      <!-- SINGLE BUTTON -->
+      <button id="addPhotoBtn" class="btn btnPrimary" type="button">
+        Add photo
       </button>
 
-      <!-- LIBRARY BUTTON -->
-      <button id="libraryBtn" class="btn btnSecondary fileBtn" type="button">
-        Library
-        <input id="photoInputLib" class="fileInput" type="file" accept="image/*" />
-      </button>
+      <!-- SINGLE HIDDEN CAMERA INPUT -->
+      <input
+        id="photoInput"
+        class="fileInput"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;"
+      />
 
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
@@ -50,7 +53,7 @@
     <section class="card">
       <div class="subtle strong mb8">Target</div>
 
-      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
+      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
         <img id="targetImage" class="targetImg" alt="Target preview" />
         <div id="dotsLayer" class="dotsLayer"></div>
       </div>
