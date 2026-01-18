@@ -1,40 +1,36 @@
-(() => {
-  // 🔥 SET THIS ONCE
-  const API_BASE = "https://sczn3-backend-new1.onrender.com";
+// frontend_new/api.js
+// Guarantees window.tapscore exists and calls the backend.
+// Set BACKEND_BASE to your Render backend.
 
-  function setStatus(msg) {
-    try {
-      const el = document.getElementById("statusLine");
-      if (el) el.textContent = msg;
-    } catch {}
-  }
+(() => {
+  // ✅ CHANGE THIS to your backend URL:
+  // Example: https://sczn3-backend-new1.onrender.com
+  const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
 
   async function tapscore(payload) {
-    // payload: { distanceYds, taps:[{x,y}], vendorLink, imageDataUrl? }
-    const res = await fetch(`${API_BASE}/tapscore`, {
+    const url = `${BACKEND_BASE}/tapscore`;
+
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // IMPORTANT: do NOT send cookies; keep it simple for CORS
       body: JSON.stringify(payload),
     });
 
-    const text = await res.text();
     if (!res.ok) {
-      // include server message in the thrown error
-      throw new Error(`HTTP ${res.status}: ${text || "Request failed"}`);
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${txt}`.trim());
     }
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      // backend returned non-json
-      return { ok: true, raw: text };
-    }
+    return res.json();
   }
 
-  // Expose globally (non-module scripts)
-  window.SCZN3_API_BASE = API_BASE;
-  window.tapscore = tapscore;
-  window.setStatus = setStatus;
+  async function ping() {
+    const url = `${BACKEND_BASE}/ping`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Ping failed: ${res.status}`);
+    return res.json();
+  }
 
-  console.log("[api.js] loaded ok", API_BASE);
+  window.tapscore = tapscore;
+  window.tapscorePing = ping;
 })();
