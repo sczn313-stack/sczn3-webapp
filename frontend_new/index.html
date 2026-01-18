@@ -1,73 +1,70 @@
-<!-- sczn3-webapp/frontend_new/index.html (FULL FILE REPLACEMENT) -->
+<!-- sczn3-webapp/frontend_new/index.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tap-n-Score™</title>
-
-  <!-- Cache-bust so iPhone always loads latest CSS -->
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes" />
+  <title>Tap-n-Score™ — Upload</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
-  <div class="resultsWrap">
-    <div class="resultsTop">
-      <div class="resultsKicker">Tap-n-Score™</div>
-      <div class="resultsTitle">Upload</div>
-      <div id="miniStatus" class="resultsSub">Ready. Tap UPLOAD.</div>
-    </div>
+  <div class="wrap">
+    <div class="card">
+      <div class="kicker">TAP-N-SCORE™</div>
+      <div class="title">Upload</div>
 
-    <div class="topRow">
-      <button id="uploadBtn" class="btnPrimary" type="button">Upload</button>
+      <div id="miniStatus" class="status">Ready. Tap UPLOAD.</div>
 
-      <div class="distancePill">
-        <span class="distanceLabel">Distance</span>
-        <input id="distanceYards" class="distanceInput" inputmode="numeric" value="100" />
-        <span class="distanceUnit">yds</span>
+      <div class="row">
+        <button id="uploadBtn" class="btnPrimary" type="button">Upload</button>
+
+        <div class="pill">
+          <div class="pillLabel">Distance</div>
+          <input id="distanceYards" class="pillInput" type="number" inputmode="numeric" min="1" step="1" value="100" />
+          <div class="pillUnit">yds</div>
+        </div>
+      </div>
+
+      <div class="vendorRow">
+        <a id="buyMoreBtn" class="btnSecondary fullWidth" href="#" style="display:none;">Buy more targets</a>
+      </div>
+
+      <div id="tapStage" style="display:none;">
+        <div class="tapHud">
+          <div id="tapCountText" class="tapCount">Bull: not set • Holes: 0</div>
+          <div class="tapHudBtns">
+            <button id="setBullBtn" class="btnSecondary" type="button">Set bull</button>
+            <button id="clearTapsBtn" class="btnSecondary" type="button">Clear</button>
+          </div>
+        </div>
+
+        <div id="thumbWrap" class="thumbWrap">
+          <img id="thumb" class="thumb" alt="Target photo" />
+          <svg id="tapLayer" class="tapLayer" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+
+        <button id="pressToSee" class="btnPrimary fullWidth disabled" type="button">Press to see results</button>
       </div>
     </div>
 
-    <!-- Vendor plug: hidden unless URL exists -->
-    <a id="buyMoreBtn" class="btnSecondary receiptVendorBtn" href="#" target="_blank" rel="noreferrer" style="display:none;">
-      Buy more targets
-    </a>
+    <!-- iOS-friendly picker sheet -->
+    <div id="pickOverlay" class="overlay" style="display:none;">
+      <div class="sheet">
+        <div class="sheetTitle">Add target photo</div>
 
-    <!-- Tap stage -->
-    <div id="tapStage" style="display:none;">
-      <div class="tapHeader">
-        <div id="tapCountText" class="subtle">Taps: 0</div>
-        <button id="clearTapsBtn" class="btnSecondary" type="button">Clear taps</button>
-      </div>
-
-      <div id="thumbWrap" class="thumbWrap">
-        <img id="thumb" alt="Target photo" />
-        <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+        <button id="pickChoose" class="sheetBtn" type="button">Choose from Library</button>
+        <button id="pickCamera" class="sheetBtn" type="button">Use Camera</button>
+        <button id="pickCancel" class="sheetBtn sheetCancel" type="button">Cancel</button>
       </div>
     </div>
 
-    <div class="resultsActions">
-      <button id="pressToSee" class="btnPrimary disabled" type="button">Press to see results</button>
-    </div>
-
-    <div class="resultsBottom">
-      <div class="subtle">After-Shot Intelligence™</div>
-    </div>
+    <!-- Hidden inputs -->
+    <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
+    <input id="targetPhotoCamera" type="file" accept="image/*" capture="environment" style="display:none;" />
   </div>
 
-  <!-- Hidden inputs (iOS-safe) -->
-  <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
-  <input id="targetPhotoCamera"  type="file" accept="image/*" capture="environment" style="display:none;" />
-
-  <!-- Picker overlay -->
-  <div id="pickOverlay" class="pickOverlay" style="display:none;">
-    <div class="pickSheet">
-      <button id="pickChoose" class="pickBtn" type="button">Photo Library</button>
-      <button id="pickCamera" class="pickBtn" type="button">Take Photo</button>
-      <button id="pickCancel" class="pickBtn cancel" type="button">Cancel</button>
-    </div>
-  </div>
-
-  <script src="./index.js?v=2"></script>
+  <script src="./api.js"></script>
+  <script src="./index.js"></script>
 </body>
 </html>
