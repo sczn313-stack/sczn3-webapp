@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118zHERO6">
+  <link rel="stylesheet" href="./styles.css?v=20260118zHERO7">
 </head>
 
 <body>
@@ -37,8 +37,10 @@
         <input id="distanceInput" type="number" value="100" min="1" step="1" />
         <div class="subtle strong">yds</div>
 
-        <!-- Progressive quiet helper (green boxed; hidden until taps begin) -->
-        <div id="seeResultsHint" class="seeResultsHint" style="display:none;">See results ↓</div>
+        <!-- ✅ Active green results button (hidden until tapping begins) -->
+        <button id="seeResultsHint" class="seeResultsHint" type="button" style="display:none;">
+          See results ↓
+        </button>
       </div>
 
       <div class="tapsBlock">
@@ -74,7 +76,7 @@
     <div class="subtle mt14 mb6">Vendor link (optional)</div>
     <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
 
-    <button id="seeResultsBtn" class="btn btnPrimary w100 mt12" type="button">See results</button>
+    <!-- ✅ Removed the big bottom See Results button -->
 
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
@@ -90,7 +92,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118zHERO6"></script>
-  <script src="./index.js?v=20260118zHERO6"></script>
+  <script src="./api.js?v=20260118zHERO7"></script>
+  <script src="./index.js?v=20260118zHERO7"></script>
 </body>
 </html>
