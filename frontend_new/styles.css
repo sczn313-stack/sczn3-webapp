@@ -1,14 +1,16 @@
 :root{
   --bg:#000;
   --fg:#fff;
-  --muted:rgba(255,255,255,.60);
+  --muted:rgba(255,255,255,.62);
   --muted2:rgba(255,255,255,.40);
   --card:rgba(255,255,255,.06);
-  --card2:rgba(255,255,255,.09);
   --border:rgba(255,255,255,.12);
-  --btn:rgba(255,255,255,.10);
-  --btn2:rgba(255,255,255,.14);
   --shadow:0 10px 28px rgba(0,0,0,.55);
+
+  /* Accent (subtle “coated” look) */
+  --accentA: rgba(30, 90, 255, .22);
+  --accentB: rgba(255, 30, 80, .16);
+  --accentStroke: rgba(120, 185, 255, .38);
 }
 
 *{box-sizing:border-box}
@@ -22,27 +24,21 @@ a{color:inherit}
   padding-bottom: calc(28px + env(safe-area-inset-bottom));
 }
 
+.brandRow{ display:flex; align-items:center; justify-content:flex-start; }
 .brand{
-  font-weight:800;
+  font-weight:900;
   letter-spacing:.10em;
   font-size:16px;
   color:var(--muted2);
   margin-top: 4px;
 }
 
-.h1{
-  font-size:72px;
-  line-height: .95;
-  margin: 14px 0 8px;
-  font-weight: 900;
-}
-
 .status{
+  min-height: 26px;           /* prevents page jump */
+  margin: 10px 0 10px;
   color: var(--muted);
-  font-size: 22px;
-  margin: 0 0 12px;
+  font-size: 18px;
 }
-.statusStrong{ color: var(--fg); font-weight: 800; }
 
 .subtle{ color: var(--muted); }
 .strong{ font-weight: 800; }
@@ -57,6 +53,7 @@ a{color:inherit}
 .rowBetween{ justify-content: space-between; align-items: center; }
 .w100{ width:100%; }
 
+/* Cards */
 .card{
   background: var(--card);
   border: 1px solid var(--border);
@@ -78,13 +75,12 @@ a{color:inherit}
 }
 input[type="number"]{
   width: 140px;
-  text-align: left;
 }
 
 /* Buttons */
 .btn{
   border: 1px solid var(--border);
-  background: var(--btn);
+  background: rgba(255,255,255,.10);
   color: var(--fg);
   border-radius: 18px;
   padding: 14px 16px;
@@ -94,46 +90,69 @@ input[type="number"]{
   -webkit-tap-highlight-color: transparent;
 }
 .btn:active{ transform: scale(.995); }
+.btnPrimary{ background: rgba(255,255,255,.14); }
+.btnSecondary{ background: rgba(255,255,255,.08); }
 
-.btnPrimary{
-  background: var(--btn2);
-}
-
-.btnSecondary{
-  background: rgba(255,255,255,.08);
-}
-
-/* BIG UPLOAD BOX BUTTON */
-.uploadBtn{
-  width: 100%;
-  min-height: 76px;
-  border-radius: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-
-  /* Auto-fit so “Upload target photo” always looks clean */
-  font-size: clamp(20px, 5.1vw, 30px);
-  line-height: 1.05;
-  letter-spacing: .2px;
-  padding: 18px 18px;
-}
-
-/* Invisible input sits on top and captures tap */
+/* HERO UPLOAD BOX */
 .fileBtn{ position: relative; overflow: hidden; }
 .fileInput{
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
+  position:absolute;
+  inset:0;
+  opacity:0;
+  width:100%;
+  height:100%;
+  cursor:pointer;
 }
 
-/* Distance + taps layout */
+/* This is the “color coated” look */
+.uploadHero{
+  width: 100%;
+  border-radius: 22px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.14);
+  background:
+    radial-gradient(1200px 200px at 10% 0%, var(--accentA), transparent 60%),
+    radial-gradient(900px 220px at 90% 20%, var(--accentB), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+  box-shadow: 0 14px 34px rgba(0,0,0,.62);
+  position: relative;
+}
+
+.uploadHero::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius: 22px;
+  pointer-events:none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.10),
+    inset 0 0 0 2px rgba(0,0,0,.35);
+}
+
+.uploadHeroInner{
+  padding: 18px 18px;
+  min-height: 84px;
+  display:flex;
+  flex-direction: column;
+  align-items:center;
+  justify-content:center;
+  gap: 4px;
+}
+
+.uploadHeroTitle{
+  font-weight: 900;
+  letter-spacing: .2px;
+  font-size: clamp(22px, 5.4vw, 32px);
+  line-height: 1.05;
+}
+
+.uploadHeroSub{
+  font-size: 14px;
+  color: rgba(255,255,255,.60);
+  font-weight: 700;
+}
+
+/* Control row */
 .distanceBox{
   display:flex;
   gap:10px;
@@ -156,7 +175,7 @@ input[type="number"]{
   border-radius: 14px;
   overflow: hidden;
   position: relative;
-  min-height: 140px;
+  min-height: 160px;
 }
 
 .targetImg{
@@ -165,7 +184,6 @@ input[type="number"]{
   display:block;
 }
 
-/* Dots overlay */
 .dotsLayer{
   position:absolute;
   inset:0;
@@ -179,12 +197,11 @@ input[type="number"]{
   border-radius: 50%;
   transform: translate(-50%, -50%);
   border: 2px solid rgba(0,0,0,.65);
-  background: rgba(255, 208, 0, .95); /* holes default */
+  background: rgba(255, 208, 0, .95);
   box-shadow: 0 8px 16px rgba(0,0,0,.35);
 }
-
 .tapDot[data-kind="bull"]{
-  background: rgba(120, 185, 255, .95); /* bull tap */
+  background: rgba(120, 185, 255, .95);
 }
 
 .mono{
@@ -206,9 +223,7 @@ input[type="number"]{
   font-weight: 700;
 }
 
-/* Mobile tuning */
 @media (max-width: 420px){
-  .h1{ font-size: 62px; }
   input[type="number"]{ width: 120px; }
   .tapsLine{ font-size: 18px; }
 }
