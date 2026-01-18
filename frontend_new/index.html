@@ -7,49 +7,41 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <!-- CRITICAL CSS (so you NEVER get that white page again) -->
+  <!-- tiny fallback so you never get a white page -->
   <style>
     html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    a{color:inherit}
-    /* hide real input but keep it functional */
-    .fileInputReal{
-      position:absolute;
-      left:-9999px; top:auto;
-      width:1px; height:1px;
-      opacity:0;
-      pointer-events:none;
-    }
   </style>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118z99">
+  <link rel="stylesheet" href="./styles.css?v=20260118v31">
 </head>
 
 <body>
   <main class="page">
 
+    <!-- Brand -->
     <div class="brandRow">
-      <div class="brand">
+      <div class="brand" aria-label="Tap-n-Score">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
     <h1 class="h1">Upload</h1>
 
-    <!-- ✅ ONE HERO BUTTON that opens Camera / Photo Library / Files -->
+    <!-- ONE button (hero) opens iOS picker: Camera / Photo Library / Browse -->
     <label id="uploadHeroBtn" class="uploadHero" for="photoInput" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
       </div>
     </label>
 
-    <!-- ✅ REAL INPUT (hidden). IMPORTANT: NO capture="" -->
+    <!-- REAL input (hidden). IMPORTANT: no capture="" so iOS offers library/files too -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <!-- Controls row -->
+    <!-- Controls -->
     <section class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
-        <input id="distanceInput" type="number" value="100" min="1" step="1" />
+        <input id="distanceInput" type="number" value="100" min="1" step="1" inputmode="numeric" />
         <div class="subtle strong">yds</div>
       </div>
 
@@ -59,10 +51,22 @@
       </div>
     </section>
 
-    <!-- Anchor line (only shows after photo is loaded) -->
-    <div id="anchorLine" class="subtle strong mt12 mb8"></div>
+    <!-- Anchor line (hidden until photo is loaded) -->
+    <div id="anchorLine" class="subtle strong mt12 mb8" style="display:none;"></div>
 
-    <!-- Target -->
+    <!-- Micro-slot: pinch hint (shows only briefly after first tap) + Vendor CTA (shows when results is available) -->
+    <div id="microSlot" class="microSlot" style="display:none;">
+      <div id="pinchHint" class="pinchHint" style="display:none;">Pinch to zoom</div>
+
+      <!-- vendor CTA (hidden until we have a vendorLink to use) -->
+      <a id="vendorCta" class="vendorBuyBtn" href="#" target="_blank" rel="noopener" style="display:none;">
+        <div class="vendorIcon">🛒</div>
+        <div class="vendorText">Buy more targets like this</div>
+        <div class="vendorArrow">›</div>
+      </a>
+    </div>
+
+    <!-- Target card -->
     <section class="card mt12">
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
         <div class="targetCanvas">
@@ -72,15 +76,18 @@
       </div>
     </section>
 
-    <!-- Vendor -->
+    <!-- GREEN active “See results” box (hidden until it’s applicable) -->
+    <div id="seeResultsWrap" class="mt12" style="display:none;">
+      <div id="seeResultsHint" class="seeResultsHint" role="button" tabindex="0" aria-label="See results">
+        See results
+      </div>
+    </div>
+
+    <!-- Vendor link input stays where it is -->
     <div class="subtle mb6 mt18">Vendor link (optional)</div>
     <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
 
-    <!-- You said: green “See Results” should be the active button (not bottom button).
-         So we’ll keep a button if you already wired it, or you can trigger it from your green box.
-         For now, keep the real button hidden until you decide. -->
-    <button id="seeResultsBtn" class="btn btnPrimary w100 mt12" type="button" style="display:none;">See results</button>
-
+    <!-- Results -->
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
       <div id="resultsText" class="mono"></div>
@@ -89,7 +96,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118z99"></script>
-  <script src="./index.js?v=20260118z99"></script>
+  <script src="./api.js?v=20260118v31"></script>
+  <script src="./index.js?v=20260118v31"></script>
 </body>
 </html>
