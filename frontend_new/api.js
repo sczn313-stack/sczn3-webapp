@@ -1,83 +1,56 @@
 // sczn3-webapp/frontend_new/api.js (FULL FILE REPLACEMENT)
-// Hardened API helper with timeout + clean errors.
-// Works when frontend is static and backend is on Render.
 
 (() => {
-  const DEFAULT_TIMEOUT_MS = 15000;
+  // HARD PIN to the backend service (prevents /api hitting the static frontend)
+  const API_BASE = "https://sczn3-backend-new1.onrender.com";
 
-  // If you want to hard-set the backend URL, put it here:
-  // Example: "https://YOUR-BACKEND.onrender.com"
-  const HARDCODED_API_BASE = ""; // leave "" to auto-detect
-
-  function getApiBase() {
-    // 1) session override (optional)
-    const ss = safeGetSession("sczn3_api_base");
-    if (ss) return stripTrailingSlash(ss);
-
-    // 2) hardcoded override (optional)
-    if (HARDCODED_API_BASE) return stripTrailingSlash(HARDCODED_API_BASE);
-
-    // 3) auto: if your frontend and backend are same origin, use ""
-    // (meaning we'll call relative paths like "/api/analyze")
-    // Most Render setups are separate origins, so we *guess* nothing here.
-    // We'll default to a SAME-ORIGIN relative call, which is safest.
-    return "";
-  }
-
-  function stripTrailingSlash(s) {
-    return String(s || "").replace(/\/+$/, "");
-  }
-
-  function safeGetSession(k) {
-    try { return sessionStorage.getItem(k) || ""; } catch { return ""; }
-  }
-
-  function timeoutFetch(url, opts = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  // Small helper so other files can call window.SCNZ3_API.postJson(...)
+  function withTimeout(ms) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-
-    return fetch(url, { ...opts, signal: ctrl.signal })
-      .finally(() => clearTimeout(t));
+    const t = setTimeout(() => ctrl.abort(), ms);
+    return { ctrl, cancel: () => clearTimeout(t) };
   }
 
-  async function postJson(path, bodyObj, timeoutMs) {
-    const base = getApiBase();
-    const url = base ? `${base}${path}` : path; // if base=="" use relative
+  async function postJson(path, bodyObj, timeoutMs = 20000) {
+    const url = API_BASE + path;
+
+    const { ctrl, cancel } = withTimeout(timeoutMs);
 
     try {
-      const res = await timeoutFetch(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyObj || {}),
-      }, timeoutMs || DEFAULT_TIMEOUT_MS);
+        body: JSON.stringify(bodyObj),
+        signal: ctrl.signal,
+        mode: "cors",
+        cache: "no-store",
+      });
 
-      const text = await res.text().catch(() => "");
+      const text = await res.text();
       let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+
+      try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
 
       if (!res.ok) {
         return {
           ok: false,
           status: res.status,
-          error: data || { message: text || "Request failed." },
-          url
+          error: data || { message: "Request failed" },
         };
       }
 
-      return { ok: true, status: res.status, data, url };
-    } catch (e) {
-      const msg =
-        (e && e.name === "AbortError")
-          ? "Request timed out. Try again."
-          : "Network/server error. Try again.";
-      return { ok: false, status: 0, error: { message: msg }, url };
+      return { ok: true, status: res.status, data };
+    } catch (err) {
+      const msg = (err && err.name === "AbortError")
+        ? "Request timed out. Try again."
+        : "Network/server error. Try again.";
+
+      return { ok: false, status: 0, error: { message: msg, detail: String(err || "") } };
+    } finally {
+      cancel();
     }
   }
 
-  // Public API
-  window.Sczn3Api = {
-    getApiBase,
-    setApiBase: (u) => { try { sessionStorage.setItem("sczn3_api_base", String(u || "")); } catch {} },
-    analyzeTapNScore: async (payload) => postJson("/api/analyze", payload, DEFAULT_TIMEOUT_MS),
-  };
+  // expose
+  window.SCNZ3_API = { postJson, API_BASE };
 })();
