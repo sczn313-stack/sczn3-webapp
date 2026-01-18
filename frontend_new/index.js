@@ -1,8 +1,8 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
 
-const cameraBtn     = document.getElementById("cameraBtn");
-const photoInputCam = document.getElementById("photoInputCam");
+const uploadBtn   = document.getElementById("uploadBtn");
+const photoInput  = document.getElementById("photoInput");
 
 const targetImage = document.getElementById("targetImage");
 const imageWrap   = document.getElementById("targetImageWrap");
@@ -16,7 +16,8 @@ const vendorInput   = document.getElementById("vendorInput");
 
 function setStatus(msg){
   const el = document.getElementById("statusLine");
-  if (el) el.textContent = msg;
+  if (!el) return;
+  el.textContent = msg || "";
 }
 
 function setTapsCount(n){
@@ -27,11 +28,17 @@ function hasPhoto(){
   return !!(targetImage && targetImage.src);
 }
 
+/** --- Tap state --- **/
+let bullTap = null;     // {x,y} normalized 0..1
+let taps = [];          // bullet holes only (normalized)
+
 function instruction(){
+  // No “Ready…” nagging when empty
   if (!hasPhoto()){
-    setStatus("Ready. Tap UPLOAD TARGET PHOTO.");
+    setStatus("");
     return;
   }
+
   if (!bullTap){
     setStatus("Tap 1: Tap the bull’s-eye (aim point) FIRST.");
     return;
@@ -42,10 +49,6 @@ function instruction(){
   }
   setStatus(`Holes: ${taps.length}. Keep tapping holes, then See results.`);
 }
-
-/** --- Tap state --- **/
-let bullTap = null;     // {x,y} normalized 0..1
-let taps = [];          // bullet holes only (normalized)
 
 function clearDots(){
   if (!dotsLayer) return;
@@ -70,26 +73,25 @@ function clearAll(){
   instruction();
 }
 
-/** --- Open camera chooser on button tap (extra reliability) --- **/
-if (cameraBtn && photoInputCam){
-  cameraBtn.addEventListener("click", () => {
-    // On some Safari builds, a visible click improves reliability
-    photoInputCam.click();
+/** --- Make button open picker reliably --- **/
+if (uploadBtn && photoInput){
+  uploadBtn.addEventListener("click", () => {
+    photoInput.click();
   });
 }
 
 /** --- Photo load --- **/
-if (photoInputCam){
-  photoInputCam.addEventListener("change", () => {
-    const file = photoInputCam.files && photoInputCam.files[0];
+if (photoInput){
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files && photoInput.files[0];
+
     if (!file){
-      setStatus("No photo selected.");
       if (targetImage) targetImage.src = "";
       clearAll();
       return;
     }
     if (!file.type || !file.type.startsWith("image/")){
-      setStatus("That file is not an image.");
+      alert("That file is not an image.");
       if (targetImage) targetImage.src = "";
       clearAll();
       return;
@@ -105,7 +107,7 @@ if (photoInputCam){
       instruction();
     };
     reader.onerror = () => {
-      setStatus("Could not read that photo.");
+      alert("Could not read that photo.");
       if (targetImage) targetImage.src = "";
       clearAll();
     };
@@ -192,7 +194,7 @@ async function doResults(){
     setStatus("Done.");
   } catch(err){
     const msg = (err && err.message) ? err.message : "Network/server error. Try again.";
-    setStatus("Ready.");
+    setStatus("");
     alert(msg);
   }
 }
