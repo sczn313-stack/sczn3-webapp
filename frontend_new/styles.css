@@ -1,60 +1,86 @@
-/* ===== Tap-n-Score iOS tap hardening ===== */
+/* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
 
-#targetImageWrap{
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  touch-action: none;        /* critical for iOS tap */
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-#targetImage{
-  width: 100%;
-  height: auto;
-  display: block;
-  pointer-events: none;      /* taps go to wrapper */
-}
-
-#emptyHint{
-  pointer-events: none;      /* hint never blocks taps */
-}
-
-.tapDot{
-  pointer-events: none;
-}
-/* ===== Tap-n-Score iOS hardening ===== */
-
+/* Hard dark base even if Safari does anything weird */
 html, body {
+  margin: 0;
+  padding: 0;
   background: #000;
   color: #fff;
+  font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
-#targetImageWrap{
+.page {
+  padding: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.subtle {
+  opacity: 0.75;
+}
+
+.btnPrimary, .btnSecondary, button {
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border-radius: 999px;
+  padding: 14px 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.btnPrimary {
+  background: rgba(255,255,255,0.10);
+}
+
+.btnSecondary {
+  background: rgba(255,255,255,0.06);
+}
+
+input[type="number"],
+input[type="url"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+
+/* Target container */
+.targetBox {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.04);
+  border-radius: 18px;
+  padding: 14px;
+}
+
+/* TAP AREA (wrapper receives taps) */
+#targetImageWrap {
   position: relative;
   width: 100%;
-  max-width: 100%;
-  touch-action: none;        /* critical */
-  -webkit-user-select: none;
-  user-select: none;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.03);
+  touch-action: none; /* important for iOS */
 }
 
-#targetImage{
+#targetImage {
   width: 100%;
-  height: auto;
   display: block;
-  pointer-events: none;      /* wrapper gets taps */
+  pointer-events: none; /* taps go to wrapper */
 }
 
-#emptyHint{
-  pointer-events: none;      /* never blocks taps */
-}
-
-.tapDot{
+/* Tap dot marker */
+.tapDot {
   position: absolute;
   width: 14px;
   height: 14px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
+  background: rgba(255, 165, 0, 0.90);
+  box-shadow: 0 0 6px rgba(0,0,0,0.55);
   pointer-events: none;
 }
