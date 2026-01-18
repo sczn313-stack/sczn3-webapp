@@ -1,7 +1,12 @@
 // sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
 // Upload page + Tap N Score capture (iOS-safe menu: Choose vs Camera)
-// FIX: Remove redundancy by making Upload open ONLY the custom sheet.
-// The native iOS picker will appear ONLY after choosing "Library" or "Camera".
+// + Zoom overlay with pinch-friendly fullscreen tap mode
+//
+// Stores:
+//  sczn3_targetPhoto_dataUrl
+//  sczn3_targetPhoto_fileName
+//  sczn3_distance_yards
+//  sczn3_tap_points_json   <-- array of {x,y} in NATURAL image pixels (bull first)
 
 (function () {
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
@@ -11,7 +16,7 @@
 
   function $(id){ return document.getElementById(id); }
 
-  // ===== DOM =====
+  // ===== DOM (must match HTML) =====
   const uploadBtn          = $("uploadBtn");
 
   const fileLibrary        = $("targetPhotoLibrary");
@@ -28,6 +33,14 @@
   const thumb              = $("thumb");
   const tapLayer           = $("tapLayer");
   const clearTapsBtn       = $("clearTapsBtn");
+
+  const zoomBtn            = $("zoomBtn");
+  const zoomOverlay        = $("zoomOverlay");
+  const zoomDoneBtn        = $("zoomDoneBtn");
+  const zoomClearBtn       = $("zoomClearBtn");
+  const zoomScroller       = $("zoomScroller");
+  const zoomImg            = $("zoomImg");
+  const zoomTapLayer       = $("zoomTapLayer");
 
   const distanceInput      = $("distanceYards");
   const pressToSee         = $("pressToSee");
@@ -82,12 +95,12 @@
   }
 
   // Map tap (client coords on displayed image) -> NATURAL image pixel coords
-  function clientToNatural(e){
-    if (!thumb) return null;
+  function clientToNaturalFromImg(imgEl, e){
+    if (!imgEl) return null;
 
-    const rect = thumb.getBoundingClientRect();
-    const nw = thumb.naturalWidth || 1;
-    const nh = thumb.naturalHeight || 1;
+    const rect = imgEl.getBoundingClientRect();
+    const nw = imgEl.naturalWidth || 1;
+    const nh = imgEl.naturalHeight || 1;
 
     const clientX = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
     const clientY = (e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY);
@@ -102,22 +115,22 @@
     if (tapCountText) tapCountText.textContent = `Taps: ${Number(n) || 0}`;
   }
 
-  function redrawTapLayer(){
-    if (!tapLayer || !thumb) return;
+  function renderTapSvg(svgEl, imgEl){
+    if (!svgEl || !imgEl) return;
 
     const taps = loadTaps();
     setTapCount(taps.length);
 
-    const nw = thumb.naturalWidth || 1;
-    const nh = thumb.naturalHeight || 1;
-    tapLayer.setAttribute("viewBox", `0 0 ${nw} ${nh}`);
+    const nw = imgEl.naturalWidth || 1;
+    const nh = imgEl.naturalHeight || 1;
+    svgEl.setAttribute("viewBox", `0 0 ${nw} ${nh}`);
 
     if (!taps.length){
-      tapLayer.innerHTML = "";
+      svgEl.innerHTML = "";
       return;
     }
 
-    tapLayer.innerHTML = taps.map((p) => {
+    svgEl.innerHTML = taps.map((p) => {
       const x = Number(p.x);
       const y = Number(p.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return "";
@@ -130,6 +143,11 @@
     }).join("");
   }
 
+  function redrawTapLayers(){
+    if (thumb && tapLayer) renderTapSvg(tapLayer, thumb);
+    if (zoomImg && zoomTapLayer) renderTapSvg(zoomTapLayer, zoomImg);
+  }
+
   function showThumb(dataUrl){
     if (!thumb) return;
 
@@ -138,12 +156,12 @@
     thumb.src = dataUrl;
 
     thumb.onload = () => {
-      redrawTapLayer();
-      status("Photo loaded. Tap the holes (Tap-n-Score).");
+      redrawTapLayers();
+      status("Photo loaded. Tap the bull first, then holes.");
     };
 
     thumb.onerror = () => {
-      status("ERROR: thumb image failed to load.");
+      status("ERROR: photo failed to load.");
     };
   }
 
@@ -159,7 +177,7 @@
 
   function resetInput(input){
     if (!input) return;
-    input.value = ""; // iOS: selecting same file won't fire change without this
+    input.value = ""; // iOS: selecting same photo requires clearing
   }
 
   async function handlePickedFileFrom(inputEl){
@@ -192,11 +210,18 @@
       // HARD RESET: new photo = new tap session
       saveTaps([]);
       if (tapLayer) tapLayer.innerHTML = "";
-      if (tapLayer) tapLayer.setAttribute("viewBox", "0 0 100 100");
+      if (zoomTapLayer) zoomTapLayer.innerHTML = "";
       setTapCount(0);
 
-      // show + store
       showThumb(dataUrl);
+
+      // prepare zoom image too
+      if (zoomImg){
+        zoomImg.src = dataUrl;
+        zoomImg.onload = () => redrawTapLayers();
+      }
+
+      // store
       sessionStorage.setItem(PHOTO_KEY, dataUrl);
       sessionStorage.setItem(FILE_KEY, file.name || "target.jpg");
 
@@ -210,6 +235,28 @@
     }
   }
 
+  // ===== ZOOM OVERLAY =====
+  function openZoom(){
+    const dataUrl = sessionStorage.getItem(PHOTO_KEY);
+    if (!dataUrl){
+      alert("Upload a target photo first.");
+      return;
+    }
+    if (zoomOverlay) zoomOverlay.style.display = "flex";
+    if (zoomImg) zoomImg.src = dataUrl;
+
+    // iOS: scroll to center-ish
+    setTimeout(() => {
+      if (zoomScroller) zoomScroller.scrollTop = 0;
+      redrawTapLayers();
+    }, 50);
+  }
+
+  function closeZoom(){
+    if (zoomOverlay) zoomOverlay.style.display = "none";
+    redrawTapLayers();
+  }
+
   // ===== INIT =====
   (function init(){
     status("Ready. Tap UPLOAD.");
@@ -218,14 +265,13 @@
     if (distanceInput && savedDist) distanceInput.value = savedDist;
 
     const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
-    if (buyMoreBtn && buyUrl){
-      buyMoreBtn.href = buyUrl;
-      buyMoreBtn.style.display = "inline-block";
-    }
+    if (buyMoreBtn && buyUrl) buyMoreBtn.href = buyUrl;
+    if (buyMoreBtn && buyUrl) buyMoreBtn.style.display = "inline-block";
 
     const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
     if (savedPhoto){
       showThumb(savedPhoto);
+      if (zoomImg) zoomImg.src = savedPhoto;
       setPressEnabled(true);
     } else {
       setPressEnabled(false);
@@ -233,11 +279,14 @@
       if (tapStage) tapStage.style.display = "none";
     }
 
-    setTapCount(loadTaps().length);
+    const taps = loadTaps();
+    setTapCount(taps.length);
+    redrawTapLayers();
+
     saveDistance();
   })();
 
-  // ===== UPLOAD BUTTON: OPEN SHEET ONLY (NO NATIVE PICKER HERE) =====
+  // ===== OPEN MENU =====
   if (uploadBtn){
     uploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -245,7 +294,7 @@
     });
   }
 
-  // Close sheet if you tap outside
+  // Close sheet if tap outside
   if (pickOverlay){
     pickOverlay.addEventListener("click", (e) => {
       if (e.target === pickOverlay) closeSheet();
@@ -290,35 +339,61 @@
     distanceInput.addEventListener("change", saveDistance);
   }
 
-  // ===== Tap capture =====
+  // ===== Tap capture (normal view) =====
+  function pushTapFrom(imgEl, e){
+    if (!imgEl || !imgEl.naturalWidth) return;
+
+    const pt = clientToNaturalFromImg(imgEl, e);
+    if (!pt) return;
+
+    const taps = loadTaps();
+    taps.push({ x: pt.x, y: pt.y });
+    saveTaps(taps);
+    redrawTapLayers();
+    status(`Taps: ${taps.length}`);
+  }
+
   if (tapLayer){
     const onTap = (e) => {
       e.preventDefault();
-      if (!thumb || !thumb.naturalWidth) return;
-
-      const pt = clientToNatural(e);
-      if (!pt) return;
-
-      const taps = loadTaps();
-      taps.push({ x: pt.x, y: pt.y });
-      saveTaps(taps);
-
-      redrawTapLayer();
-      status(`Taps: ${taps.length}`);
+      pushTapFrom(thumb, e);
     };
-
     tapLayer.addEventListener("click", onTap);
-    tapLayer.addEventListener("touchstart", onTap, { passive: false });
+    tapLayer.addEventListener("touchstart", onTap, { passive:false });
+  }
+
+  // ===== Tap capture (zoom overlay) =====
+  if (zoomTapLayer){
+    const onZoomTap = (e) => {
+      e.preventDefault();
+      pushTapFrom(zoomImg, e);
+    };
+    zoomTapLayer.addEventListener("click", onZoomTap);
+    zoomTapLayer.addEventListener("touchstart", onZoomTap, { passive:false });
   }
 
   // ===== Clear taps =====
+  function clearTaps(){
+    saveTaps([]);
+    if (tapLayer) tapLayer.innerHTML = "";
+    if (zoomTapLayer) zoomTapLayer.innerHTML = "";
+    setTapCount(0);
+    status("Taps cleared.");
+  }
+
   if (clearTapsBtn){
-    clearTapsBtn.addEventListener("click", () => {
-      saveTaps([]);
-      if (tapLayer) tapLayer.innerHTML = "";
-      setTapCount(0);
-      status("Taps cleared.");
-    });
+    clearTapsBtn.addEventListener("click", clearTaps);
+  }
+  if (zoomClearBtn){
+    zoomClearBtn.addEventListener("click", clearTaps);
+  }
+
+  // ===== Zoom open/close =====
+  if (zoomBtn){
+    zoomBtn.addEventListener("click", openZoom);
+  }
+  if (zoomDoneBtn){
+    zoomDoneBtn.addEventListener("click", closeZoom);
   }
 
   // ===== PRESS TO SEE =====
