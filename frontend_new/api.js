@@ -2,6 +2,7 @@
 // Guarantees window.tapscore exists and calls the backend.
 
 (() => {
+  // ✅ Your Render backend:
   const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
 
   async function tapscore(payload) {
