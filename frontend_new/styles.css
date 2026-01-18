@@ -1,200 +1,274 @@
 /* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
 
-/* ====== Base ====== */
 :root{
-  --bg:#0b0b0d;
-  --card:#141418;
-  --card2:#101014;
-  --text:#f4f4f6;
-  --muted:#a8a8b3;
-  --line:rgba(255,255,255,0.10);
-  --btn:rgba(255,255,255,0.08);
-  --btn2:rgba(255,255,255,0.12);
-  --shadow:0 12px 40px rgba(0,0,0,0.45);
+  --bg: #050607;
+  --panel: rgba(255,255,255,0.06);
+  --panel2: rgba(255,255,255,0.08);
+  --stroke: rgba(255,255,255,0.14);
+  --text: rgba(255,255,255,0.94);
+  --muted: rgba(255,255,255,0.65);
+  --muted2: rgba(255,255,255,0.45);
+  --radius: 18px;
+  --radius2: 14px;
+  --pad: 16px;
+  --maxw: 720px;
 }
 
 *{ box-sizing:border-box; }
-html,body{ height:100%; }
+html, body{ height:100%; }
 body{
   margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ====== Layout containers ====== */
+a{ color: inherit; text-decoration: none; }
+
 .resultsWrap{
-  width:min(760px, 100%);
-  margin:0 auto;
-  padding:18px 16px 90px; /* <-- bottom padding for stickyBar */
+  width: min(var(--maxw), calc(100% - 24px));
+  margin: 18px auto;
+  padding: 18px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
 }
 
-.resultsTop{ margin-top:8px; }
+.resultsTop{
+  margin-bottom: 14px;
+}
+
 .resultsKicker{
-  letter-spacing:0.14em;
-  text-transform:uppercase;
-  font-size:12px;
-  color:var(--muted);
-  margin-bottom:10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--muted2);
 }
+
 .resultsTitle{
-  font-size:34px;
-  font-weight:800;
-  line-height:1.05;
-  margin:0 0 8px;
+  font-size: 34px;
+  line-height: 1.05;
+  font-weight: 800;
+  margin-top: 6px;
 }
+
 .resultsSub{
-  color:var(--muted);
-  margin:0 0 18px;
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+/* ===== Top row rhythm ===== */
+.topRow{
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+/* Upload button */
+.btnPrimary{
+  appearance: none;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 800;
+  font-size: 16px;
+  cursor: pointer;
+  width: auto;
+  min-width: 128px;
+}
+
+.btnPrimary:active{
+  transform: translateY(1px);
+}
+
+.btnPrimary.disabled{
+  opacity: 0.6;
+}
+
+/* Secondary button */
+.btnSecondary{
+  appearance: none;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* Distance pill */
+.distancePill{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.04);
+  flex: 1;
+  min-width: 240px;
+}
+
+.distanceLabel{
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.distanceUnit{
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+  margin-left: auto;
+}
+
+.distanceInput{
+  width: 90px;
+  max-width: 120px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.25);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 16px;
+  font-weight: 800;
+  outline: none;
+}
+
+/* Vendor plug (bulletproof) */
+.receiptVendorBtn{
+  display: none; /* JS turns it on only when URL exists */
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.06);
+}
+
+/* Tap stage */
+.tapHeader{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+
+.subtle{ color: var(--muted); }
+
+.thumbWrap{
+  width: 100%;
+  border-radius: var(--radius2);
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
+  position: relative;
+}
+
+#thumb{
+  width: 100%;
+  display: block;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: manipulation;
+}
+
+.tapLayer{
+  position:absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* lets touchstart capture taps */
+}
+
+.resultsActions{
+  display:flex;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 .resultsBottom{
-  margin-top:18px;
-  padding-top:10px;
-  border-top:1px solid var(--line);
+  margin-top: 18px;
+  text-align: center;
+  color: var(--muted2);
 }
 
-/* ====== Buttons ====== */
-button{ font:inherit; }
-.btnPrimary,.btnSecondary{
-  border:1px solid var(--line);
-  background:var(--btn);
-  color:var(--text);
-  padding:14px 16px;
-  border-radius:14px;
-  font-weight:700;
-  cursor:pointer;
-  text-align:center;
-}
-.btnPrimary{
-  background:rgba(255,255,255,0.14);
-}
-.btnSecondary{
-  background:rgba(255,255,255,0.08);
-}
-.btnPrimary:active,.btnSecondary:active{ transform:translateY(1px); }
-
-a.btnSecondary{
-  display:inline-block;
-  text-decoration:none;
+/* ===== iOS picker sheet ===== */
+.pickOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 14px;
+  z-index: 9999;
 }
 
-/* ====== Notes box + misc ====== */
-.subtle{ color:var(--muted); }
-.hr{
-  height:1px;
-  background:var(--line);
-  margin:14px 0;
-}
-.tinyMuted{
-  font-size:12px;
-  color:var(--muted);
-  margin-top:10px;
+.pickSheet{
+  width: min(520px, 100%);
+  border-radius: 18px;
+  border: 1px solid var(--stroke);
+  background: rgba(20,20,20,0.92);
+  overflow: hidden;
 }
 
-/* ====== Receipt page ====== */
-.receiptVendorBtn{
-  width:100%;
-  margin:6px 0 14px;
-}
-.receiptForm{
-  display:grid;
-  gap:12px;
-}
-.field{
-  display:block;
-}
-.fieldLabel{
-  font-size:13px;
-  color:var(--muted);
-  margin:0 0 6px;
-}
-.fieldInput,.fieldTextArea{
-  width:100%;
-  border:1px solid var(--line);
-  background:var(--card2);
-  color:var(--text);
-  border-radius:14px;
-  padding:14px 14px;
-  font-size:16px;
-  outline:none;
-}
-.fieldTextArea{
-  resize:vertical;
-  min-height:96px;
+.pickBtn{
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 16px;
+  font-weight: 800;
+  font-size: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
 }
 
-.receiptPreview{
-  margin-top:14px;
-  border:1px solid var(--line);
-  background:var(--card);
-  border-radius:16px;
-  padding:14px 14px;
-  box-shadow:var(--shadow);
-}
-.receiptLine{
-  display:flex;
-  align-items:baseline;
-  justify-content:space-between;
-  gap:12px;
-  padding:6px 0;
-}
-.receiptLine .k{ color:var(--muted); font-size:13px; }
-.receiptLine .v{ font-weight:800; }
-.notesBox{
-  margin-top:10px;
-  padding:12px 12px;
-  border:1px solid var(--line);
-  border-radius:14px;
-  background:rgba(255,255,255,0.04);
-  white-space:pre-wrap;
+.pickBtn:active{ background: rgba(255,255,255,0.06); }
+
+.pickBtn.cancel{
+  border-bottom: none;
+  color: rgba(255,255,255,0.85);
 }
 
-/* ====== Sticky action bar (the fix) ====== */
-.stickyBar{
-  position:fixed;
-  left:0; right:0; bottom:0;
-  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
-  background:rgba(10,10,12,0.78);
-  backdrop-filter:saturate(1.2) blur(12px);
-  border-top:1px solid var(--line);
-  display:grid;
-  grid-template-columns:1fr 1fr 1fr 1.2fr;
-  gap:10px;
-  z-index:9999;
-}
+/* ===== Desktop “laptop row” polish ===== */
+@media (min-width: 900px){
+  .resultsWrap{
+    margin-top: 26px;
+    padding: 22px;
+  }
 
-/* ====== Saved page rows ====== */
-.savedList{
-  display:grid;
-  gap:12px;
-  margin:14px 0 10px;
-}
-.savedRow{
-  border:1px solid var(--line);
-  background:var(--card);
-  border-radius:16px;
-  padding:14px;
-  box-shadow:var(--shadow);
-}
-.savedTopLine{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  flex-wrap:wrap;
-  margin-bottom:10px;
-}
-.savedWhen{ font-weight:800; }
-.savedMeta{ color:var(--muted); }
-.savedAdjLine{
-  display:flex;
-  justify-content:space-between;
-  padding:6px 0;
-}
-.savedAdjLine .k{ color:var(--muted); }
-.savedBtns{
-  margin-top:10px;
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px;
+  .resultsTitle{ font-size: 40px; }
+
+  .topRow{
+    flex-wrap: nowrap; /* keep Upload + Distance in one row on laptop */
+  }
+
+  .btnPrimary{
+    min-width: 160px;
+  }
+
+  .distancePill{
+    min-width: 360px;
+  }
+
+  .receiptVendorBtn{
+    width: auto; /* vendor plug can sit under row but not huge */
+    display: none;
+  }
 }
