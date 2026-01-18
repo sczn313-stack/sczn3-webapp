@@ -1,49 +1,41 @@
-<!-- sczn3-webapp/frontend_new/output.html (FULL FILE REPLACEMENT) -->
+<!-- sczn3-webapp/frontend_new/output.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes" />
   <title>Tap-n-Score™ — Results</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
-  <div class="resultsWrap">
-    <div class="resultsTop">
-      <div class="resultsKicker">Results</div>
-      <div class="resultsTitle">Tap-n-Score™</div>
-      <div id="subLine" class="resultsSub">Analyzing…</div>
+  <div class="wrap">
+    <div class="card">
+      <div class="kicker">RESULTS</div>
+      <div class="title">Tap-n-Score™</div>
+
+      <div id="status" class="status">Analyzing…</div>
+
+      <div class="resultsBox">
+        <div class="line"><span class="k">Score</span><span id="score" class="v">--</span></div>
+        <div class="line"><span class="k">Windage</span><span id="wind" class="v">--</span></div>
+        <div class="line"><span class="k">Elevation</span><span id="elev" class="v">--</span></div>
+        <div class="line"><span class="k">Distance</span><span id="dist" class="v">--</span></div>
+        <div class="line"><span class="k">POIB</span><span id="poib" class="v">--</span></div>
+
+        <pre id="raw" class="raw"></pre>
+      </div>
+
+      <div class="btnRow">
+        <button id="backBtn" class="btnSecondary" type="button">Back</button>
+        <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+        <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
+      </div>
+
+      <div class="vendorRow">
+        <a id="buyMoreBtn" class="btnSecondary fullWidth" href="#" style="display:none;">Buy more targets</a>
+      </div>
     </div>
-
-    <!-- Vendor plug (TOP, no scrolling) -->
-    <a id="buyMoreBtn" class="btnSecondary receiptVendorBtn" href="#" target="_blank" rel="noreferrer" style="display:none;">
-      Buy more targets
-    </a>
-
-    <div id="resultsCard" class="receiptPreview">
-      <div class="receiptLine"><span class="k">Score</span><span id="scoreVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">Windage</span><span id="windVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">Elevation</span><span id="elevVal" class="v">--</span></div>
-
-      <div class="hr"></div>
-
-      <div class="receiptLine"><span class="k">Distance</span><span id="distVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">POIB</span><span id="poibVal" class="v">--</span></div>
-
-      <div id="warnBox" class="tinyMuted" style="margin-top:10px;"></div>
-    </div>
-
-    <div class="resultsBottom">
-      <div id="miniStatus" class="subtle"></div>
-    </div>
-  </div>
-
-  <!-- Sticky actions (always visible on iPhone) -->
-  <div class="stickyBar" style="grid-template-columns:1fr 1fr 1.2fr;">
-    <button id="backBtn" class="btnSecondary" type="button">Back</button>
-    <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
-    <button id="receiptBtn" class="btnPrimary" type="button" disabled style="opacity:0.6;">Receipt</button>
   </div>
 
   <script src="./api.js"></script>
