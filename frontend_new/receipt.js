@@ -1,224 +1,97 @@
-// sczn3-webapp/frontend_new/receipt.js (FULL FILE REPLACEMENT)
-// Receipt builder BEFORE saving.
-// Save to localStorage + Export to clipboard/file.
-
-(function () {
-  const DIST_KEY   = "sczn3_distance_yards";
-  const LAST_KEY   = "sczn3_last_result_json";
-  const PHOTO_KEY  = "sczn3_targetPhoto_dataUrl";
-  const VENDOR_BUY = "sczn3_vendor_buy_url";
-
-  const LS_SAVED = "sczn3_saved_sessions_v1";
-
-  function $(id){ return document.getElementById(id); }
-
-  const backBtn   = $("backBtn");
-  const savedBtn  = $("savedBtn");
-  const saveBtn   = $("saveBtn");
-  const exportBtn = $("exportBtn");
-
-  const miniStatus = $("miniStatus");
-  const buyMoreBtn = $("buyMoreBtn");
-
-  const scopeInput = $("scopeInput");
-  const ammoInput  = $("ammoInput");
-  const gunInput   = $("gunInput");
-  const yardsInput = $("yardsInput");
-  const notesInput = $("notesInput");
-
-  const previewBox = $("previewBox");
-
-  function status(msg){
-    if (miniStatus) miniStatus.textContent = String(msg || "");
-  }
-
-  function safeJsonParse(s){
-    try { return JSON.parse(String(s || "")); } catch { return null; }
-  }
-
-  function nowIso(){ return new Date().toISOString(); }
-  function shortId(){ return Math.random().toString(16).slice(2, 8).toUpperCase(); }
-
-  function getDistance(){
-    const v = sessionStorage.getItem(DIST_KEY);
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 100;
-  }
-
-  function getLastResult(){
-    const raw = sessionStorage.getItem(LAST_KEY) || "";
-    const obj = safeJsonParse(raw);
-    return obj && typeof obj === "object" ? obj : null;
-  }
-
-  function setVendorBuyLink(){
-    const url = sessionStorage.getItem(VENDOR_BUY);
-    if (buyMoreBtn && url){
-      buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "inline-block";
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Tap-n-Score™ — Receipt</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    /* Sticky receipt bar */
+    .receiptSticky{
+      position: sticky;
+      bottom: 0;
+      margin-top: 14px;
+      padding-top: 10px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      background: rgba(0,0,0,.35);
+      border-top: 1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
     }
-  }
-
-  function loadSaved(){
-    const raw = localStorage.getItem(LS_SAVED) || "[]";
-    const arr = safeJsonParse(raw);
-    return Array.isArray(arr) ? arr : [];
-  }
-
-  function saveSaved(arr){
-    localStorage.setItem(LS_SAVED, JSON.stringify(arr || []));
-  }
-
-  function esc(s){
-    return String(s || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  }
-
-  function ensureLast(){
-    const last = getLastResult();
-    if (!last){
-      status("No results found. Go back and run a session.");
-      // hard-disable actions so nobody can “save a failure”
-      if (saveBtn) saveBtn.disabled = true;
-      if (exportBtn) exportBtn.disabled = true;
-      return false;
+    .receiptStickyInner{
+      display:flex;
+      gap: 10px;
+      justify-content: space-between;
+      flex-wrap: wrap;
     }
-    if (saveBtn) saveBtn.disabled = false;
-    if (exportBtn) exportBtn.disabled = false;
-    return true;
-  }
-
-  function buildModel(){
-    const last = getLastResult();
-
-    const clicksWind = last?.clicks?.windage ?? "--";
-    const clicksElev = last?.clicks?.elevation ?? "--";
-    const dirWind    = last?.directions?.windage ?? "";
-    const dirElev    = last?.directions?.elevation ?? "";
-    const score      = (last && typeof last.score !== "undefined") ? String(last.score) : "--";
-
-    return {
-      id: shortId(),
-      created_at: nowIso(),
-      scope: String(scopeInput?.value || "").trim(),
-      ammo:  String(ammoInput?.value || "").trim(),
-      gun:   String(gunInput?.value || "").trim(),
-      yards: Number(yardsInput?.value || getDistance()),
-      notes: String(notesInput?.value || "").trim(),
-
-      result: last,
-      photoDataUrl: sessionStorage.getItem(PHOTO_KEY) || "",
-
-      preview: {
-        score,
-        wind: `${clicksWind} ${dirWind}`.trim(),
-        elev: `${clicksElev} ${dirElev}`.trim()
-      }
-    };
-  }
-
-  function renderPreview(){
-    const ok = ensureLast();
-    const m = buildModel();
-    if (!previewBox) return;
-
-    previewBox.innerHTML = `
-      ${!ok ? `<div class="resultsNote"><div class="noteLine">No results to receipt.</div><div class="noteLine subtle">Go back and analyze first.</div></div>` : ``}
-
-      <div class="receiptLine"><span class="k">Score</span><span class="v">${esc(m.preview.score)}</span></div>
-      <div class="receiptLine"><span class="k">Windage</span><span class="v">${esc(m.preview.wind)}</span></div>
-      <div class="receiptLine"><span class="k">Elevation</span><span class="v">${esc(m.preview.elev)}</span></div>
-
-      <div class="hr"></div>
-
-      <div class="receiptLine"><span class="k">Distance</span><span class="v">${esc(m.yards)} yds</span></div>
-      <div class="receiptLine"><span class="k">Scope</span><span class="v">${esc(m.scope || "—")}</span></div>
-      <div class="receiptLine"><span class="k">Ammo</span><span class="v">${esc(m.ammo || "—")}</span></div>
-      <div class="receiptLine"><span class="k">Gun</span><span class="v">${esc(m.gun || "—")}</span></div>
-
-      ${m.notes ? `<div class="notesBox">${esc(m.notes)}</div>` : ``}
-
-      <div class="tinyMuted">Receipt ID: ${esc(m.id)} • ${esc(m.created_at)}</div>
-    `;
-  }
-
-  function doSave(){
-    if (!ensureLast()) return;
-
-    const model = buildModel();
-    const arr = loadSaved();
-    arr.unshift(model);
-    saveSaved(arr);
-
-    status("Saved. Opening Saved Sessions…");
-    window.location.href = "./saved.html?v=" + Date.now();
-  }
-
-  async function doExport(){
-    if (!ensureLast()) return;
-
-    const m = buildModel();
-    const text =
-`Tap-n-Score™ Receipt
-ID: ${m.id}
-Time: ${m.created_at}
-
-Distance: ${m.yards} yds
-Scope: ${m.scope || "—"}
-Ammo: ${m.ammo || "—"}
-Gun: ${m.gun || "—"}
-
-Score: ${m.preview.score}
-Windage: ${m.preview.wind}
-Elevation: ${m.preview.elev}
-
-Notes: ${m.notes || "—"}
-`;
-
-    try{
-      await navigator.clipboard.writeText(text);
-      status("Receipt copied to clipboard.");
-      alert("Receipt copied to clipboard.");
-      return;
-    } catch {}
-
-    try{
-      const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Tap-n-Score_Receipt_${m.id}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      status("Receipt exported as a file.");
-    } catch {
-      status("Export failed.");
-      alert("Export failed on this device/browser.");
+    .receiptStickyInner .btnPrimary,
+    .receiptStickyInner .btnSecondary{
+      flex: 1 1 140px;
+      min-width: 140px;
     }
-  }
-
-  // INIT
-  (function init(){
-    setVendorBuyLink();
-
-    if (yardsInput) yardsInput.value = String(getDistance());
-
-    const onChange = () => renderPreview();
-    [scopeInput, ammoInput, gunInput, yardsInput, notesInput].forEach((el) => {
-      if (!el) return;
-      el.addEventListener("input", onChange);
-      el.addEventListener("change", onChange);
-    });
-
-    renderPreview();
-    if (ensureLast()){
-      status("Add setup details, then Save or Export.");
+    /* Give content breathing room so it doesn't hide under sticky bar */
+    .receiptPadBottom{
+      padding-bottom: 80px;
     }
-  })();
+  </style>
+</head>
+<body>
+  <div class="appFender">
+    <div class="wrap">
+      <div class="card receiptPadBottom">
 
-  if (backBtn)  backBtn.addEventListener("click", () => window.location.href = "./output.html?v=" + Date.now());
-  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
-  if (saveBtn)  saveBtn.addEventListener("click", doSave);
-  if (exportBtn)exportBtn.addEventListener("click", doExport);
-})();
+        <div class="kicker">RECEIPT</div>
+        <div class="title">Receipt</div>
+        <div class="sub" id="miniStatus">Add setup details, then Save or Export.</div>
+
+        <div id="previewBox" style="margin-top:14px;"></div>
+
+        <div class="hr" style="margin:14px 0; border-top:1px solid rgba(255,255,255,.10)"></div>
+
+        <div class="vendorRow">
+          <a id="buyMoreBtn" class="btnGhost" href="#" target="_blank" rel="noopener" style="display:none;">Buy more targets</a>
+        </div>
+
+        <div style="margin-top:14px;">
+          <div class="vendorLabel">Scope (optional)</div>
+          <input id="scopeInput" class="vendorInput" placeholder="e.g., Vortex Razor 1-10" />
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="vendorLabel">Ammo (optional)</div>
+          <input id="ammoInput" class="vendorInput" placeholder="e.g., 77gr OTM" />
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="vendorLabel">Gun (optional)</div>
+          <input id="gunInput" class="vendorInput" placeholder="e.g., 16&quot; SPR / AR-15" />
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="vendorLabel">Distance (yds)</div>
+          <input id="yardsInput" class="vendorInput" inputmode="numeric" pattern="[0-9]*" />
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="vendorLabel">Notes (optional)</div>
+          <input id="notesInput" class="vendorInput" placeholder="Anything you want to remember..." />
+        </div>
+
+        <!-- Sticky bar -->
+        <div class="receiptSticky">
+          <div class="receiptStickyInner">
+            <button id="backBtn" class="btnSecondary" type="button">Back</button>
+            <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+            <button id="exportBtn" class="btnSecondary" type="button">Export</button>
+            <button id="saveBtn" class="btnPrimary" type="button">Save</button>
+          </div>
+        </div>
+
+        <div class="bottomMark">Tap-n-Score™</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./receipt.js"></script>
+</body>
+</html>
