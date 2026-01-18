@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118z2">
+  <link rel="stylesheet" href="./styles.css?v=20260118z3">
 </head>
 
 <body>
@@ -18,10 +18,16 @@
     <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
 
     <section class="row">
-      <!-- SINGLE CAMERA PICKER (reliable on iOS via label->input) -->
-      <label class="btn btnPrimary fileLabel">
+      <!-- CAMERA ONLY (iOS will show Camera only — that's OK) -->
+      <label class="btn btnPrimary fileLabel" id="cameraLabel">
         Add photo
-        <input id="photoInput" class="fileInput" type="file" accept="image/*" capture="environment" />
+        <input
+          id="photoInput"
+          class="fileInput"
+          type="file"
+          accept="image/*"
+          capture="environment"
+        />
       </label>
 
       <div class="distanceBox">
@@ -66,7 +72,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118z2"></script>
-  <script src="./index.js?v=20260118z2"></script>
+  <script src="./api.js?v=20260118z3"></script>
+  <script src="./index.js?v=20260118z3"></script>
 </body>
 </html>
