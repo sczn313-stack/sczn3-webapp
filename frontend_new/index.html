@@ -41,9 +41,8 @@
 
     <div id="miniStatus" class="miniStatus">Ready.</div>
 
-    <!-- Hidden inputs -->
-    <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
-    <input id="targetPhotoCamera"  type="file" accept="image/*" capture="environment" style="display:none;" />
+    <!-- ONE input only (iOS shows Library + Camera options natively) -->
+    <input id="targetPhotoInput" type="file" accept="image/*" style="display:none;" />
 
     <div id="tapStage" style="display:none;">
       <div class="tapHeader">
@@ -54,7 +53,7 @@
         </div>
       </div>
 
-      <div id="thumbWrap" class="thumbWrap">
+      <div class="thumbWrap">
         <img id="thumb" alt="Target" />
         <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100"></svg>
       </div>
@@ -68,25 +67,7 @@
       </a>
     </div>
 
-    <!-- Analyze overlay (optional, safe if index.js expects it) -->
-    <div id="analyzeOverlay" class="analyzeOverlay" style="display:none;">
-      <div class="analyzeCard">
-        <div class="analyzeTitle">Analyzing…</div>
-        <div class="analyzeSub">After-Shot Intelligence™</div>
-      </div>
-    </div>
-
   </section>
-
-  <!-- PICK SHEET -->
-  <div id="pickOverlay" class="sheetOverlay" style="display:none;">
-    <div class="sheet">
-      <div class="sheetTitle">Add target photo</div>
-      <button id="pickChoose" class="sheetBtn" type="button">Choose from Library</button>
-      <button id="pickCamera" class="sheetBtn" type="button">Use Camera</button>
-      <button id="pickCancel" class="sheetCancel" type="button">Cancel</button>
-    </div>
-  </div>
 
   <!-- ZOOM OVERLAY (PINCH SAFE) -->
   <div id="zoomOverlay" class="zoomOverlay" style="display:none;">
@@ -99,7 +80,7 @@
     </div>
 
     <div id="zoomScroller" class="zoomScroller">
-      <div id="zoomCanvas" class="zoomCanvas">
+      <div class="zoomCanvas">
         <img id="zoomImg" alt="Zoom Target" />
         <svg id="zoomTapLayer" class="zoomTapLayer" viewBox="0 0 100 100"></svg>
       </div>
@@ -111,7 +92,7 @@
   <script type="module" src="api.js"></script>
   <script type="module" src="index.js"></script>
 
-  <!-- SAFE AUTO FLOW: REVEAL MAIN + OPEN SHEET (NO NAVIGATION) -->
+  <!-- SAFE AUTO FLOW: REVEAL MAIN + AUTO OPEN UPLOAD (NO SECOND MENU) -->
   <script>
     (function(){
       const landing = document.getElementById("landing");
@@ -122,7 +103,7 @@
         if (!landing || !main) return;
         landing.style.display = "none";
         main.style.display = "block";
-        setTimeout(() => { if (uploadBtn) uploadBtn.click(); }, 50);
+        setTimeout(() => { if (uploadBtn) uploadBtn.click(); }, 60);
       }
 
       landing.addEventListener("click", go);
