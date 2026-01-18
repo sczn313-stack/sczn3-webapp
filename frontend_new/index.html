@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118zHERO2">
+  <link rel="stylesheet" href="./styles.css?v=20260118zHERO3">
 </head>
 
 <body>
@@ -15,9 +15,6 @@
     <div class="brandRow">
       <div class="brand">TAP-N-SCORE™</div>
     </div>
-
-    <!-- status stays mostly quiet -->
-    <div id="statusLine" class="status"></div>
 
     <!-- REAL file input (outside hero). Hidden but NOT display:none. -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
@@ -46,15 +43,13 @@
 
     <!-- Target -->
     <section class="card mt14">
-      <!-- HARD-WIRED line (your exact request) -->
+      <!-- HARD-WIRED line (single source of truth) -->
       <div class="subtle strong mb8">Target — Tap Bullseye or Aim Point 1st, then tap Bullet holes.</div>
 
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
         <img id="targetImage" class="targetImg" alt="Target preview" />
         <div id="dotsLayer" class="dotsLayer"></div>
       </div>
-
-      <div id="emptyHint" class="subtle mt10"></div>
     </section>
 
     <div class="subtle mt14 mb6">Vendor link (optional)</div>
@@ -76,7 +71,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118zHERO2"></script>
-  <script src="./index.js?v=20260118zHERO2"></script>
+  <script src="./api.js?v=20260118zHERO3"></script>
+  <script src="./index.js?v=20260118zHERO3"></script>
 </body>
 </html>
