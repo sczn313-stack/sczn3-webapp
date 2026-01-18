@@ -2,45 +2,48 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™ — Results</title>
-  <link rel="stylesheet" href="./styles.css" />
+
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  </style>
+
+  <link rel="stylesheet" href="./styles.css?v=20260118b">
 </head>
+
 <body>
-  <div class="appFender">
-    <div class="wrap">
-      <div class="card">
+  <div class="page" style="padding:16px; max-width:720px; margin:0 auto;">
+    <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">RESULTS</div>
+    <h1 style="margin:8px 0 6px 0;">Tap-n-Score™</h1>
 
-        <div class="kicker">RESULTS</div>
-        <div class="title" id="resultsTitle">Tap-n-Score™</div>
-        <div class="sub" id="resultsMsg">Ready.</div>
+    <!-- THIS IS THE KEY FIX: ALWAYS EXISTS, so output.js NEVER uses alert() -->
+    <div id="statusBox" class="subtle" style="margin:10px 0 14px 0; opacity:.9;">
+      Ready.
+    </div>
 
-        <div class="resultsGrid" style="margin-top:14px;">
-          <div class="receiptLine"><span class="k">Score</span><span class="v" id="scoreVal">--</span></div>
-          <div class="receiptLine"><span class="k">Windage</span><span class="v" id="windVal">--</span></div>
-          <div class="receiptLine"><span class="k">Elevation</span><span class="v" id="elevVal">--</span></div>
-          <div class="receiptLine"><span class="k">Distance</span><span class="v" id="distVal">--</span></div>
-          <div class="receiptLine"><span class="k">POIB</span><span class="v" id="poibVal">--</span></div>
-        </div>
-
-        <div class="vendorRow">
-          <a id="buyMoreBtn" class="btnGhost" href="#" target="_blank" rel="noopener" style="display:none;">Buy more targets</a>
-        </div>
-
-        <pre id="rawBox" style="white-space:pre-wrap; color:rgba(255,255,255,.55); margin-top:12px;"></pre>
-
-        <div class="row" style="margin-top:14px;">
-          <button id="backBtn" class="btnSecondary" type="button">Back</button>
-          <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
-          <button id="receiptBtn" class="btnPrimary" type="button">Receipt</button>
-        </div>
-
-        <div class="bottomMark">Tap-n-Score™</div>
+    <div class="resultsBox" style="padding:14px; border-radius:16px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04);">
+      <div style="display:grid; grid-template-columns: 1fr; gap:8px; font-size:16px;">
+        <div><span class="subtle">Score</span> <span id="scoreVal">--</span></div>
+        <div><span class="subtle">Windage</span> <span id="windVal">--</span></div>
+        <div><span class="subtle">Elevation</span> <span id="elevVal">--</span></div>
+        <div><span class="subtle">Distance</span> <span id="distVal">--</span></div>
+        <div><span class="subtle">POIB</span> <span id="poibVal">--</span></div>
       </div>
     </div>
+
+    <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+      <button id="backBtn" class="btnSecondary" type="button">Back</button>
+      <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+      <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
+    </div>
+
+    <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./output.js"></script>
+  <script src="./api.js?v=20260118b"></script>
+  <script src="./output.js?v=20260118b"></script>
 </body>
 </html>
