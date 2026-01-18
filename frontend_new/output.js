@@ -1,236 +1,169 @@
-// sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
-// Results page: runs analysis using stored photo (dataURL) + distance,
-// stores LAST result for receipt.js, and routes to receipt.html.
+// sczn3-webapp/frontend_new/output.js (FULL REPLACEMENT)
+// Runs backend analyze using image + tapsJson{bull,holes}.
 
 (function () {
-  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
-  const FILE_KEY  = "sczn3_targetPhoto_fileName";
-  const DIST_KEY  = "sczn3_distance_yards";
-  const TAPS_KEY  = "sczn3_tap_points_json";
+  const PHOTO_KEY   = "sczn3_targetPhoto_dataUrl";
+  const FILE_KEY    = "sczn3_targetPhoto_fileName";
+  const DIST_KEY    = "sczn3_distance_yards";
+  const TAPS_KEY    = "sczn3_taps_json";
 
-  const LAST_KEY  = "sczn3_last_result_json";
-  const VENDOR_BUY= "sczn3_vendor_buy_url";
+  const LAST_KEY    = "sczn3_last_result_json";
+  const VENDOR_BUY  = "sczn3_vendor_buy_url";
 
   function $(id){ return document.getElementById(id); }
 
-  const backBtn    = $("backBtn");
-  const savedBtn   = $("savedBtn");
-  const receiptBtn = $("receiptBtn");
-  const buyMoreBtn = $("buyMoreBtn");
+  const statusEl = $("status");
+  const scoreEl  = $("score");
+  const windEl   = $("wind");
+  const elevEl   = $("elev");
+  const distEl   = $("dist");
+  const poibEl   = $("poib");
+  const rawEl    = $("raw");
 
-  const subLine    = $("subLine");
-  const miniStatus = $("miniStatus");
-
-  const scoreVal = $("scoreVal");
-  const windVal  = $("windVal");
-  const elevVal  = $("elevVal");
-  const distVal  = $("distVal");
-  const poibVal  = $("poibVal");
-  const warnBox  = $("warnBox");
+  const backBtn   = $("backBtn");
+  const savedBtn  = $("savedBtn");
+  const receiptBtn= $("receiptBtn");
+  const buyMoreBtn= $("buyMoreBtn");
 
   function status(msg){
-    if (miniStatus) miniStatus.textContent = String(msg || "");
-  }
-
-  function setSub(msg){
-    if (subLine) subLine.textContent = String(msg || "");
-  }
-
-  function setVendorBuyLink(){
-    const url = sessionStorage.getItem(VENDOR_BUY);
-    if (buyMoreBtn && url){
-      buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "inline-block";
-    }
+    if (statusEl) statusEl.textContent = String(msg || "");
   }
 
   function safeJsonParse(s){
     try { return JSON.parse(String(s || "")); } catch { return null; }
   }
 
-  function getDistance(){
-    const v = sessionStorage.getItem(DIST_KEY);
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 100;
+  function setVendorBuyLink(){
+    const url = sessionStorage.getItem(VENDOR_BUY);
+    if (buyMoreBtn && url){
+      buyMoreBtn.href = url;
+      buyMoreBtn.style.display = "block";
+    }
   }
 
-  function getTaps(){
-    const raw = sessionStorage.getItem(TAPS_KEY) || "[]";
-    const arr = safeJsonParse(raw);
-    return Array.isArray(arr) ? arr : [];
-  }
-
-  // dataURL -> File
-  async function dataUrlToFile(dataUrl, fileName){
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    const name = fileName || "target.jpg";
-    const type = blob.type || "image/jpeg";
-    return new File([blob], name, { type });
+  function dataUrlToFile(dataUrl, filename){
+    const arr = String(dataUrl || "").split(",");
+    const mimeMatch = arr[0] && arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const bstr = atob(arr[1] || "");
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    return new File([u8arr], filename || "target.jpg", { type: mime });
   }
 
   function fmt2(x){
     const n = Number(x);
-    return Number.isFinite(n) ? n.toFixed(2) : String(x ?? "--");
+    if (!Number.isFinite(n)) return "--";
+    return n.toFixed(2);
   }
 
-  function normalizeResult(raw){
-    // Supports various backend shapes while ensuring receipt.js can read:
-    //   result.clicks.windage / elevation
-    //   result.directions.windage / elevation
-    //   result.score
-    //   result.poib (optional)
+  function setText(el, v){
+    if (!el) return;
+    el.textContent = String(v);
+  }
 
-    const r = raw && typeof raw === "object" ? raw : {};
+  function renderFromBackend(payload){
+    // Expecting backend returns clicks + directions + maybe poib + score
+    const data = payload && payload.data ? payload.data : payload;
 
-    // Try common places
-    const clicks = r.clicks || r.corrections || r.adjustments || {};
-    const directions = r.directions || r.dir || {};
+    const score = (data && typeof data.score !== "undefined") ? data.score : "--";
 
-    const windClicks = clicks.windage ?? clicks.wind ?? clicks.w ?? r.windageClicks ?? r.windage ?? "--";
-    const elevClicks = clicks.elevation ?? clicks.elev ?? clicks.e ?? r.elevationClicks ?? r.elevation ?? "--";
+    const clicksWind = data?.clicks?.windage;
+    const clicksElev = data?.clicks?.elevation;
 
-    const windDir = directions.windage ?? directions.wind ?? directions.w ?? r.windageDir ?? r.windage_direction ?? "";
-    const elevDir = directions.elevation ?? directions.elev ?? directions.e ?? r.elevDir ?? r.elevation_direction ?? "";
+    const dirWind = data?.directions?.windage || "";
+    const dirElev = data?.directions?.elevation || "";
 
-    const score = (typeof r.score !== "undefined") ? r.score : (typeof r.smartScore !== "undefined" ? r.smartScore : "--");
+    const windText = (clicksWind !== undefined && clicksWind !== null)
+      ? `${fmt2(clicksWind)} ${dirWind}`.trim()
+      : "--";
 
-    // POIB support (stringify a helpful compact value)
-    const poib =
-      r.poib ??
-      r.POIB ??
-      (r.poib_in ? `X ${fmt2(r.poib_in.x)} in, Y ${fmt2(r.poib_in.y)} in` : null) ??
-      (r.poibIn ? `X ${fmt2(r.poibIn.x)} in, Y ${fmt2(r.poibIn.y)} in` : null) ??
-      (r.offset_in ? `X ${fmt2(r.offset_in.x)} in, Y ${fmt2(r.offset_in.y)} in` : null) ??
-      null;
+    const elevText = (clicksElev !== undefined && clicksElev !== null)
+      ? `${fmt2(clicksElev)} ${dirElev}`.trim()
+      : "--";
 
-    return {
+    const poib = data?.poib || data?.POIB || data?.centroid || null;
+    const poibText = poib && typeof poib === "object"
+      ? `${fmt2(poib.x)} , ${fmt2(poib.y)}`
+      : (typeof poib === "string" ? poib : "--");
+
+    setText(scoreEl, score);
+    setText(windEl,  windText);
+    setText(elevEl,  elevText);
+
+    const dist = sessionStorage.getItem(DIST_KEY) || "100";
+    setText(distEl, `${dist} yds`);
+    setText(poibEl, poibText);
+
+    // Persist “last result” for receipt.js
+    const last = {
       score,
-      clicks: {
-        windage: windClicks,
-        elevation: elevClicks
-      },
-      directions: {
-        windage: windDir,
-        elevation: elevDir
-      },
-      poib: poib || "--",
-      _raw: r
+      clicks: { windage: clicksWind, elevation: clicksElev },
+      directions: { windage: dirWind, elevation: dirElev },
+      poib
     };
-  }
+    sessionStorage.setItem(LAST_KEY, JSON.stringify(last));
 
-  function paint(result, distance){
-    const wind = `${fmt2(result.clicks.windage)} ${String(result.directions.windage || "").trim()}`.trim();
-    const elev = `${fmt2(result.clicks.elevation)} ${String(result.directions.elevation || "").trim()}`.trim();
-
-    if (scoreVal) scoreVal.textContent = String(result.score ?? "--");
-    if (windVal)  windVal.textContent  = wind || "--";
-    if (elevVal)  elevVal.textContent  = elev || "--";
-    if (distVal)  distVal.textContent  = `${Number(distance)} yds`;
-    if (poibVal)  poibVal.textContent  = String(result.poib ?? "--");
-
-    // optional warning from backend
-    const warn =
-      result._raw?.warning ||
-      result._raw?.warnings ||
-      result._raw?.message ||
-      "";
-
-    if (warnBox){
-      warnBox.textContent = warn ? String(warn) : "";
+    if (rawEl){
+      rawEl.textContent = JSON.stringify(data, null, 2);
     }
-  }
-
-  function enableReceipt(){
-    if (!receiptBtn) return;
-    receiptBtn.disabled = false;
-    receiptBtn.style.opacity = "1";
   }
 
   async function run(){
     setVendorBuyLink();
 
-    const distance = getDistance();
-    if (distVal) distVal.textContent = `${Number(distance)} yds`;
-
-    const dataUrl = sessionStorage.getItem(PHOTO_KEY) || "";
+    const photoDataUrl = sessionStorage.getItem(PHOTO_KEY) || "";
     const fileName = sessionStorage.getItem(FILE_KEY) || "target.jpg";
+    const dist = Number(sessionStorage.getItem(DIST_KEY) || 100);
 
-    if (!dataUrl){
-      setSub("No photo found.");
-      status("ERROR: No photo in session. Go back and upload.");
+    const taps = safeJsonParse(sessionStorage.getItem(TAPS_KEY) || "");
+    if (!photoDataUrl){
+      status("No photo found. Go back and upload.");
+      if (rawEl) rawEl.textContent = "";
+      return;
+    }
+    if (!taps || !taps.bull || !Array.isArray(taps.holes) || taps.holes.length < 1){
+      status("Missing taps. Tap bull first, then holes.");
+      if (rawEl) rawEl.textContent = JSON.stringify({ ok:false, error:"Missing tapsJson bull+holes" }, null, 2);
       return;
     }
 
-    setSub("Analyzing…");
-    status("Sending to backend…");
+    let file;
+    try{
+      file = dataUrlToFile(photoDataUrl, fileName);
+    } catch {
+      status("Could not prepare image file.");
+      return;
+    }
 
-    // backend base (same rule as api.js)
-    const backendBase =
-      sessionStorage.getItem("sczn3_backend_base") ||
-      "https://sczn3-backend-new1.onrender.com";
+    status("Analyzing…");
 
     try{
-      const file = await dataUrlToFile(dataUrl, fileName);
-
-      // We include taps for future use (backend can ignore if not supported)
-      const taps = getTaps();
-
-      const fd = new FormData();
-      fd.append("image", file, file.name || "target.jpg");
-      fd.append("distanceYards", String(distance));
-      fd.append("taps_json", JSON.stringify(taps));
-
-      const res = await fetch(`${backendBase}/api/analyze`, {
-        method: "POST",
-        body: fd
+      const res = await window.SEC_API.analyzeTarget({
+        file,
+        distanceYards: dist,
+        tapsJson: taps
       });
 
-      if (!res.ok){
-        const txt = await res.text().catch(()=> "");
-        setSub("Analyze failed.");
-        status(`Backend analyze failed (${res.status}).`);
-        if (warnBox) warnBox.textContent = txt ? String(txt).slice(0, 240) : "";
-        return;
-      }
-
-      const raw = await res.json();
-      const normalized = normalizeResult(raw);
-
-      // Store what receipt.js expects
-      sessionStorage.setItem(LAST_KEY, JSON.stringify(normalized));
-
-      paint(normalized, distance);
-      setSub("Results ready.");
-      status("Tap Receipt to add setup details, then Save/Export.");
-
-      enableReceipt();
+      // Normalize where backend returned payload lives
+      renderFromBackend(res);
+      status("Done.");
     } catch (err){
-      setSub("Analyze error.");
-      status(`ERROR: ${String(err && err.message ? err.message : err)}`);
+      const msg = String(err && err.message ? err.message : err);
+      status("Analyze failed.");
+      if (rawEl) rawEl.textContent = msg;
     }
   }
 
-  // ===== NAV =====
   if (backBtn){
-    backBtn.addEventListener("click", () => {
-      window.location.href = `./index.html?v=${Date.now()}`;
-    });
+    backBtn.addEventListener("click", () => window.location.href = "./index.html?v=" + Date.now());
   }
-
   if (savedBtn){
-    savedBtn.addEventListener("click", () => {
-      window.location.href = `./saved.html?v=${Date.now()}`;
-    });
+    savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
   }
-
   if (receiptBtn){
-    const goReceipt = () => {
-      // Receipt page reads LAST_KEY from sessionStorage
-      window.location.href = `./receipt.html?v=${Date.now()}`;
-    };
-    receiptBtn.addEventListener("click", goReceipt);
-    receiptBtn.addEventListener("touchstart", goReceipt, { passive:true });
+    receiptBtn.addEventListener("click", () => window.location.href = "./receipt.html?v=" + Date.now());
   }
 
   run();
