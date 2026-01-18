@@ -14,6 +14,11 @@
   /* red/white/blue */
   --red:#ff3b30;
   --blue:#0a84ff;
+
+  /* green "quiet hint" */
+  --green:#34c759;
+  --greenBg: rgba(52, 199, 89, .14);
+  --greenBorder: rgba(52, 199, 89, .34);
 }
 
 *{box-sizing:border-box}
@@ -102,7 +107,7 @@ html,body{
   font-weight:700;
 }
 
-/* Controls row (fix overflow) */
+/* Controls row */
 .controlsRow{
   display:flex;
   align-items:flex-start;
@@ -129,12 +134,19 @@ html,body{
   outline:none;
 }
 
+/* ✅ Green boxed whisper */
 .seeResultsHint{
-  width:100%;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:8px 10px;
+  border-radius:14px;
+  border:1px solid var(--greenBorder);
+  background:var(--greenBg);
+  color:rgba(255,255,255,.92);
+  font-weight:900;
   font-size:14px;
-  font-weight:800;
-  color:rgba(255,255,255,.55);
-  letter-spacing:.02em;
+  letter-spacing:.01em;
   margin-top:2px;
 }
 
@@ -181,9 +193,7 @@ html,body{
 }
 
 /* Vendor sticky slot */
-.vendorCta{
-  margin-top:12px;
-}
+.vendorCta{ margin-top:12px; }
 .vendorBuyBtn{
   display:flex;
   align-items:center;
@@ -203,10 +213,7 @@ html,body{
   letter-spacing:.2px;
   color:rgba(255,255,255,.92);
 }
-.vendorArrow{
-  font-size:22px;
-  opacity:.65;
-}
+.vendorArrow{ font-size:22px; opacity:.65; }
 
 /* Inputs */
 .input{
@@ -220,18 +227,17 @@ html,body{
   outline:none;
 }
 
-/* Target container (FIT mode shows all corners) */
+/* Target container (FIT: show all corners) */
 .targetWrap{
   position:relative;
   width:100%;
   border-radius:18px;
-  overflow:hidden;           /* Fit mode */
+  overflow:hidden;
   background:#000;
   border:1px solid rgba(255,255,255,.10);
   padding:10px;
 }
 
-/* Canvas sizes to the image */
 .targetCanvas{
   position:relative;
   display:flex;
@@ -240,11 +246,11 @@ html,body{
   width:100%;
 }
 
-/* The image itself: FIT = show entire target */
+/* FIT: keep whole target visible on mobile */
 .targetImg{
   display:block;
   max-width:100%;
-  max-height:60vh;           /* ✅ ensures all corners visible on mobile */
+  max-height:60vh;
   width:auto;
   height:auto;
   border-radius:14px;
@@ -268,30 +274,12 @@ html,body{
 .tapDot[data-kind="bull"]{ background:rgba(10,132,255,.95); }
 .tapDot[data-kind="hole"]{ background:rgba(255,204,0,.95); }
 
-/* Zoom mode */
-.targetWrap.zoomMode{
-  overflow:auto;             /* ✅ pan/scroll for accuracy */
-  -webkit-overflow-scrolling:touch;
-}
-
-.targetWrap.zoomMode .targetCanvas{
-  justify-content:flex-start;
-  align-items:flex-start;
-}
-
-.targetWrap.zoomMode .targetImg{
-  max-height:none;
-  width:160%;                /* ✅ “zoomed” */
-  height:auto;
-}
-
 .footer{
   margin-top:22px;
   text-align:center;
   opacity:.65;
 }
 
-/* Small-screen tweaks */
 @media (max-width:420px){
   .distanceBox input{width:105px}
   .tapsLine{font-size:16px}
