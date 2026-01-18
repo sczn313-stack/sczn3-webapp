@@ -1,29 +1,28 @@
-// sczn3-webapp/frontend_new/output.js (FULL REPLACEMENT)
-// Runs backend analyze using image + tapsJson{bull,holes}.
+// sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
+// Results screen: guard + analyze.
+// Prevents scary backend 422 by refusing to call backend if tapsJson missing.
 
 (function () {
-  const PHOTO_KEY   = "sczn3_targetPhoto_dataUrl";
-  const FILE_KEY    = "sczn3_targetPhoto_fileName";
-  const DIST_KEY    = "sczn3_distance_yards";
-  const TAPS_KEY    = "sczn3_taps_json";
-
-  const LAST_KEY    = "sczn3_last_result_json";
-  const VENDOR_BUY  = "sczn3_vendor_buy_url";
+  const DIST_KEY   = "sczn3_distance_yards";
+  const LAST_KEY   = "sczn3_last_result_json";
+  const PHOTO_KEY  = "sczn3_targetPhoto_dataUrl";
+  const TAPS_KEY   = "sczn3_taps_json";
 
   function $(id){ return document.getElementById(id); }
 
-  const statusEl = $("status");
-  const scoreEl  = $("score");
-  const windEl   = $("wind");
-  const elevEl   = $("elev");
-  const distEl   = $("dist");
-  const poibEl   = $("poib");
-  const rawEl    = $("raw");
+  const backBtn    = $("backBtn");
+  const savedBtn   = $("savedBtn");
+  const receiptBtn = $("receiptBtn");
 
-  const backBtn   = $("backBtn");
-  const savedBtn  = $("savedBtn");
-  const receiptBtn= $("receiptBtn");
-  const buyMoreBtn= $("buyMoreBtn");
+  const statusEl   = $("miniStatus") || $("status") || $("inlineStatus");
+
+  // display fields (optional if your HTML has them)
+  const scoreEl = $("scoreVal");
+  const windEl  = $("windVal");
+  const elevEl  = $("elevVal");
+  const distEl  = $("distVal");
+  const poibEl  = $("poibVal");
+  const rawEl   = $("rawJson");
 
   function status(msg){
     if (statusEl) statusEl.textContent = String(msg || "");
@@ -33,138 +32,98 @@
     try { return JSON.parse(String(s || "")); } catch { return null; }
   }
 
-  function setVendorBuyLink(){
-    const url = sessionStorage.getItem(VENDOR_BUY);
-    if (buyMoreBtn && url){
-      buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "block";
+  function getDistance(){
+    const n = Number(sessionStorage.getItem(DIST_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 100;
+  }
+
+  function getPhotoDataUrl(){
+    return sessionStorage.getItem(PHOTO_KEY) || "";
+  }
+
+  function getTapsJson(){
+    const raw = sessionStorage.getItem(TAPS_KEY) || "";
+    const obj = safeJsonParse(raw);
+    return obj && typeof obj === "object" ? obj : null;
+  }
+
+  function renderResult(model){
+    // model is whatever backend returns
+    // We attempt to populate common fields if elements exist
+    const score = model?.score ?? model?.smartScore ?? "--";
+
+    const clicksW = model?.clicks?.windage ?? model?.clicks_windage ?? "--";
+    const clicksE = model?.clicks?.elevation ?? model?.clicks_elevation ?? "--";
+    const dirW    = model?.directions?.windage ?? model?.windageDir ?? "";
+    const dirE    = model?.directions?.elevation ?? model?.elevDir ?? "";
+    const poib    = model?.poib ?? model?.POIB ?? "--";
+
+    if (scoreEl) scoreEl.textContent = String(score);
+    if (windEl)  windEl.textContent  = `${clicksW} ${dirW}`.trim() || "--";
+    if (elevEl)  elevEl.textContent  = `${clicksE} ${dirE}`.trim() || "--";
+    if (distEl)  distEl.textContent  = `${getDistance()} yds`;
+    if (poibEl)  poibEl.textContent  = String(poib);
+
+    if (rawEl) rawEl.textContent = JSON.stringify(model, null, 2);
+  }
+
+  async function analyze(){
+    // Fender Plug: require tapsJson
+    const tapsJson = getTapsJson();
+    if (!tapsJson || !Array.isArray(tapsJson.holes) || tapsJson.holes.length < 1){
+      status("No taps found for this session. Go back and tap the holes, then try again.");
+      // Do NOT call backend
+      return;
     }
-  }
 
-  function dataUrlToFile(dataUrl, filename){
-    const arr = String(dataUrl || "").split(",");
-    const mimeMatch = arr[0] && arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-    const bstr = atob(arr[1] || "");
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) u8arr[n] = bstr.charCodeAt(n);
-    return new File([u8arr], filename || "target.jpg", { type: mime });
-  }
-
-  function fmt2(x){
-    const n = Number(x);
-    if (!Number.isFinite(n)) return "--";
-    return n.toFixed(2);
-  }
-
-  function setText(el, v){
-    if (!el) return;
-    el.textContent = String(v);
-  }
-
-  function renderFromBackend(payload){
-    // Expecting backend returns clicks + directions + maybe poib + score
-    const data = payload && payload.data ? payload.data : payload;
-
-    const score = (data && typeof data.score !== "undefined") ? data.score : "--";
-
-    const clicksWind = data?.clicks?.windage;
-    const clicksElev = data?.clicks?.elevation;
-
-    const dirWind = data?.directions?.windage || "";
-    const dirElev = data?.directions?.elevation || "";
-
-    const windText = (clicksWind !== undefined && clicksWind !== null)
-      ? `${fmt2(clicksWind)} ${dirWind}`.trim()
-      : "--";
-
-    const elevText = (clicksElev !== undefined && clicksElev !== null)
-      ? `${fmt2(clicksElev)} ${dirElev}`.trim()
-      : "--";
-
-    const poib = data?.poib || data?.POIB || data?.centroid || null;
-    const poibText = poib && typeof poib === "object"
-      ? `${fmt2(poib.x)} , ${fmt2(poib.y)}`
-      : (typeof poib === "string" ? poib : "--");
-
-    setText(scoreEl, score);
-    setText(windEl,  windText);
-    setText(elevEl,  elevText);
-
-    const dist = sessionStorage.getItem(DIST_KEY) || "100";
-    setText(distEl, `${dist} yds`);
-    setText(poibEl, poibText);
-
-    // Persist “last result” for receipt.js
-    const last = {
-      score,
-      clicks: { windage: clicksWind, elevation: clicksElev },
-      directions: { windage: dirWind, elevation: dirElev },
-      poib
-    };
-    sessionStorage.setItem(LAST_KEY, JSON.stringify(last));
-
-    if (rawEl){
-      rawEl.textContent = JSON.stringify(data, null, 2);
-    }
-  }
-
-  async function run(){
-    setVendorBuyLink();
-
-    const photoDataUrl = sessionStorage.getItem(PHOTO_KEY) || "";
-    const fileName = sessionStorage.getItem(FILE_KEY) || "target.jpg";
-    const dist = Number(sessionStorage.getItem(DIST_KEY) || 100);
-
-    const taps = safeJsonParse(sessionStorage.getItem(TAPS_KEY) || "");
+    // We do NOT have the original File here (static site), so we send the photo as a Blob
+    const photoDataUrl = getPhotoDataUrl();
     if (!photoDataUrl){
-      status("No photo found. Go back and upload.");
-      if (rawEl) rawEl.textContent = "";
-      return;
-    }
-    if (!taps || !taps.bull || !Array.isArray(taps.holes) || taps.holes.length < 1){
-      status("Missing taps. Tap bull first, then holes.");
-      if (rawEl) rawEl.textContent = JSON.stringify({ ok:false, error:"Missing tapsJson bull+holes" }, null, 2);
-      return;
-    }
-
-    let file;
-    try{
-      file = dataUrlToFile(photoDataUrl, fileName);
-    } catch {
-      status("Could not prepare image file.");
+      status("No photo found. Go back and upload a target photo.");
       return;
     }
 
     status("Analyzing…");
 
     try{
-      const res = await window.SEC_API.analyzeTarget({
+      const file = await dataUrlToFile(photoDataUrl, "target.jpg");
+
+      const out = await window.SEC_API.analyzeTarget({
         file,
-        distanceYards: dist,
-        tapsJson: taps
+        distanceYards: getDistance(),
+        tapsJson
       });
 
-      // Normalize where backend returned payload lives
-      renderFromBackend(res);
-      status("Done.");
+      // Save last result for Receipt / Saved flows
+      sessionStorage.setItem(LAST_KEY, JSON.stringify(out.data || {}));
+
+      // Render
+      renderResult(out.data || {});
+      status("Results ready.");
     } catch (err){
-      const msg = String(err && err.message ? err.message : err);
-      status("Analyze failed.");
+      const msg = (err && err.message) ? err.message : String(err || "Analyze failed.");
+      status(msg);
       if (rawEl) rawEl.textContent = msg;
     }
   }
 
-  if (backBtn){
-    backBtn.addEventListener("click", () => window.location.href = "./index.html?v=" + Date.now());
-  }
-  if (savedBtn){
-    savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
-  }
-  if (receiptBtn){
-    receiptBtn.addEventListener("click", () => window.location.href = "./receipt.html?v=" + Date.now());
+  async function dataUrlToFile(dataUrl, filename){
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], filename, { type: blob.type || "image/jpeg" });
   }
 
-  run();
+  // INIT
+  (function init(){
+    // If you want: show distance immediately if element exists
+    if (distEl) distEl.textContent = `${getDistance()} yds`;
+
+    // Kick analysis on load
+    analyze();
+  })();
+
+  // Nav buttons
+  if (backBtn) backBtn.addEventListener("click", () => window.location.href = `./index.html?v=${Date.now()}`);
+  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = `./saved.html?v=${Date.now()}`);
+  if (receiptBtn) receiptBtn.addEventListener("click", () => window.location.href = `./receipt.html?v=${Date.now()}`);
 })();
