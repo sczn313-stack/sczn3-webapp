@@ -7,12 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <style>
-    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    a{color:inherit}
-  </style>
-
-  <link rel="stylesheet" href="./styles.css?v=20260118a1">
+  <link rel="stylesheet" href="./styles.css?v=20260118zFULL1">
 </head>
 
 <body>
@@ -20,34 +15,38 @@
     <div class="brand">TAP-N-SCORE™</div>
 
     <h1 class="h1">Upload</h1>
-    <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
 
-    <section class="row">
-      <!-- SINGLE BUTTON: iOS will offer Camera OR Photo Library -->
-      <label class="btn btnPrimary fileLabel" id="addPhotoLabel">
-        Add photo
-        <input
-          id="photoInput"
-          class="fileInput"
-          type="file"
-          accept="image/*"
-        />
-      </label>
+    <div id="statusLine" class="status">Ready. Tap <span class="statusStrong">UPLOAD TARGET PHOTO</span>.</div>
 
+    <!-- BIG UPLOAD BOX (camera-only) -->
+    <button id="cameraBtn" class="btn uploadBtn fileBtn" type="button" aria-label="Upload target photo (camera)">
+      Upload target photo
+      <!-- IMPORTANT: NOT display:none (kept tappable) -->
+      <input
+        id="photoInputCam"
+        class="fileInput"
+        type="file"
+        accept="image/*"
+        capture="environment"
+      />
+    </button>
+
+    <!-- Distance + Taps row -->
+    <section class="row rowBetween mt12">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceInput" type="number" value="100" min="1" step="1" />
         <div class="subtle strong">yds</div>
       </div>
 
-      <button id="clearTapsBtn" class="btn btnSecondary" type="button">Clear taps</button>
+      <div class="tapsBlock">
+        <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
+        <button id="clearTapsBtn" class="btn btnSecondary" type="button">Clear taps</button>
+      </div>
     </section>
 
-    <section class="row rowBetween">
-      <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
-    </section>
-
-    <section class="card">
+    <!-- Target preview + tap layer -->
+    <section class="card mt14">
       <div class="subtle strong mb8">Target</div>
 
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
@@ -58,14 +57,14 @@
       <div id="emptyHint" class="subtle mt10">Add a photo, then tap bull first, then holes.</div>
     </section>
 
-    <div class="subtle mb6">Vendor link (optional)</div>
+    <div class="subtle mt14 mb6">Vendor link (optional)</div>
     <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
 
-    <button id="seeResultsBtn" class="btn btnPrimary w100" type="button">See results</button>
+    <button id="seeResultsBtn" class="btn btnPrimary w100 mt12" type="button">See results</button>
 
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <pre id="resultsPre" class="mono" style="margin:0; white-space:pre-wrap;"></pre>
+      <pre id="resultsPre" class="mono"></pre>
 
       <div class="row mt12">
         <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
@@ -77,7 +76,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118a1"></script>
-  <script src="./index.js?v=20260118a1"></script>
+  <script src="./api.js?v=20260118zFULL1"></script>
+  <script src="./index.js?v=20260118zFULL1"></script>
 </body>
 </html>
