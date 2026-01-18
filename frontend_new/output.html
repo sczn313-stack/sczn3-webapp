@@ -1,62 +1,52 @@
+<!-- sczn3-webapp/frontend_new/output.html (FULL FILE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Tap-n-Score — Results</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tap-n-Score™ — Results</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
-
-  <section class="screen">
-    <div class="topBar">
-      <button id="backBtn" class="secondaryBtn" type="button">Back</button>
-      <div class="topTitle">Results</div>
-      <button id="savedBtn" class="secondaryBtn" type="button">Saved</button>
+  <div class="resultsWrap">
+    <div class="resultsTop">
+      <div class="resultsKicker">Results</div>
+      <div class="resultsTitle">Tap-n-Score™</div>
+      <div id="subLine" class="resultsSub">Analyzing…</div>
     </div>
 
-    <!-- ACTION ROW (VISIBLE ON IPHONE, NO SCROLL) -->
-    <div class="actionsTop">
-      <button id="buildReceiptBtn" class="primaryBtn" type="button">Build Receipt</button>
-      <button id="newBtn" class="secondaryBtn" type="button">New Session</button>
+    <!-- Vendor plug (TOP, no scrolling) -->
+    <a id="buyMoreBtn" class="btnSecondary receiptVendorBtn" href="#" target="_blank" rel="noreferrer" style="display:none;">
+      Buy more targets
+    </a>
+
+    <div id="resultsCard" class="receiptPreview">
+      <div class="receiptLine"><span class="k">Score</span><span id="scoreVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">Windage</span><span id="windVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">Elevation</span><span id="elevVal" class="v">--</span></div>
+
+      <div class="hr"></div>
+
+      <div class="receiptLine"><span class="k">Distance</span><span id="distVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">POIB</span><span id="poibVal" class="v">--</span></div>
+
+      <div id="warnBox" class="tinyMuted" style="margin-top:10px;"></div>
     </div>
 
-    <div id="miniStatus" class="miniStatus">Results ready.</div>
-
-    <div class="card">
-      <div class="cardTitle">Tap-n-Score™</div>
-
-      <div class="resultsGrid">
-        <div class="metric">
-          <div class="k">Score</div>
-          <div id="scoreVal" class="v">—</div>
-        </div>
-
-        <div class="metric">
-          <div class="k">Windage</div>
-          <div id="windVal" class="v">—</div>
-        </div>
-
-        <div class="metric">
-          <div class="k">Elevation</div>
-          <div id="elevVal" class="v">—</div>
-        </div>
-
-        <div class="metric">
-          <div class="k">Distance</div>
-          <div id="distVal" class="v">—</div>
-        </div>
-      </div>
-
-      <div class="hint">After-Shot Intelligence™ from your confirmed hits.</div>
-
-      <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
-        Buy more targets
-      </a>
+    <div class="resultsBottom">
+      <div id="miniStatus" class="subtle"></div>
     </div>
+  </div>
 
-  </section>
+  <!-- Sticky actions (always visible on iPhone) -->
+  <div class="stickyBar" style="grid-template-columns:1fr 1fr 1.2fr;">
+    <button id="backBtn" class="btnSecondary" type="button">Back</button>
+    <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+    <button id="receiptBtn" class="btnPrimary" type="button" disabled style="opacity:0.6;">Receipt</button>
+  </div>
 
-  <script type="module" src="output.js"></script>
+  <script src="./api.js"></script>
+  <script src="./output.js"></script>
 </body>
 </html>
