@@ -1,66 +1,31 @@
 // frontend_new/api.js
-// Defines window.tapscore(payload) + window.tapscorePing()
-// iOS/Render safe: handles non-JSON errors cleanly + allows base override.
+// Guarantees window.tapscore exists and calls the backend.
 
 (() => {
-  // Default backend base (Render)
-  const DEFAULT_BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
-
-  function backendBase() {
-    // Optional override in console:
-    // sessionStorage.setItem("sczn3_backend_base","https://YOURBACKEND.onrender.com")
-    return (
-      sessionStorage.getItem("sczn3_backend_base") ||
-      DEFAULT_BACKEND_BASE
-    ).replace(/\/+$/, "");
-  }
-
-  async function safeText(res) {
-    try { return await res.text(); } catch { return ""; }
-  }
-
-  async function safeJson(res) {
-    try { return await res.json(); } catch { return null; }
-  }
+  // ✅ Your backend URL (from your screenshot / current setup)
+  const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
 
   async function tapscore(payload) {
-    const url = `${backendBase()}/tapscore`;
+    const url = `${BACKEND_BASE}/tapscore`;
 
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || {}),
-      // keep CORS simple
-      credentials: "omit",
-      cache: "no-store",
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      const j = await safeJson(res);
-      const t = await safeText(res);
-      const msg =
-        (j && (j.error || j.message)) ||
-        (t ? t.slice(0, 300) : "") ||
-        "Request failed.";
-      throw new Error(`Backend tapscore failed (${res.status}). ${msg}`);
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${txt}`.trim());
     }
-
-    const data = await safeJson(res);
-    if (!data) throw new Error("Backend returned non-JSON response.");
-    return data;
+    return res.json();
   }
 
   async function ping() {
-    const url = `${backendBase()}/ping`;
-    const res = await fetch(url, { method: "GET", cache: "no-store", credentials: "omit" });
-
-    if (!res.ok) {
-      const t = await safeText(res);
-      throw new Error(`Ping failed (${res.status}). ${t.slice(0, 200)}`);
-    }
-
-    const data = await safeJson(res);
-    return data || { ok: true };
+    const url = `${BACKEND_BASE}/ping`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Ping failed: ${res.status}`);
+    return res.json();
   }
 
   window.tapscore = tapscore;
