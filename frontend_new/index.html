@@ -2,79 +2,96 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Tap-n-Score™ — Upload</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+
+  <title>Tap-n-Score™</title>
+
+  <!-- HARD BASE: prevents "white / unstyled flash" even if CSS fails -->
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+  </style>
+
+  <!-- IMPORTANT: cache-bust so iOS doesn't keep an old/empty CSS -->
+  <link rel="stylesheet" href="./styles.css?v=20260118a">
 </head>
+
 <body>
-  <div class="appFender">
-    <div class="wrap">
+  <div class="page" style="padding:16px; max-width:720px; margin:0 auto;">
+    <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">TAP-N-SCORE™</div>
+    <h1 style="margin:8px 0 4px 0;">Upload</h1>
+    <div id="statusLine" class="subtle" style="margin-bottom:14px;">Ready. Tap ADD PHOTO.</div>
 
-      <div class="card">
-        <div class="kicker">TAP-N-SCORE™</div>
-        <div class="title">Upload</div>
-        <div class="sub" id="statusText">Ready. Tap ADD PHOTO.</div>
+    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+      <!-- If you want CAMERA ONLY, keep capture="environment".
+           If you want camera + photo library, delete capture attribute. -->
+      <label class="btnPrimary" style="display:inline-block; cursor:pointer;">
+        Add photo
+        <input id="photoInput" type="file" accept="image/*" capture="environment" style="display:none;">
+      </label>
 
-        <!-- One lane controls (no redundancy) -->
-        <div class="row">
-          <button id="uploadBtn" class="btnPrimary" type="button">Add photo</button>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div class="subtle" style="font-weight:600;">Distance</div>
+        <input id="distanceInput" type="number" value="100" min="1" step="1" style="width:110px;">
+        <div class="subtle" style="font-weight:600;">yds</div>
+      </div>
+    </div>
 
-          <div class="pill">
-            <div class="pillLabel">Distance</div>
-            <input id="distanceYards" class="pillInput" inputmode="numeric" pattern="[0-9]*" value="100" />
-            <div class="pillUnit">yds</div>
-          </div>
-        </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0 10px 0;">
+      <div class="subtle" style="font-size:16px;">Taps: <span id="tapsCount">0</span></div>
+      <button id="clearTapsBtn" class="btnSecondary" type="button">Clear taps</button>
+    </div>
 
-        <div class="row rowTight">
-          <div class="meta">
-            <div class="metaItem">Taps: <span id="tapsCount">0</span></div>
-          </div>
-          <button id="clearBtn" class="btnSecondary" type="button">Clear taps</button>
-        </div>
+    <div class="targetBox" id="targetBox" style="margin-bottom:14px;">
+      <div class="subtle" style="margin-bottom:8px; font-weight:600;">Target</div>
 
-        <!-- Tap Stage -->
-        <div id="tapBox" class="tapStage">
-          <img id="targetImg" alt="Target" />
-          <div id="tapLayer" aria-hidden="true"></div>
-
-          <!-- calm overlay hint; only text, no extra buttons -->
-          <div id="hintOverlay" class="hintOverlay">
-            Add a photo, then tap bullet holes.
-          </div>
-        </div>
-
-        <!-- Vendor plug (optional) -->
-        <div class="vendorRow">
-          <div class="vendorLabel">Vendor link (optional)</div>
-          <input id="vendorInput" class="vendorInput" placeholder="Paste vendor buy link here" />
-          <a id="buyMoreBtn" class="btnGhost" href="#" target="_blank" rel="noopener" style="display:none;">Buy more targets</a>
-        </div>
-
-        <div class="row">
-          <button id="resultsBtn" class="btnPrimaryWide" type="button">See results</button>
-        </div>
-
-        <input id="fileInput" type="file" accept="image/*" capture="environment" style="display:none;" />
-
-        <div class="bottomMark">Tap-n-Score™</div>
+      <!-- TAP AREA (wrapper receives taps) -->
+      <div id="targetImageWrap">
+        <img id="targetImage" alt="Target preview" />
       </div>
 
+      <div id="emptyHint" class="subtle" style="margin-top:10px;">
+        Add a photo, then tap bullet holes.
+      </div>
     </div>
+
+    <div class="subtle" style="margin-bottom:6px;">Vendor link (optional)</div>
+    <input id="vendorInput" type="url" placeholder="Paste vendor buy link here" style="margin-bottom:12px;">
+
+    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">
+      See results
+    </button>
+
+    <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./index.js"></script>
+  <!-- cache-bust scripts too -->
+  <script src="./api.js?v=20260118a"></script>
+  <script src="./index.js?v=20260118a"></script>
+
+  <!-- Minimal glue: load photo into #targetImage so taps can begin -->
   <script>
-    // show vendor buy button if present
-    (function(){
-      const VENDOR_BUY = "sczn3_vendor_buy_url";
-      const buy = document.getElementById("buyMoreBtn");
-      const v = sessionStorage.getItem(VENDOR_BUY);
-      if (buy && v){
-        buy.href = v;
-        buy.style.display = "inline-flex";
-      }
+    (function () {
+      const input = document.getElementById("photoInput");
+      const img = document.getElementById("targetImage");
+      const hint = document.getElementById("emptyHint");
+
+      if (!input || !img) return;
+
+      input.addEventListener("change", () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+
+        const r = new FileReader();
+        r.onload = () => {
+          img.src = String(r.result || "");
+          if (hint) hint.textContent = "Photo loaded. Tap bullet holes (Tap-n-Score).";
+          try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", String(r.result || "")); } catch {}
+        };
+        r.readAsDataURL(f);
+      });
     })();
   </script>
 </body>
