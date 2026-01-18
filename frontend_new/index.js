@@ -1,15 +1,14 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
 
-const photoInput    = document.getElementById("photoInput");
-const targetImage   = document.getElementById("targetImage");
-const imageWrap     = document.getElementById("targetImageWrap");
-const dotsLayer     = document.getElementById("dotsLayer");
-const tapsCountEl   = document.getElementById("tapsCount");
-const clearTapsBtn  = document.getElementById("clearTapsBtn");
+const photoInput = document.getElementById("photoInput");
+const targetImage = document.getElementById("targetImage");       // <img>
+const imageWrap   = document.getElementById("targetImageWrap");   // wrapper div
+const tapsCountEl = document.getElementById("tapsCount");
+const clearTapsBtn = document.getElementById("clearTapsBtn");
 const seeResultsBtn = document.getElementById("seeResultsBtn");
 const distanceInput = document.getElementById("distanceInput");
-const vendorInput   = document.getElementById("vendorInput");
+const vendorInput = document.getElementById("vendorInput");
 
 function setStatus(msg){
   const el = document.getElementById("statusLine");
@@ -21,9 +20,11 @@ function setTapsCount(n){
 }
 
 function showPreview(dataUrl){
-  if (!targetImage || !imageWrap) return;
+  if (!targetImage) return;
   targetImage.src = dataUrl;
-  imageWrap.style.display = "block";
+  if (imageWrap) imageWrap.style.display = "block";
+  const hint = document.getElementById("emptyHint");
+  if (hint) hint.style.display = "block";
 }
 
 function clearPreview(){
@@ -31,11 +32,12 @@ function clearPreview(){
   if (imageWrap) imageWrap.style.display = "none";
 }
 
-let bullTap = null;  // {x,y} normalized 0..1
-let taps = [];       // holes only
+/** --- Tap state --- **/
+let bullTap = null;     // {x,y} normalized 0..1
+let taps = [];          // bullet holes only (normalized)
 
 function instruction(){
-  if (!targetImage || !targetImage.src){
+  if (!targetImage || !targetImage.src) {
     setStatus("Ready. Tap ADD PHOTO.");
     return;
   }
@@ -45,18 +47,18 @@ function instruction(){
 }
 
 function clearDots(){
-  if (!dotsLayer) return;
-  dotsLayer.innerHTML = "";
+  const dots = document.querySelectorAll(".tapDot");
+  dots.forEach(d => d.remove());
 }
 
-function addDot(nx, ny, kind){
-  if (!dotsLayer) return;
+function addDotAt(px, py, kind){
+  if (!imageWrap) return;
   const dot = document.createElement("div");
   dot.className = "tapDot";
   dot.dataset.kind = kind || "hole";
-  dot.style.left = `${nx * 100}%`;
-  dot.style.top  = `${ny * 100}%`;
-  dotsLayer.appendChild(dot);
+  dot.style.left = `${px}px`;
+  dot.style.top = `${py}px`;
+  imageWrap.appendChild(dot);
 }
 
 function clearAll(){
@@ -67,6 +69,7 @@ function clearAll(){
   instruction();
 }
 
+/** --- Photo load --- **/
 if (photoInput){
   photoInput.addEventListener("change", () => {
     const file = photoInput.files && photoInput.files[0];
@@ -89,6 +92,7 @@ if (photoInput){
       showPreview(dataUrl);
       try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", dataUrl); } catch {}
       clearAll();
+      instruction();
     };
     reader.onerror = () => {
       setStatus("Could not read that photo.");
@@ -99,6 +103,7 @@ if (photoInput){
   });
 }
 
+/** --- Tap capture --- **/
 function onTap(clientX, clientY){
   if (!imageWrap || !targetImage || !targetImage.src) return;
 
@@ -113,27 +118,30 @@ function onTap(clientX, clientY){
 
   if (!bullTap){
     bullTap = { x: nx, y: ny };
-    addDot(nx, ny, "bull");
+    addDotAt(x, y, "bull");
   } else {
     taps.push({ x: nx, y: ny });
-    addDot(nx, ny, "hole");
     setTapsCount(taps.length);
+    addDotAt(x, y, "hole");
   }
-
   instruction();
 }
 
+// Pointer events (mouse + touch)
 if (imageWrap){
+  imageWrap.style.position = "relative";
   imageWrap.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     onTap(e.clientX, e.clientY);
   }, { passive: false });
 }
 
+/** --- Clear taps --- **/
 if (clearTapsBtn){
   clearTapsBtn.addEventListener("click", () => clearAll());
 }
 
+/** --- Results --- **/
 async function doResults(){
   try{
     if (!targetImage || !targetImage.src) {
