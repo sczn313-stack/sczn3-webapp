@@ -3,14 +3,101 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Tap-n-Score — Saved Sessions</title>
+  <title>Tap-n-Score</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <section class="screen">
-    <div id="savedRoot"></div>
+
+  <!-- LANDING (NO CTA) -->
+  <section id="landing" class="screen screen-center">
+    <div class="stack">
+      <div class="h1">Tap-n-Score™</div>
+
+      <div class="gap"></div>
+
+      <div class="h2">One tap.</div>
+      <div class="h2">One score.</div>
+      <div class="h2">Real results.</div>
+
+      <div class="gap"></div>
+
+      <div class="sig">After-Shot Intelligence™</div>
+    </div>
   </section>
 
-  <script type="module" src="saved.js"></script>
+  <!-- UPLOAD / TAP STAGE -->
+  <section id="main" class="screen" style="display:none;">
+
+    <div class="topBar">
+      <button id="uploadBtn" class="primaryBtn">Upload</button>
+
+      <div class="distanceWrap">
+        <label for="distanceYards">Distance</label>
+        <input id="distanceYards" inputmode="numeric" type="number" min="1" step="1" placeholder="100" />
+        <span class="unit">yds</span>
+      </div>
+    </div>
+
+    <div id="miniStatus" class="miniStatus">Ready.</div>
+
+    <!-- Hidden inputs (Choose vs Camera) -->
+    <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
+    <input id="targetPhotoCamera"  type="file" accept="image/*" capture="environment" style="display:none;" />
+
+    <!-- Tap stage (hidden until photo is loaded) -->
+    <div id="tapStage" style="display:none;">
+      <div class="tapHeader">
+        <div id="tapCountText" class="tapCount">Taps: 0</div>
+        <button id="clearTapsBtn" class="secondaryBtn">Clear taps</button>
+      </div>
+
+      <div id="thumbWrap" class="thumbWrap">
+        <img id="thumb" alt="Target" />
+        <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100" aria-label="Tap layer"></svg>
+      </div>
+
+      <div class="hint">
+        Tap bull first, then tap holes.
+      </div>
+
+      <button id="pressToSee" class="primaryBtn disabled">Press to see results</button>
+
+      <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
+        Buy more targets
+      </a>
+    </div>
+
+  </section>
+
+  <!-- PICK OVERLAY (Choose / Camera) -->
+  <div id="pickOverlay" class="sheetOverlay" style="display:none;">
+    <div class="sheet">
+      <div class="sheetTitle">Add target photo</div>
+
+      <button id="pickChoose" class="sheetBtn">Choose from Library</button>
+      <button id="pickCamera" class="sheetBtn">Use Camera</button>
+
+      <button id="pickCancel" class="sheetCancel">Cancel</button>
+    </div>
+  </div>
+
+  <script type="module" src="api.js"></script>
+  <script type="module" src="index.js"></script>
+
+  <!-- AUTO FLOW: Tap landing -> show main -> open sheet (no CTA) -->
+  <script>
+    (function(){
+      const landing = document.getElementById("landing");
+      const main = document.getElementById("main");
+      const uploadBtn = document.getElementById("uploadBtn");
+      function go(){
+        landing.style.display = "none";
+        main.style.display = "block";
+        if (uploadBtn) uploadBtn.click();
+      }
+      landing.addEventListener("click", go);
+      landing.addEventListener("touchstart", function(e){ e.preventDefault(); go(); }, { passive:false });
+    })();
+  </script>
 </body>
 </html>
