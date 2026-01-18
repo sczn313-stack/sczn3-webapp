@@ -1,10 +1,21 @@
 // sczn3-webapp/frontend_new/saved.js (FULL FILE REPLACEMENT)
-// Lists saved sessions from localStorage and ALWAYS navigates reliably on iOS.
+// Uses the SAME storage schema as receipt.js:
+//   localStorage: sczn3_saved_sessions_v1  (array)
+//   sessionStorage: sczn3_last_result_json (to open in output.html)
+// Reliable iOS navigation + no “dead button” behavior.
 
 (function () {
-  const INDEX_KEY   = "tapnscore_saved_index";
-  const ITEM_PREFIX = "tapnscore_saved_";
-  const RESULT_KEY  = "tapnscore_result";
+  const LS_SAVED = "sczn3_saved_sessions_v1";
+  const SS_LAST  = "sczn3_last_result_json";
+  const VENDOR_BUY = "sczn3_vendor_buy_url";
+
+  function $(id){ return document.getElementById(id); }
+
+  const root = $("savedRoot") || document.body;
+
+  function safeJsonParse(s){
+    try { return JSON.parse(String(s || "")); } catch { return null; }
+  }
 
   function esc(s){
     return String(s || "")
@@ -13,36 +24,14 @@
       .replaceAll(">","&gt;");
   }
 
-  function $(id){ return document.getElementById(id); }
-
-  const root = $("savedRoot") || document.body;
-
-  function readIndex(){
-    try{
-      const raw = localStorage.getItem(INDEX_KEY) || "[]";
-      const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr : [];
-    } catch { return []; }
+  function loadSaved(){
+    const raw = localStorage.getItem(LS_SAVED) || "[]";
+    const arr = safeJsonParse(raw);
+    return Array.isArray(arr) ? arr : [];
   }
 
-  function writeIndex(arr){
-    try{
-      localStorage.setItem(INDEX_KEY, JSON.stringify(arr || []));
-      return true;
-    } catch { return false; }
-  }
-
-  function readItem(id){
-    try{
-      const raw = localStorage.getItem(ITEM_PREFIX + id);
-      return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
-  }
-
-  function deleteItem(id){
-    try{ localStorage.removeItem(ITEM_PREFIX + id); } catch {}
-    const idx = readIndex().filter(x => x && x.id !== id);
-    writeIndex(idx);
+  function saveSaved(arr){
+    localStorage.setItem(LS_SAVED, JSON.stringify(arr || []));
   }
 
   function formatLocal(iso){
@@ -54,107 +43,52 @@
   }
 
   function goUpload(){
-    // Cache-bust so iOS Safari ALWAYS navigates
-    const bust = Date.now();
-    window.location.href = `./index.html?v=${bust}`;
+    window.location.href = `./index.html?v=${Date.now()}`;
   }
 
-  function render(){
-    const idx = readIndex();
-    const items = idx
-      .map(x => x && x.id ? readItem(x.id) : null)
-      .filter(Boolean);
-
-    root.innerHTML = `
-      <div class="resultsWrap">
-        <div class="resultsTop">
-          <div class="resultsKicker">Saved</div>
-          <div class="resultsTitle">Saved Sessions</div>
-          <div class="resultsSub">Stored on this device.</div>
-        </div>
-
-        ${items.length ? `
-          <div class="savedList">
-            ${items.map(item => savedRow(item)).join("")}
-          </div>
-
-          <div class="resultsActions">
-            <button id="startBtn" class="btnPrimary" type="button">Start new session</button>
-            <button id="clearAllBtn" class="btnSecondary" type="button">Clear all saved</button>
-          </div>
-        ` : `
-          <div class="resultsNote">
-            <div class="noteLine">No saved sessions yet.</div>
-            <div class="noteLine subtle">Save from the Results screen.</div>
-          </div>
-
-          <div class="resultsActions">
-            <button id="startBtn" class="btnPrimary" type="button">Start new session</button>
-          </div>
-        `}
-
-        <div class="resultsBottom">
-          <div class="subtle">Tap-n-Score™</div>
-        </div>
-      </div>
-    `;
-
-    // Start new session (reliable)
-    const startBtn = document.getElementById("startBtn");
-    if (startBtn){
-      startBtn.addEventListener("click", goUpload);
-      startBtn.addEventListener("touchstart", goUpload, { passive: true });
+  function openItemById(id){
+    const items = loadSaved();
+    const item = items.find(x => x && x.id === id);
+    if (!item || !item.result){
+      alert("Saved record is missing.");
+      return;
     }
+    sessionStorage.setItem(SS_LAST, JSON.stringify(item.result));
+    window.location.href = `./output.html?v=${Date.now()}`;
+  }
 
-    // Bind open/delete
-    const openBtns = document.querySelectorAll("[data-open-id]");
-    openBtns.forEach(btn => {
-      const open = () => {
-        const id = btn.getAttribute("data-open-id");
-        const rec = readItem(id);
-        if (!rec || !rec.result){
-          alert("Record missing.");
-          return;
-        }
-        sessionStorage.setItem(RESULT_KEY, JSON.stringify(rec.result));
-        window.location.href = `./output.html?v=${Date.now()}`;
-      };
-      btn.addEventListener("click", open);
-      btn.addEventListener("touchstart", open, { passive: true });
-    });
+  function deleteItemById(id){
+    const items = loadSaved().filter(x => x && x.id !== id);
+    saveSaved(items);
+    render();
+  }
 
-    const delBtns = document.querySelectorAll("[data-del-id]");
-    delBtns.forEach(btn => {
-      const del = () => {
-        const id = btn.getAttribute("data-del-id");
-        if (!id) return;
-        if (!confirm("Delete this saved session?")) return;
-        deleteItem(id);
-        render();
-      };
-      btn.addEventListener("click", del);
-    });
+  function clearAll(){
+    saveSaved([]);
+    render();
+  }
 
-    const clearAllBtn = document.getElementById("clearAllBtn");
-    if (clearAllBtn){
-      clearAllBtn.addEventListener("click", () => {
-        if (!confirm("Clear ALL saved sessions on this device?")) return;
-        const idx2 = readIndex();
-        idx2.forEach(x => { if (x?.id) { try{ localStorage.removeItem(ITEM_PREFIX + x.id); } catch {} } });
-        writeIndex([]);
-        render();
-      });
+  function setVendorBuyLink(){
+    const url = sessionStorage.getItem(VENDOR_BUY);
+    const buy = $("buyMoreBtn");
+    if (buy && url){
+      buy.href = url;
+      buy.style.display = "inline-block";
     }
   }
 
-  function savedRow(item){
-    const id = item.id;
-    const when = formatLocal(item.savedAt);
-    const dist = Number.isFinite(Number(item.distanceYards)) ? `${Number(item.distanceYards)} yds` : "";
-    const score = Number.isFinite(Number(item.score)) ? `Score ${Number(item.score)}` : "";
+  function row(item){
+    const id = item.id || "";
+    const when = formatLocal(item.created_at || item.savedAt || "");
+    const dist = item.yards ? `${Number(item.yards)} yds` : (item.distanceYards ? `${Number(item.distanceYards)} yds` : "");
+    const score =
+      (item.preview && item.preview.score && item.preview.score !== "--")
+        ? `Score ${item.preview.score}`
+        : (Number.isFinite(Number(item.score)) ? `Score ${Number(item.score)}` : "");
 
-    const wind = item.wind ? item.wind : "";
-    const elev = item.elev ? item.elev : "";
+    // Prefer receipt preview strings
+    const wind = item.preview?.wind || item.wind || "";
+    const elev = item.preview?.elev || item.elev || "";
 
     return `
       <div class="savedRow">
@@ -174,6 +108,79 @@
         </div>
       </div>
     `;
+  }
+
+  function render(){
+    const items = loadSaved();
+
+    root.innerHTML = `
+      <div class="resultsWrap">
+        <div class="resultsTop">
+          <div class="resultsKicker">Saved</div>
+          <div class="resultsTitle">Saved Sessions</div>
+          <div class="resultsSub">Stored on this device.</div>
+        </div>
+
+        <div class="resultsActions" style="margin-bottom:12px;">
+          <button id="startBtn" class="btnPrimary" type="button">Start new session</button>
+          <a id="buyMoreBtn" class="btnSecondary" href="#" target="_blank" rel="noopener" style="display:none; text-align:center;">
+            Buy more targets
+          </a>
+        </div>
+
+        ${items.length ? `
+          <div class="savedList">
+            ${items.map(row).join("")}
+          </div>
+
+          <div class="resultsActions">
+            <button id="clearAllBtn" class="btnSecondary" type="button">Clear all saved</button>
+          </div>
+        ` : `
+          <div class="resultsNote">
+            <div class="noteLine">No saved sessions yet.</div>
+            <div class="noteLine subtle">Save from the Receipt screen.</div>
+          </div>
+        `}
+
+        <div class="resultsBottom">
+          <div class="subtle">Tap-n-Score™</div>
+        </div>
+      </div>
+    `;
+
+    setVendorBuyLink();
+
+    const startBtn = document.getElementById("startBtn");
+    if (startBtn){
+      startBtn.addEventListener("click", goUpload);
+      startBtn.addEventListener("touchstart", goUpload, { passive: true });
+    }
+
+    const openBtns = document.querySelectorAll("[data-open-id]");
+    openBtns.forEach(btn => {
+      const handler = () => openItemById(btn.getAttribute("data-open-id"));
+      btn.addEventListener("click", handler);
+      btn.addEventListener("touchstart", handler, { passive: true });
+    });
+
+    const delBtns = document.querySelectorAll("[data-del-id]");
+    delBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-del-id");
+        if (!id) return;
+        if (!confirm("Delete this saved session?")) return;
+        deleteItemById(id);
+      });
+    });
+
+    const clearAllBtn = document.getElementById("clearAllBtn");
+    if (clearAllBtn){
+      clearAllBtn.addEventListener("click", () => {
+        if (!confirm("Clear ALL saved sessions on this device?")) return;
+        clearAll();
+      });
+    }
   }
 
   render();
