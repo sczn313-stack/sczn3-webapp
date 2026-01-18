@@ -18,19 +18,11 @@
     <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
 
     <section class="row">
-      <!-- SINGLE CAMERA BUTTON (iOS-safe). The label opens the input reliably. -->
-      <label id="addPhotoBtn" class="btn btnPrimary" for="photoInput" role="button" tabindex="0">
+      <!-- SINGLE CAMERA PICKER (reliable on iOS via label->input) -->
+      <label class="btn btnPrimary fileLabel">
         Add photo
+        <input id="photoInput" class="fileInput" type="file" accept="image/*" capture="environment" />
       </label>
-
-      <!-- IMPORTANT: NOT display:none -->
-      <input
-        id="photoInput"
-        class="fileInputHidden"
-        type="file"
-        accept="image/*"
-        capture="environment"
-      />
 
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
@@ -47,13 +39,12 @@
     <section class="card">
       <div class="subtle strong mb8">Target</div>
 
-      <!-- Tap area -->
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
         <img id="targetImage" class="targetImg" alt="Target preview" />
-        <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
+        <div id="dotsLayer" class="dotsLayer"></div>
       </div>
 
-      <div id="emptyHint" class="subtle mt10">Add a photo, then tap bull first, then bullet holes.</div>
+      <div id="emptyHint" class="subtle mt10">Add a photo, then tap bull first, then holes.</div>
     </section>
 
     <div class="subtle mb6">Vendor link (optional)</div>
@@ -63,7 +54,7 @@
 
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <pre id="resultsText" class="mono"></pre>
+      <pre id="resultsPre" class="mono"></pre>
 
       <div class="row mt12">
         <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
@@ -75,7 +66,6 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <!-- api.js must define window.tapscore(payload) -->
   <script src="./api.js?v=20260118z2"></script>
   <script src="./index.js?v=20260118z2"></script>
 </body>
