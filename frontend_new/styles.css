@@ -36,13 +36,25 @@ body{background:var(--bg); color:var(--text)}
   font-size:18px;
 }
 .btn:active{transform:scale(.99)}
-.btnPrimary{
-  background:rgba(255,255,255,.10);
+.btnPrimary{ background:rgba(255,255,255,.10); }
+.btnSecondary{ background:rgba(255,255,255,.06); }
+
+/* ✅ KEY FIX: file inputs must NOT be display:none on iOS */
+.fileBtn{
+  position:relative;
+  overflow:hidden;
 }
-.btnSecondary{
-  background:rgba(255,255,255,.06);
+
+/* Invisible but clickable file input covering the whole button */
+.fileInput{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0.001;
+  cursor:pointer;
+  border:0;
 }
-.btn input[type="file"]{display:none}
 
 .distanceBox{display:flex; align-items:center; gap:8px}
 .distanceBox input{
@@ -95,10 +107,9 @@ body{background:var(--bg); color:var(--text)}
 .dotsLayer{
   position:absolute;
   inset:0;
-  pointer-events:none; /* dots never steal taps */
+  pointer-events:none;
 }
 
-/* visible tap dot */
 .dot{
   position:absolute;
   width:16px;
