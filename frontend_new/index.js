@@ -1,409 +1,205 @@
-// sczn3-webapp/frontend_new/index.js (FULL REPLACEMENT)
-// Upload page + Tap-n-Score capture (Bull first, then Holes)
-// iOS-safe menu: Choose vs Camera
-//
-// Stores:
-//  sczn3_targetPhoto_dataUrl
-//  sczn3_targetPhoto_fileName
-//  sczn3_distance_yards
-//  sczn3_tap_bull_json      <-- {x,y} natural pixels
-//  sczn3_tap_holes_json     <-- array of {x,y} natural pixels
-//  sczn3_taps_json          <-- { bull:{x,y}, holes:[...] }
+// sczn3-webapp/frontend_new/index.js (FULL FILE REPLACEMENT)
+// Upload + Tap screen.
+// Creates tapsJson (bull + holes) and stores it in sessionStorage for output.js.
 
 (function () {
-  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
-  const FILE_KEY  = "sczn3_targetPhoto_fileName";
+  // Keys shared across pages
   const DIST_KEY  = "sczn3_distance_yards";
-
-  const BULL_KEY  = "sczn3_tap_bull_json";
-  const HOLES_KEY = "sczn3_tap_holes_json";
+  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
+  const FILE_KEY  = "sczn3_target_file_cachebust"; // just for navigation bust
   const TAPS_KEY  = "sczn3_taps_json";
 
-  const VENDOR_BUY = "sczn3_vendor_buy_url";
+  // Minimal taps required before analyze
+  const MIN_TAPS = 1; // set to 3 if you want: 3–5 shot cluster logic
 
-  function $(id){ return document.getElementById(id); }
+  // --- Element lookup (works even if IDs vary slightly) ---
+  function byId(id) { return document.getElementById(id); }
 
-  const uploadBtn     = $("uploadBtn");
-  const fileLibrary   = $("targetPhotoLibrary");
-  const fileCamera    = $("targetPhotoCamera");
+  const uploadBtn   = byId("uploadBtn")   || byId("pickBtn")    || byId("upload");
+  const fileInput   = byId("fileInput")   || byId("imageInput") || byId("image");
+  const distanceInp = byId("distanceYards") || byId("distanceInput") || byId("distance");
+  const clearBtn    = byId("clearTapsBtn") || byId("clearBtn");
+  const tapsLabel   = byId("tapsCount")   || byId("tapsLabel");
+  const resultsBtn  = byId("resultsBtn")  || byId("analyzeBtn") || byId("pressResultsBtn");
+  const statusEl    = byId("miniStatus")  || byId("status")     || byId("inlineStatus");
 
-  const pickOverlay   = $("pickOverlay");
-  const pickChoose    = $("pickChoose");
-  const pickCamera    = $("pickCamera");
-  const pickCancel    = $("pickCancel");
+  // The image element you tap on
+  const targetImg =
+    byId("targetImg") ||
+    byId("previewImg") ||
+    document.querySelector("img#target") ||
+    document.querySelector("img");
 
-  const tapStage      = $("tapStage");
-  const tapCountText  = $("tapCountText");
-
-  const thumb         = $("thumb");
-  const tapLayer      = $("tapLayer");
-
-  const clearTapsBtn  = $("clearTapsBtn");
-  const setBullBtn    = $("setBullBtn");
-
-  const distanceInput = $("distanceYards");
-  const pressToSee    = $("pressToSee");
-  const miniStatus    = $("miniStatus");
-  const buyMoreBtn    = $("buyMoreBtn");
-
-  let mode = "bull"; // "bull" or "holes"
-
-  function status(msg){
-    if (!miniStatus) return;
-    miniStatus.textContent = String(msg || "");
+  function status(msg) {
+    if (statusEl) statusEl.textContent = String(msg || "");
   }
 
-  function setPressEnabled(enabled){
-    if (!pressToSee) return;
-    if (enabled){
-      pressToSee.classList.remove("disabled");
-      pressToSee.style.pointerEvents = "auto";
-      pressToSee.style.opacity = "1";
-    } else {
-      pressToSee.classList.add("disabled");
-      pressToSee.style.pointerEvents = "none";
-      pressToSee.style.opacity = "0.7";
-    }
+  function safeJsonParse(s){
+    try { return JSON.parse(String(s || "")); } catch { return null; }
   }
 
-  function safeJsonParse(str){
-    try { return JSON.parse(str); } catch { return null; }
+  function setDistance(n){
+    const v = Number(n);
+    const yards = Number.isFinite(v) && v > 0 ? v : 100;
+    sessionStorage.setItem(DIST_KEY, String(yards));
+    if (distanceInp) distanceInp.value = String(yards);
   }
 
-  function saveDistance(){
-    if (!distanceInput) return;
-    const v = String(distanceInput.value || "").trim();
-    if (v) sessionStorage.setItem(DIST_KEY, v);
+  function getDistance(){
+    const n = Number(sessionStorage.getItem(DIST_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 100;
   }
 
-  function readBull(){
-    const raw = sessionStorage.getItem(BULL_KEY) || "";
-    const obj = safeJsonParse(raw);
-    return obj && Number.isFinite(Number(obj.x)) && Number.isFinite(Number(obj.y)) ? obj : null;
+  // --- Taps state ---
+  let holes = []; // [{x:0-1, y:0-1}]
+  function bull() {
+    // For now: bull = center of image (simple + stable)
+    return { x: 0.5, y: 0.5 };
   }
 
-  function readHoles(){
-    const raw = sessionStorage.getItem(HOLES_KEY) || "[]";
-    const arr = safeJsonParse(raw);
-    return Array.isArray(arr) ? arr.filter(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) : [];
+  function updateTapsUI(){
+    if (tapsLabel) tapsLabel.textContent = String(holes.length);
+    sessionStorage.setItem(TAPS_KEY, JSON.stringify({ bull: bull(), holes: holes.slice(0) }));
   }
 
-  function writeBull(pt){
-    sessionStorage.setItem(BULL_KEY, JSON.stringify(pt || null));
+  function clearTaps(){
+    holes = [];
+    updateTapsUI();
+    status("Cleared. Tap the holes.");
   }
 
-  function writeHoles(arr){
-    sessionStorage.setItem(HOLES_KEY, JSON.stringify(arr || []));
+  function normalizeTap(evt, imgEl){
+    const r = imgEl.getBoundingClientRect();
+    const clientX = evt.touches && evt.touches[0] ? evt.touches[0].clientX : evt.clientX;
+    const clientY = evt.touches && evt.touches[0] ? evt.touches[0].clientY : evt.clientY;
+
+    const x = (clientX - r.left) / r.width;
+    const y = (clientY - r.top) / r.height;
+
+    // clamp
+    const nx = Math.max(0, Math.min(1, x));
+    const ny = Math.max(0, Math.min(1, y));
+    return { x: nx, y: ny };
   }
 
-  function writeCombined(){
-    const bull = readBull();
-    const holes = readHoles();
-    const taps = { bull: bull || null, holes };
-    sessionStorage.setItem(TAPS_KEY, JSON.stringify(taps));
+  function handleTap(evt){
+    if (!targetImg) return;
+    // Don’t scroll/zoom when tapping the target
+    if (evt.cancelable) evt.preventDefault();
+
+    const p = normalizeTap(evt, targetImg);
+    holes.push(p);
+    updateTapsUI();
+    status(`Tapped: ${holes.length}`);
   }
 
-  function setVendorBuyLink(){
-    const url = sessionStorage.getItem(VENDOR_BUY);
-    if (buyMoreBtn && url){
-      buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "block";
-    }
-  }
-
-  function openSheet(){
-    if (!pickOverlay) return;
-    pickOverlay.style.display = "flex";
-  }
-
-  function closeSheet(){
-    if (!pickOverlay) return;
-    pickOverlay.style.display = "none";
-  }
-
-  function resetInput(input){
-    if (!input) return;
-    input.value = "";
-  }
-
-  function readFileAsDataURL(file){
+  // --- Photo handling ---
+  async function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("File read failed."));
-      reader.onload = (e) => resolve(String(e.target && e.target.result ? e.target.result : ""));
-      reader.readAsDataURL(file);
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ""));
+      r.onerror = () => reject(new Error("FileReader failed."));
+      r.readAsDataURL(file);
     });
   }
 
-  // client coords -> NATURAL image pixel coords
-  function clientToNatural(e){
-    if (!thumb) return null;
+  async function onPickedFile(file){
+    if (!file) return;
 
-    const rect = thumb.getBoundingClientRect();
-    const nw = thumb.naturalWidth || 1;
-    const nh = thumb.naturalHeight || 1;
+    const dataUrl = await fileToDataUrl(file);
+    sessionStorage.setItem(PHOTO_KEY, dataUrl);
 
-    const clientX = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
-    const clientY = (e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY);
+    // show image if possible
+    if (targetImg) targetImg.src = dataUrl;
 
-    const x = ((clientX - rect.left) / rect.width) * nw;
-    const y = ((clientY - rect.top) / rect.height) * nh;
+    // Reset taps for a new photo
+    holes = [];
+    updateTapsUI();
 
-    return { x, y };
+    status("Photo loaded. Tap the holes (Tap-n-Score).");
   }
 
-  function setTapCountUI(){
-    const bull = readBull();
-    const holes = readHoles();
-    if (tapCountText){
-      tapCountText.textContent = `Bull: ${bull ? "set" : "not set"} • Holes: ${holes.length}`;
+  function openPicker(){
+    if (!fileInput) {
+      alert("Missing file input on this page.");
+      return;
     }
+    fileInput.click();
   }
 
-  function redrawTapLayer(){
-    if (!tapLayer || !thumb) return;
-
-    const bull = readBull();
-    const holes = readHoles();
-
-    const nw = thumb.naturalWidth || 1;
-    const nh = thumb.naturalHeight || 1;
-    tapLayer.setAttribute("viewBox", `0 0 ${nw} ${nh}`);
-
-    const bullMarkup = bull ? `
-      <g>
-        <circle cx="${Number(bull.x)}" cy="${Number(bull.y)}" r="28" fill="rgba(0,160,255,0.20)"></circle>
-        <circle cx="${Number(bull.x)}" cy="${Number(bull.y)}" r="10" fill="rgba(0,160,255,0.85)"></circle>
-      </g>
-    ` : "";
-
-    const holesMarkup = (holes || []).map((p) => `
-      <g>
-        <circle cx="${Number(p.x)}" cy="${Number(p.y)}" r="26" fill="rgba(255,140,0,0.35)"></circle>
-        <circle cx="${Number(p.x)}" cy="${Number(p.y)}" r="8" fill="rgba(120,60,0,0.85)"></circle>
-      </g>
-    `).join("");
-
-    tapLayer.innerHTML = bullMarkup + holesMarkup;
-
-    setTapCountUI();
-
-    // Enable results only if we have bull + at least 1 hole
-    const ok = !!bull && holes.length >= 1;
-    setPressEnabled(ok);
-  }
-
-  function hardResetTapSession(){
-    writeBull(null);
-    writeHoles([]);
-    writeCombined();
-    mode = "bull";
-    if (tapLayer) tapLayer.innerHTML = "";
-    setTapCountUI();
-    setPressEnabled(false);
-  }
-
-  function showThumb(dataUrl){
-    if (!thumb) return;
-
-    if (tapStage) tapStage.style.display = "block";
-
-    thumb.src = dataUrl;
-
-    thumb.onload = () => {
-      redrawTapLayer();
-      status(mode === "bull"
-        ? "Photo loaded. Tap the BULL first."
-        : "Photo loaded. Tap the holes.");
-    };
-
-    thumb.onerror = () => {
-      status("ERROR: thumb image failed to load.");
-    };
-  }
-
-  async function handlePickedFileFrom(inputEl){
-    const file = inputEl && inputEl.files && inputEl.files[0];
-
-    if (!file){
-      status("No file selected.");
+  function goResults(){
+    // Guard: must have a photo
+    const photo = sessionStorage.getItem(PHOTO_KEY) || "";
+    if (!photo){
+      status("Add a target photo first.");
       return;
     }
 
-    if (!file.type || !file.type.startsWith("image/")){
-      alert("Please choose an image file.");
-      resetInput(inputEl);
-      setPressEnabled(false);
-      status("ERROR: Not an image.");
+    // Guard: must have taps
+    if (holes.length < MIN_TAPS){
+      status(`Tap at least ${MIN_TAPS} hole${MIN_TAPS === 1 ? "" : "s"} before results.`);
       return;
     }
 
-    try{
-      const dataUrl = await readFileAsDataURL(file);
-      if (!dataUrl){
-        alert("Could not load the photo. Please try again.");
-        setPressEnabled(false);
-        status("ERROR: dataUrl empty.");
-        return;
-      }
+    // Ensure tapsJson saved
+    sessionStorage.setItem(TAPS_KEY, JSON.stringify({ bull: bull(), holes: holes.slice(0) }));
 
-      // HARD RESET: new photo = new bull/holes session
-      hardResetTapSession();
-
-      showThumb(dataUrl);
-      sessionStorage.setItem(PHOTO_KEY, dataUrl);
-      sessionStorage.setItem(FILE_KEY, file.name || "target.jpg");
-
-      saveDistance();
-      status("Photo loaded. Tap the BULL first.");
-    } catch (err){
-      alert("Photo load failed. Please try again.");
-      setPressEnabled(false);
-      status(`ERROR: ${String(err && err.message ? err.message : err)}`);
-    }
+    // iOS cache-bust navigation
+    sessionStorage.setItem(FILE_KEY, String(Date.now()));
+    window.location.href = `./output.html?v=${Date.now()}`;
   }
 
-  // ===== INIT =====
+  // --- INIT ---
   (function init(){
-    setVendorBuyLink();
+    setDistance(getDistance());
+    updateTapsUI();
 
-    const savedDist = sessionStorage.getItem(DIST_KEY);
-    if (distanceInput && savedDist) distanceInput.value = savedDist;
-
-    const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
-    if (savedPhoto){
-      if (tapStage) tapStage.style.display = "block";
-      showThumb(savedPhoto);
-      status("Photo loaded. Tap the BULL first (or tap Set bull).");
-    } else {
-      if (tapStage) tapStage.style.display = "none";
-      setPressEnabled(false);
-      setTapCountUI();
+    // distance changes
+    if (distanceInp){
+      distanceInp.addEventListener("input", () => setDistance(distanceInp.value));
+      distanceInp.addEventListener("change", () => setDistance(distanceInp.value));
     }
 
-    saveDistance();
+    // upload picker
+    if (uploadBtn){
+      uploadBtn.addEventListener("click", openPicker);
+      uploadBtn.addEventListener("touchstart", openPicker, { passive: true });
+    }
+
+    if (fileInput){
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+        if (!file) return;
+        await onPickedFile(file);
+      });
+    }
+
+    // taps on image
+    if (targetImg){
+      targetImg.style.touchAction = "manipulation"; // allow pinch zoom generally, but taps register cleanly
+      targetImg.addEventListener("click", handleTap);
+      targetImg.addEventListener("touchstart", handleTap, { passive: false });
+    }
+
+    // clear taps
+    if (clearBtn){
+      clearBtn.addEventListener("click", clearTaps);
+      clearBtn.addEventListener("touchstart", clearTaps, { passive: true });
+    }
+
+    // results button
+    if (resultsBtn){
+      resultsBtn.addEventListener("click", goResults);
+      resultsBtn.addEventListener("touchstart", goResults, { passive: true });
+    }
+
+    // restore photo if present
+    const photo = sessionStorage.getItem(PHOTO_KEY);
+    if (photo && targetImg){
+      targetImg.src = photo;
+      status("Photo loaded. Tap the holes (Tap-n-Score).");
+    } else {
+      status("Ready. Tap UPLOAD.");
+    }
   })();
-
-  // ===== OPEN MENU =====
-  if (uploadBtn){
-    uploadBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      openSheet();
-    });
-  }
-
-  // Close sheet if tapping outside
-  if (pickOverlay){
-    pickOverlay.addEventListener("click", (e) => {
-      if (e.target === pickOverlay) closeSheet();
-    });
-  }
-
-  if (pickCancel) pickCancel.addEventListener("click", () => closeSheet());
-
-  if (pickChoose && fileLibrary){
-    pickChoose.addEventListener("click", () => {
-      closeSheet();
-      resetInput(fileLibrary);
-      status("Opening library/files picker...");
-      fileLibrary.click();
-    });
-  }
-
-  if (pickCamera && fileCamera){
-    pickCamera.addEventListener("click", () => {
-      closeSheet();
-      resetInput(fileCamera);
-      status("Opening camera...");
-      fileCamera.click();
-    });
-  }
-
-  function bindInput(inputEl){
-    if (!inputEl) return;
-    inputEl.addEventListener("change", () => handlePickedFileFrom(inputEl));
-    inputEl.addEventListener("input",  () => handlePickedFileFrom(inputEl));
-  }
-  bindInput(fileLibrary);
-  bindInput(fileCamera);
-
-  // Distance save
-  if (distanceInput){
-    distanceInput.addEventListener("input", saveDistance);
-    distanceInput.addEventListener("change", saveDistance);
-  }
-
-  // Set bull button (forces next tap to be bull)
-  if (setBullBtn){
-    setBullBtn.addEventListener("click", () => {
-      mode = "bull";
-      status("Tap the BULL now.");
-    });
-  }
-
-  // Tap capture on SVG overlay
-  if (tapLayer){
-    const onTap = (e) => {
-      e.preventDefault();
-      if (!thumb || !thumb.naturalWidth) return;
-
-      const pt = clientToNatural(e);
-      if (!pt) return;
-
-      if (mode === "bull"){
-        writeBull({ x: pt.x, y: pt.y });
-        mode = "holes";
-        status("Bull set. Now tap the holes.");
-      } else {
-        const holes = readHoles();
-        holes.push({ x: pt.x, y: pt.y });
-        writeHoles(holes);
-        status(`Holes: ${holes.length}`);
-      }
-
-      writeCombined();
-      redrawTapLayer();
-    };
-
-    tapLayer.addEventListener("click", onTap);
-    tapLayer.addEventListener("touchstart", onTap, { passive: false });
-  }
-
-  // Clear taps
-  if (clearTapsBtn){
-    clearTapsBtn.addEventListener("click", () => {
-      hardResetTapSession();
-      status("Cleared. Tap the BULL first.");
-      redrawTapLayer();
-    });
-  }
-
-  // PRESS TO SEE
-  if (pressToSee){
-    const go = (e) => {
-      e.preventDefault();
-
-      const hasPhoto = !!sessionStorage.getItem(PHOTO_KEY);
-      if (!hasPhoto){
-        alert("Please upload a target photo first.");
-        setPressEnabled(false);
-        status("ERROR: no photo in sessionStorage.");
-        return;
-      }
-
-      const bull = readBull();
-      const holes = readHoles();
-      if (!bull || holes.length < 1){
-        alert("Tap the bull first, then tap at least 1 hole.");
-        status("Need bull + holes.");
-        return;
-      }
-
-      saveDistance();
-      window.location.href = "./output.html";
-    };
-
-    pressToSee.addEventListener("click", go);
-    pressToSee.addEventListener("touchstart", go, { passive: false });
-  }
 })();
