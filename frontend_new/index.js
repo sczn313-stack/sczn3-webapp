@@ -1,273 +1,252 @@
 // sczn3-webapp/frontend_new/index.js (FULL FILE REPLACEMENT)
-// Bull-first tap model, then holes.
-// Stores: sessionStorage sczn3_taps_json = { bull:{x,y}, holes:[{x,y}...] }
-// Fender: Results button refuses to navigate unless bull+>=1 holes.
-// Pinch zoom works because we do NOT block default touch behaviors.
+// Upload + Tap UI. Stores tapsJson (bull + holes) in sessionStorage for backend.
+// Fender plug: never call backend unless taps exist.
 
 (function () {
-  const SS_DIST   = "sczn3_distance_yards";
-  const SS_TAPS   = "sczn3_taps_json";
-  const SS_PHOTO  = "sczn3_targetPhoto_dataUrl";
-  const SS_VENDOR = "sczn3_vendor_buy_url";
+  const DIST_KEY  = "sczn3_distance_yards";
+  const LAST_KEY  = "sczn3_last_result_json";
+  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
+  const VENDOR_BUY= "sczn3_vendor_buy_url";
+  const TAPS_KEY  = "sczn3_taps_json";
 
   function $(id){ return document.getElementById(id); }
 
-  const uploadBtn     = $("uploadBtn");
-  const fileInput     = $("fileInput");
-  const distanceInput = $("distanceInput");
-  const vendorUrlInput= $("vendorUrlInput");
+  // These IDs must exist in your index.html:
+  // uploadBtn, distanceInput, vendorInput (optional), statusLine (optional),
+  // imgEl (the displayed target image), tapsCount (optional),
+  // clearTapsBtn (optional), goResultsBtn (the "Press to see results" button)
+  const uploadBtn    = $("uploadBtn");
+  const distanceInput= $("distanceInput");
+  const vendorInput  = $("vendorInput");
+  const statusLine   = $("statusLine");
 
-  const targetImg     = $("targetImg");
-  const canvas        = $("tapCanvas");
-  const imgWrap       = $("imgWrap");
+  const imgEl        = $("imgEl");
+  const tapsCount    = $("tapsCount");
+  const clearTapsBtn = $("clearTapsBtn");
+  const goResultsBtn = $("goResultsBtn");
 
-  const clearBtn      = $("clearBtn");
-  const resultsBtn    = $("resultsBtn");
-  const tapCount      = $("tapCount");
-  const miniStatus    = $("miniStatus");
-  const tapHelp       = $("tapHelp");
-
-  const ctx = canvas.getContext("2d");
+  // Internal state
+  let currentFile = null;
+  let tapHoles = []; // [{x,y}] in natural image coords
+  let bull = null;   // {x,y} in natural image coords
 
   function status(msg){
-    if (miniStatus) miniStatus.textContent = String(msg || "");
+    if (statusLine) statusLine.textContent = String(msg || "");
   }
 
-  function help(stepTitle, text){
-    if (!tapHelp) return;
-    const t = tapHelp.querySelector(".tapHelpTitle");
-    const b = tapHelp.querySelector(".tapHelpText");
-    if (t) t.textContent = stepTitle;
-    if (b) b.textContent = text;
+  function setDistance(v){
+    const n = Number(v);
+    const dist = Number.isFinite(n) && n > 0 ? n : 100;
+    sessionStorage.setItem(DIST_KEY, String(dist));
+    if (distanceInput) distanceInput.value = String(dist);
   }
 
-  function setDistance(){
-    const n = Number(distanceInput?.value);
-    const val = Number.isFinite(n) && n > 0 ? n : 100;
-    sessionStorage.setItem(SS_DIST, String(val));
+  function setVendor(url){
+    const u = String(url || "").trim();
+    if (u) sessionStorage.setItem(VENDOR_BUY, u);
+    else sessionStorage.removeItem(VENDOR_BUY);
   }
 
-  function setVendor(){
-    const v = String(vendorUrlInput?.value || "").trim();
-    if (v) sessionStorage.setItem(SS_VENDOR, v);
-    else sessionStorage.removeItem(SS_VENDOR);
-  }
-
-  function loadDistance(){
-    const n = Number(sessionStorage.getItem(SS_DIST));
-    if (distanceInput) distanceInput.value = String((Number.isFinite(n) && n>0) ? n : 100);
-  }
-
-  function loadVendor(){
-    const v = sessionStorage.getItem(SS_VENDOR) || "";
-    if (vendorUrlInput) vendorUrlInput.value = v;
+  function updateTapsUI(){
+    if (tapsCount) tapsCount.textContent = String(tapHoles.length);
   }
 
   function clearTaps(){
-    sessionStorage.removeItem(SS_TAPS);
-    draw();
-    updateUI();
-    help("Step 1", "Tap the bull (center) once.");
+    tapHoles = [];
+    bull = null;
+    sessionStorage.removeItem(TAPS_KEY);
+    updateTapsUI();
+    status("Ready. Tap holes.");
   }
 
-  function getModel(){
-    const raw = sessionStorage.getItem(SS_TAPS) || "";
-    try{
-      const obj = JSON.parse(raw);
-      if (!obj || typeof obj !== "object") return { bull:null, holes:[] };
-      return {
-        bull: obj.bull || null,
-        holes: Array.isArray(obj.holes) ? obj.holes : []
+  function storeTaps(){
+    if (!bull) return;
+    const payload = { bull, holes: tapHoles.slice(0) };
+    sessionStorage.setItem(TAPS_KEY, JSON.stringify(payload));
+  }
+
+  function naturalPointFromEvent(ev){
+    if (!imgEl) return null;
+
+    const rect = imgEl.getBoundingClientRect();
+    const clientX = (ev.touches && ev.touches[0]) ? ev.touches[0].clientX : ev.clientX;
+    const clientY = (ev.touches && ev.touches[0]) ? ev.touches[0].clientY : ev.clientY;
+
+    const xDisp = clientX - rect.left;
+    const yDisp = clientY - rect.top;
+
+    // Outside image area? ignore
+    if (xDisp < 0 || yDisp < 0 || xDisp > rect.width || yDisp > rect.height) return null;
+
+    const nw = imgEl.naturalWidth || rect.width;
+    const nh = imgEl.naturalHeight || rect.height;
+
+    const xNat = (xDisp / rect.width) * nw;
+    const yNat = (yDisp / rect.height) * nh;
+
+    return { x: xNat, y: yNat };
+  }
+
+  function ensureBull(){
+    if (!imgEl) return;
+    if (bull) return;
+
+    // Fender plug bull: image center in natural coords
+    const nw = imgEl.naturalWidth || 0;
+    const nh = imgEl.naturalHeight || 0;
+    if (nw > 0 && nh > 0) bull = { x: nw / 2, y: nh / 2 };
+  }
+
+  async function onPickFile(file){
+    if (!file) return;
+
+    currentFile = file;
+
+    // Store photo for receipt
+    const dataUrl = await fileToDataUrl(file);
+    sessionStorage.setItem(PHOTO_KEY, dataUrl);
+
+    // Reset taps
+    clearTaps();
+
+    // Show image
+    if (imgEl) {
+      imgEl.src = dataUrl;
+      imgEl.onload = () => {
+        ensureBull();
+        status("Photo loaded. Tap the holes (Tap-n-Score).");
       };
-    } catch {
-      return { bull:null, holes:[] };
-    }
-  }
-
-  function saveModel(m){
-    sessionStorage.setItem(SS_TAPS, JSON.stringify(m));
-  }
-
-  function updateUI(){
-    const m = getModel();
-    const total = (m.bull ? 1 : 0) + (m.holes?.length || 0);
-    if (tapCount) tapCount.textContent = `Taps: ${total}`;
-
-    if (!m.bull){
-      help("Step 1", "Tap the bull (center) once.");
-    } else if ((m.holes?.length || 0) < 1){
-      help("Step 2", "Now tap at least one hole.");
-    } else {
-      help("Ready", "Press to see results.");
-    }
-  }
-
-  function fitCanvas(){
-    const r = imgWrap.getBoundingClientRect();
-    canvas.width  = Math.max(1, Math.floor(r.width));
-    canvas.height = Math.max(1, Math.floor(r.height));
-    canvas.style.width  = r.width + "px";
-    canvas.style.height = r.height + "px";
-  }
-
-  function draw(){
-    fitCanvas();
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    const m = getModel();
-
-    // Draw bull (green-ish via alpha white; we don’t hardcode colors elsewhere, but this is a marker)
-    if (m.bull){
-      drawDot(m.bull.x, m.bull.y, 10, 0.9);
-      drawRing(m.bull.x, m.bull.y, 18, 0.5);
     }
 
-    // Draw holes
-    (m.holes || []).forEach(p => {
-      drawDot(p.x, p.y, 8, 0.75);
+    status("Photo loaded. Tap the holes (Tap-n-Score).");
+  }
+
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ""));
+      r.onerror = () => reject(new Error("FileReader failed."));
+      r.readAsDataURL(file);
     });
   }
 
-  function drawDot(x, y, r, a){
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI*2);
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fill();
-    ctx.restore();
-  }
+  function openPicker(){
+    // iOS friendly: create a hidden input each time
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*";
+    inp.capture = "environment";
+    inp.style.display = "none";
+    document.body.appendChild(inp);
 
-  function drawRing(x, y, r, a){
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI*2);
-    ctx.strokeStyle = "rgba(255,255,255,0.9)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
-  }
+    inp.addEventListener("change", async () => {
+      const file = inp.files && inp.files[0];
+      inp.remove();
+      if (file) await onPickFile(file);
+    });
 
-  function getPointFromEvent(ev){
-    const rect = canvas.getBoundingClientRect();
-    const pt = (ev.touches && ev.touches[0]) ? ev.touches[0] : ev;
-    const x = pt.clientX - rect.left;
-    const y = pt.clientY - rect.top;
-    return { x, y };
+    inp.click();
   }
 
   function onTap(ev){
-    // IMPORTANT: do NOT preventDefault; allow pinch zoom.
-    const p = getPointFromEvent(ev);
-    const m = getModel();
-
-    if (!m.bull){
-      m.bull = p;
-      saveModel(m);
-      status("Bull set. Now tap holes.");
-    } else {
-      m.holes = m.holes || [];
-      m.holes.push(p);
-      saveModel(m);
-      status("Hole added.");
-    }
-
-    draw();
-    updateUI();
-  }
-
-  function canGoResults(){
-    const m = getModel();
-    return !!(m.bull && Array.isArray(m.holes) && m.holes.length >= 1);
-  }
-
-  function goResults(){
-    if (!canGoResults()){
-      status("Tap the bull first, then at least one hole.");
-      updateUI();
+    if (!currentFile || !imgEl || !imgEl.src) {
+      status("Upload a target photo first.");
       return;
     }
-    setDistance();
-    setVendor();
-    window.location.href = `./output.html?v=${Date.now()}`;
+
+    // DO NOT prevent default => allow pinch zoom behavior on iOS
+    const p = naturalPointFromEvent(ev);
+    if (!p) return;
+
+    ensureBull();
+
+    tapHoles.push(p);
+    storeTaps();
+    updateTapsUI();
+    status(`Taps: ${tapHoles.length}. Tap more holes or press Results.`);
   }
 
-  function onFile(file){
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      sessionStorage.setItem(SS_PHOTO, dataUrl);
-
-      targetImg.onload = () => {
-        status("Photo loaded. Tap the bull (center), then tap holes.");
-        clearTaps(); // resets instructions + model + draw
-        draw();
-        updateUI();
-      };
-      targetImg.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function init(){
-    loadDistance();
-    loadVendor();
-
-    const lastPhoto = sessionStorage.getItem(SS_PHOTO);
-    if (lastPhoto && targetImg){
-      targetImg.onload = () => { draw(); updateUI(); };
-      targetImg.src = lastPhoto;
-      status("Photo loaded. Tap the bull (center), then tap holes.");
-    } else {
-      status("Ready. Tap UPLOAD.");
+  async function goResults(){
+    // Fender plug: no taps => no backend call
+    if (tapHoles.length === 0) {
+      status("Tap at least one hole before results.");
+      return;
+    }
+    if (!currentFile) {
+      status("Upload a target photo first.");
+      return;
     }
 
-    // Bind
-    if (uploadBtn){
-      const openPicker = () => fileInput.click();
-      uploadBtn.addEventListener("click", openPicker);
-      uploadBtn.addEventListener("touchstart", openPicker, { passive:true });
-    }
+    // Clear last (fresh run)
+    sessionStorage.removeItem(LAST_KEY);
 
-    if (fileInput){
-      fileInput.addEventListener("change", (e) => {
-        const f = e.target.files && e.target.files[0];
-        onFile(f);
+    // Persist distance + vendor
+    setDistance(distanceInput ? distanceInput.value : 100);
+    if (vendorInput) setVendor(vendorInput.value);
+
+    // Call backend with tapsJson
+    status("Analyzing…");
+
+    try {
+      const tapsJson = (function(){
+        try { return JSON.parse(sessionStorage.getItem(TAPS_KEY) || ""); } catch { return null; }
+      })();
+
+      const out = await window.SEC_API.analyzeTarget({
+        file: currentFile,
+        distanceYards: Number(sessionStorage.getItem(DIST_KEY) || 100),
+        tapsJson
       });
+
+      // Store full result for output.html
+      sessionStorage.setItem(LAST_KEY, JSON.stringify(out.data || {}));
+
+      // Navigate (cache-bust)
+      window.location.href = `./output.html?v=${Date.now()}`;
+    } catch (e) {
+      // Calm inline error (no scary screen)
+      const msg = String(e && e.message ? e.message : e);
+      status(msg || "Analyze failed.");
     }
-
-    if (distanceInput){
-      distanceInput.addEventListener("input", setDistance);
-      distanceInput.addEventListener("change", setDistance);
-    }
-
-    if (vendorUrlInput){
-      vendorUrlInput.addEventListener("input", setVendor);
-      vendorUrlInput.addEventListener("change", setVendor);
-    }
-
-    if (clearBtn){
-      clearBtn.addEventListener("click", clearTaps);
-      clearBtn.addEventListener("touchstart", clearTaps, { passive:true });
-    }
-
-    if (resultsBtn){
-      resultsBtn.addEventListener("click", goResults);
-      resultsBtn.addEventListener("touchstart", goResults, { passive:true });
-    }
-
-    // Tap handlers on canvas
-    canvas.addEventListener("click", onTap);
-    canvas.addEventListener("touchstart", onTap, { passive:true });
-
-    // Resize safety
-    window.addEventListener("resize", () => { draw(); });
-
-    updateUI();
   }
 
-  init();
+  // ===== INIT =====
+  (function init(){
+    // Defaults
+    setDistance(sessionStorage.getItem(DIST_KEY) || 100);
+    if (vendorInput) vendorInput.value = sessionStorage.getItem(VENDOR_BUY) || "";
+
+    updateTapsUI();
+    status("Ready. Tap UPLOAD.");
+
+    if (uploadBtn) {
+      uploadBtn.addEventListener("click", openPicker);
+      uploadBtn.addEventListener("touchstart", openPicker, { passive: true });
+    }
+
+    if (distanceInput) {
+      distanceInput.addEventListener("change", () => setDistance(distanceInput.value));
+      distanceInput.addEventListener("input", () => setDistance(distanceInput.value));
+    }
+
+    if (vendorInput) {
+      vendorInput.addEventListener("change", () => setVendor(vendorInput.value));
+      vendorInput.addEventListener("input", () => setVendor(vendorInput.value));
+    }
+
+    if (clearTapsBtn) {
+      clearTapsBtn.addEventListener("click", clearTaps);
+      clearTapsBtn.addEventListener("touchstart", clearTaps, { passive: true });
+    }
+
+    if (imgEl) {
+      imgEl.addEventListener("click", onTap);
+      imgEl.addEventListener("touchstart", onTap, { passive: true });
+    }
+
+    if (goResultsBtn) {
+      goResultsBtn.addEventListener("click", goResults);
+      goResultsBtn.addEventListener("touchstart", goResults, { passive: true });
+    }
+  })();
 })();
