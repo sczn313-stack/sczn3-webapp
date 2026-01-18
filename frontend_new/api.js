@@ -1,6 +1,8 @@
-// frontend_new/api.js  (FULL CUT/PASTE REPLACEMENT)
-// Locks frontend -> backend (prevents "Not Found" from static site),
-// provides one analyze function, and stores the last result for output.html.
+// frontend_new/api.js  (FULL CUT/PASTE REPLACEMENT — sends NORMALIZED taps as-is)
+// IMPORTANT:
+// - Your index.js stores taps as normalized 0..1 coords in sessionStorage("sczn3_taps_v1")
+// - This api.js sends tapsJson with those normalized coords (bull first) to the backend
+// - Backend V4 auto-detects normalized vs pixels, so this is rock solid.
 
 (() => {
   const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
@@ -8,6 +10,7 @@
   const SS_LAST_RESULT = "sczn3_last_result_json";
   const SS_PHOTO       = "sczn3_targetPhoto_dataUrl";
   const SS_TAPS        = "sczn3_taps_v1";
+  const SS_VENDOR      = "sczn3_vendor_buy_url";
 
   function safeJsonParse(s){
     try { return JSON.parse(String(s || "")); } catch { return null; }
@@ -49,32 +52,34 @@
     }
   }
 
-  // This is what index.js calls (optional hook)
+  // Called by index.js
   window.sczn3Analyze = async function ({ distanceYds = 100, vendorLink = "", taps = [] } = {}) {
-    // Guard: need photo + at least 1 tap
+    // store vendor link for Receipt + Saved pages
+    try {
+      if (vendorLink && String(vendorLink).trim()) {
+        sessionStorage.setItem(SS_VENDOR, String(vendorLink).trim());
+      }
+    } catch {}
+
+    // Guard: need photo + taps
     let photoDataUrl = "";
     try { photoDataUrl = sessionStorage.getItem(SS_PHOTO) || ""; } catch {}
-
     if (!photoDataUrl) {
       return { ok:false, error:{ message:"No photo loaded." } };
     }
-    if (!Array.isArray(taps) || taps.length < 1) {
-      return { ok:false, error:{ message:"No taps captured." } };
+
+    if (!Array.isArray(taps) || taps.length < 2) {
+      // REQUIRE bull + at least one hole
+      return { ok:false, error:{ message:"Tap bull first, then at least 1 hole." } };
     }
 
-    // Payload to backend_new/server.js expects tapsJson = array of points
-    // bull-first convention: user should tap bull FIRST, then holes
-    // Here we send as array in the required shape.
-    const tapsJson = taps.map(p => ({ x: Number(p.x), y: Number(p.y) }));
+    // taps are normalized; send as-is
+    const tapsJson = JSON.stringify(taps.map(p => ({ x: Number(p.x), y: Number(p.y) })));
 
-    const payload = {
-      distanceYards: Number(distanceYds) || 100,
-      tapsJson: JSON.stringify(tapsJson),
-      // optionally include image as multipart in future, but backend supports taps-only
-      // Also include natural dims if your UI has them later
-    };
+    // (Optional) keep a copy in sessionStorage
+    try { sessionStorage.setItem(SS_TAPS, JSON.stringify(taps)); } catch {}
 
-    // Store "Analyzing..." stub
+    // Place "Analyzing..." stub so output.html can show clean status
     try {
       sessionStorage.setItem(SS_LAST_RESULT, JSON.stringify({
         ok:false,
@@ -83,25 +88,31 @@
       }));
     } catch {}
 
+    const payload = {
+      distanceYards: Number(distanceYds) || 100,
+      tapsJson
+    };
+
     const r = await postJson("/api/analyze", payload);
 
-    // Store final result for output.html to render
+    // Store final result for output.html
     try {
-      sessionStorage.setItem(SS_LAST_RESULT, JSON.stringify(r.ok ? (r.data || {}) : ({
-        ok:false,
-        error: r.error || { message:"Analyze failed." },
-        status: r.status
-      })));
+      sessionStorage.setItem(SS_LAST_RESULT, JSON.stringify(
+        r.ok ? (r.data || {}) : ({
+          ok:false,
+          error: r.error || { message:"Analyze failed." },
+          status: r.status
+        })
+      ));
     } catch {}
 
-    // Navigate to output page on success/failure (output page shows status)
+    // Always go to output to show result / error
     window.location.href = "./output.html?v=" + Date.now();
     return r;
   };
 
-  // helper: allow manual override if needed
-  window.setSczn3BackendBase = function (url) {
-    // kept for future; not used in this pinned version
-    console.log("Backend base is pinned in api.js:", BACKEND_BASE, "requested:", url);
+  // Optional debug helpers
+  window.sczn3Ping = async function () {
+    return await postJson("/health", {}, 8000);
   };
 })();
