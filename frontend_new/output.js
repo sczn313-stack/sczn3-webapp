@@ -1,132 +1,118 @@
 // sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
-// NEVER uses alert(). Always writes status into #statusBox.
+// Results page: reads last payload, calls backend, renders cleanly.
 
-(function () {
-  const DIST_KEY = "sczn3_distance_yards";
-  const TAPS_KEY = "sczn3_taps_json";
-  const LAST_KEY = "sczn3_last_result_json";
+(() => {
+  const DIST_KEY   = "sczn3_distance_yards";
+  const PAYLOAD_KEY= "sczn3_last_analyze_payload";
+  const LAST_KEY   = "sczn3_last_result_json";
 
   function $(id){ return document.getElementById(id); }
-
-  const statusBox = $("statusBox");
 
   const scoreEl = $("scoreVal");
   const windEl  = $("windVal");
   const elevEl  = $("elevVal");
   const distEl  = $("distVal");
   const poibEl  = $("poibVal");
+  const msgEl   = $("msgLine");
 
-  const backBtn    = $("backBtn");
-  const savedBtn   = $("savedBtn");
-  const receiptBtn = $("receiptBtn");
+  const backBtn   = $("backBtn");
+  const savedBtn  = $("savedBtn");
+  const receiptBtn= $("receiptBtn");
+  const retryBtn  = $("retryBtn"); // optional button if you add it
 
-  function setText(el, v){
-    if (!el) return;
-    el.textContent = String(v ?? "");
+  function setMsg(s){
+    if (msgEl) msgEl.textContent = String(s || "");
   }
 
-  function setStatus(msg){
-    if (!statusBox) return;
-    statusBox.textContent = String(msg || "");
+  function setVals({score="--", wind="--", elev="--", dist="--", poib="--"}){
+    if (scoreEl) scoreEl.textContent = score;
+    if (windEl)  windEl.textContent  = wind;
+    if (elevEl)  elevEl.textContent  = elev;
+    if (distEl)  distEl.textContent  = dist;
+    if (poibEl)  poibEl.textContent  = poib;
   }
 
   function safeJsonParse(s){
     try { return JSON.parse(String(s || "")); } catch { return null; }
   }
 
+  function getSession(k){
+    try { return sessionStorage.getItem(k) || ""; } catch { return ""; }
+  }
+
+  function setSession(k,v){
+    try { sessionStorage.setItem(k, String(v || "")); } catch {}
+  }
+
   function getDistance(){
-    const n = Number(sessionStorage.getItem(DIST_KEY));
-    return Number.isFinite(n) && n > 0 ? n : 100;
+    const v = Number(getSession(DIST_KEY));
+    return Number.isFinite(v) && v > 0 ? v : 100;
   }
 
-  function getTapsPayload(){
-    const raw = sessionStorage.getItem(TAPS_KEY) || "";
-    const obj = safeJsonParse(raw);
-    return obj && typeof obj === "object" ? obj : null;
+  function formatClicks(val, dir){
+    const v = (val === null || typeof val === "undefined") ? "--" : String(val);
+    const d = dir ? String(dir) : "";
+    return `${v} ${d}`.trim();
   }
 
-  function hasValidTaps(obj){
-    if (!obj) return false;
-    const bullOk =
-      obj.bull &&
-      Number.isFinite(obj.bull.x) &&
-      Number.isFinite(obj.bull.y);
+  function buildDisplayFromResult(res){
+    const score = (res && typeof res.score !== "undefined") ? String(res.score) : "--";
 
-    const holesOk =
-      Array.isArray(obj.holes) &&
-      obj.holes.length > 0 &&
-      obj.holes.every(h => h && Number.isFinite(h.x) && Number.isFinite(h.y));
+    const wind = formatClicks(res?.clicks?.windage, res?.directions?.windage);
+    const elev = formatClicks(res?.clicks?.elevation, res?.directions?.elevation);
 
-    return !!(bullOk && holesOk);
+    const poib = (res?.poib && typeof res.poib === "object")
+      ? `${res.poib.x ?? "--"}, ${res.poib.y ?? "--"}`
+      : "--";
+
+    return { score, wind, elev, poib };
   }
 
-  async function analyze(){
-    const distanceYards = getDistance();
-    setText(distEl, `${distanceYards} yds`);
+  async function runAnalyze(){
+    const payloadRaw = getSession(PAYLOAD_KEY);
+    const payload = safeJsonParse(payloadRaw);
 
-    const tapsPayload = getTapsPayload();
-
-    // GUARD: do not call backend without valid taps
-    if (!hasValidTaps(tapsPayload)){
-      setStatus("Tap bullet holes first. Then press See results.");
-      setText(scoreEl, "--");
-      setText(windEl, "--");
-      setText(elevEl, "--");
-      setText(poibEl, "--");
+    // If we don’t have a payload, show calm message and stop.
+    if (!payload || typeof payload !== "object"){
+      setMsg("No input found. Go back and run a session.");
+      setVals({ dist: `${getDistance()} yds` });
       return;
     }
 
-    setStatus("Analyzing…");
+    setMsg("Analyzing…");
+    setVals({ dist: `${getDistance()} yds` });
 
-    try {
-      // Prefer a wrapper if api.js defines it; else fallback to /api/analyze
-      const res = await (window.apiAnalyze
-        ? window.apiAnalyze({ distanceYards, tapsJson: tapsPayload })
-        : fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type":"application/json" },
-            body: JSON.stringify({ distanceYards, tapsJson: tapsPayload })
-          }).then(r => r.json())
-      );
+    const r = await window.Sczn3Api.analyzeTapNScore(payload);
 
-      try { sessionStorage.setItem(LAST_KEY, JSON.stringify(res || {})); } catch {}
-
-      if (!res || res.ok === false){
-        setStatus("Analyze failed. Try retapping your holes.");
-        setText(scoreEl, "--");
-        setText(windEl, "--");
-        setText(elevEl, "--");
-        setText(poibEl, "--");
-        return;
-      }
-
-      setStatus("Done.");
-
-      const score = (typeof res.score !== "undefined") ? res.score : "--";
-      const wind  = res?.clicks?.windage ?? "--";
-      const elev  = res?.clicks?.elevation ?? "--";
-      const wdir  = res?.directions?.windage ?? "";
-      const edir  = res?.directions?.elevation ?? "";
-      const poib  = res?.poib ?? "--";
-
-      setText(scoreEl, score);
-      setText(windEl, `${wind} ${wdir}`.trim());
-      setText(elevEl, `${elev} ${edir}`.trim());
-      setText(poibEl, poib);
-
-    } catch (e){
-      setStatus("Network/server error. Try again.");
-      setText(scoreEl, "--");
-      setText(windEl, "--");
-      setText(elevEl, "--");
-      setText(poibEl, "--");
+    if (!r || !r.ok){
+      const msg = r?.error?.message || "Network/server error. Try again.";
+      setMsg(msg);
+      setVals({ dist: `${getDistance()} yds` });
+      return;
     }
+
+    const data = r.data;
+
+    // Save for Receipt + Saved pages
+    setSession(LAST_KEY, JSON.stringify(data || {}));
+
+    const disp = buildDisplayFromResult(data || {});
+    setVals({
+      score: disp.score,
+      wind: disp.wind,
+      elev: disp.elev,
+      dist: `${getDistance()} yds`,
+      poib: disp.poib
+    });
+
+    setMsg("Done.");
   }
 
-  // Nav (cache-bust for iOS)
-  if (backBtn) backBtn.addEventListener("click", () => window.location.href = "./index.html?v=" + Date.now());
-  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
-  if (receiptBtn) receiptBtn.addEventListener("click", () => window.location.href = "./receipt.html?v=" + Date.now());
+  // Buttons
+  if (backBtn) backBtn.addEventListener("click", () => window.location.href = "./index.html");
+  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html");
+  if (receiptBtn) receiptBtn.addEventListener("click", () => window.location.href = "./receipt.html");
+  if (retryBtn) retryBtn.addEventListener("click", runAnalyze);
 
-  analyze();
+  runAnalyze();
 })();
