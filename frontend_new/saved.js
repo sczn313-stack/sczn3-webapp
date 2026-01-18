@@ -1,12 +1,13 @@
 // sczn3-webapp/frontend_new/saved.js (FULL FILE REPLACEMENT)
-// Uses SAME storage as receipt.js:
-//   localStorage: sczn3_saved_sessions_v1  (array of saved session objects)
-// Re-opens by writing:
-//   sessionStorage: sczn3_last_result_json
+// Reads localStorage: sczn3_saved_sessions_v1 (array)
+// Opens a saved session by loading its "result" into sessionStorage: sczn3_last_result_json
+// iOS-safe navigation: cache-bust on href changes
 
 (function () {
   const LS_SAVED = "sczn3_saved_sessions_v1";
-  const LAST_KEY = "sczn3_last_result_json";
+  const SS_LAST  = "sczn3_last_result_json";
+  const SS_DIST  = "sczn3_distance_yards";
+  const SS_PHOTO = "sczn3_targetPhoto_dataUrl";
 
   function esc(s){
     return String(s || "")
@@ -15,20 +16,17 @@
       .replaceAll(">","&gt;");
   }
 
-  function $(id){ return document.getElementById(id); }
-  const root = $("savedRoot") || document.body;
-
   function safeJsonParse(s){
     try { return JSON.parse(String(s || "")); } catch { return null; }
   }
 
-  function loadSaved(){
+  function loadArr(){
     const raw = localStorage.getItem(LS_SAVED) || "[]";
     const arr = safeJsonParse(raw);
     return Array.isArray(arr) ? arr : [];
   }
 
-  function saveSaved(arr){
+  function saveArr(arr){
     localStorage.setItem(LS_SAVED, JSON.stringify(arr || []));
   }
 
@@ -37,70 +35,16 @@
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return iso || "";
       return d.toLocaleString();
-    } catch {
-      return iso || "";
-    }
+    } catch { return iso || ""; }
   }
 
-  function goUpload(){
-    window.location.href = `./index.html?v=${Date.now()}`;
-  }
-
-  function goOutputWith(rec){
-    // Write last result so output.html renders it
-    const result = rec && rec.result ? rec.result : null;
-    if (!result){
-      alert("Saved record is missing results.");
-      return;
-    }
-    sessionStorage.setItem(LAST_KEY, JSON.stringify(result));
-    window.location.href = `./output.html?v=${Date.now()}`;
-  }
-
-  function removeAt(idx){
-    const arr = loadSaved();
-    arr.splice(idx, 1);
-    saveSaved(arr);
-    render();
-  }
-
-  function clearAll(){
-    saveSaved([]);
-    render();
-  }
-
-  function rowHtml(rec, i){
-    const when  = formatLocal(rec.created_at || rec.savedAt || rec.when || "");
-    const yards = rec.yards ? `${Number(rec.yards)} yds` : "";
-    const score = rec.preview?.score ? `Score ${rec.preview.score}` : "";
-
-    const wind  = rec.preview?.wind || "";
-    const elev  = rec.preview?.elev || "";
-
-    const meta = [yards, score].filter(Boolean).join(" • ");
-
-    return `
-      <div class="savedRow">
-        <div class="savedTopLine">
-          <div class="savedWhen">${esc(when || "Saved session")}</div>
-          <div class="savedMeta">${esc(meta)}</div>
-        </div>
-
-        <div class="savedAdj">
-          <div class="savedAdjLine"><span class="k">Windage</span> <span class="v">${esc(wind || "—")}</span></div>
-          <div class="savedAdjLine"><span class="k">Elevation</span> <span class="v">${esc(elev || "—")}</span></div>
-        </div>
-
-        <div class="savedBtns">
-          <button class="btnSecondary" type="button" data-open="${i}">Open</button>
-          <button class="btnSecondary" type="button" data-del="${i}">Delete</button>
-        </div>
-      </div>
-    `;
+  function go(url){
+    window.location.href = `${url}?v=${Date.now()}`;
   }
 
   function render(){
-    const items = loadSaved();
+    const root = document.getElementById("savedRoot") || document.body;
+    const items = loadArr();
 
     root.innerHTML = `
       <div class="resultsWrap">
@@ -112,7 +56,7 @@
 
         ${items.length ? `
           <div class="savedList">
-            ${items.map((rec,i) => rowHtml(rec,i)).join("")}
+            ${items.map(row).join("")}
           </div>
 
           <div class="resultsActions">
@@ -122,7 +66,7 @@
         ` : `
           <div class="resultsNote">
             <div class="noteLine">No saved sessions yet.</div>
-            <div class="noteLine subtle">Save from the Results screen.</div>
+            <div class="noteLine subtle">Save from the Results or Receipt screen.</div>
           </div>
 
           <div class="resultsActions">
@@ -136,40 +80,79 @@
       </div>
     `;
 
-    // Start new session (iOS reliable)
     const startBtn = document.getElementById("startBtn");
     if (startBtn){
+      const goUpload = () => go("./index.html");
       startBtn.addEventListener("click", goUpload);
-      startBtn.addEventListener("touchstart", goUpload, { passive:true });
+      startBtn.addEventListener("touchstart", goUpload, { passive: true });
     }
-
-    // Open/Delete bindings
-    document.querySelectorAll("[data-open]").forEach(btn => {
-      const open = () => {
-        const i = Number(btn.getAttribute("data-open"));
-        const rec = loadSaved()[i];
-        if (!rec) return;
-        goOutputWith(rec);
-      };
-      btn.addEventListener("click", open);
-      btn.addEventListener("touchstart", open, { passive:true });
-    });
-
-    document.querySelectorAll("[data-del]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const i = Number(btn.getAttribute("data-del"));
-        if (!confirm("Delete this saved session?")) return;
-        removeAt(i);
-      });
-    });
 
     const clearAllBtn = document.getElementById("clearAllBtn");
     if (clearAllBtn){
       clearAllBtn.addEventListener("click", () => {
         if (!confirm("Clear ALL saved sessions on this device?")) return;
-        clearAll();
+        saveArr([]);
+        render();
       });
     }
+
+    // Open / Delete handlers
+    document.querySelectorAll("[data-open-id]").forEach(btn => {
+      const open = () => {
+        const id = btn.getAttribute("data-open-id");
+        const rec = loadArr().find(x => x && x.id === id);
+        if (!rec || !rec.result){
+          alert("Record missing.");
+          return;
+        }
+        // Restore last result and distance for continuity
+        sessionStorage.setItem(SS_LAST, JSON.stringify(rec.result));
+        if (rec.yards) sessionStorage.setItem(SS_DIST, String(rec.yards));
+        if (rec.photoDataUrl) sessionStorage.setItem(SS_PHOTO, String(rec.photoDataUrl));
+        go("./output.html");
+      };
+      btn.addEventListener("click", open);
+      btn.addEventListener("touchstart", open, { passive: true });
+    });
+
+    document.querySelectorAll("[data-del-id]").forEach(btn => {
+      const del = () => {
+        const id = btn.getAttribute("data-del-id");
+        if (!id) return;
+        if (!confirm("Delete this saved session?")) return;
+        const next = loadArr().filter(x => x && x.id !== id);
+        saveArr(next);
+        render();
+      };
+      btn.addEventListener("click", del);
+    });
+  }
+
+  function row(item){
+    const when  = formatLocal(item.created_at || item.savedAt || "");
+    const dist  = item.yards ? `${Number(item.yards)} yds` : "";
+    const score = item.preview?.score ? `Score ${item.preview.score}` : "";
+    const wind  = item.preview?.wind || "";
+    const elev  = item.preview?.elev || "";
+
+    return `
+      <div class="savedRow">
+        <div class="savedTopLine">
+          <div class="savedWhen">${esc(when)}</div>
+          <div class="savedMeta">${esc([dist, score].filter(Boolean).join(" • "))}</div>
+        </div>
+
+        <div class="savedAdj">
+          <div class="savedAdjLine"><span class="k">Windage</span> <span class="v">${esc(wind)}</span></div>
+          <div class="savedAdjLine"><span class="k">Elevation</span> <span class="v">${esc(elev)}</span></div>
+        </div>
+
+        <div class="savedBtns">
+          <button class="btnSecondary" type="button" data-open-id="${esc(item.id)}">Open</button>
+          <button class="btnSecondary" type="button" data-del-id="${esc(item.id)}">Delete</button>
+        </div>
+      </div>
+    `;
   }
 
   render();
