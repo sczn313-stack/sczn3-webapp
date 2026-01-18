@@ -1,36 +1,36 @@
 // sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
-// Results screen. Calm inline handling. No scary crash screen.
+// Calm guardrails + correct payload for backend (/api/analyze).
+// Never calls backend unless tapsJson includes bull + holes.
 
 (function () {
-  const DIST_KEY  = "sczn3_distance_yards";
-  const LAST_KEY  = "sczn3_last_result_json";
-  const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
-  const VENDOR_BUY= "sczn3_vendor_buy_url";
+  const DIST_KEY   = "sczn3_distance_yards";
+  const PHOTO_KEY  = "sczn3_targetPhoto_dataUrl";
+  const TAPS_KEY   = "sczn3_taps_json";
+  const LAST_KEY   = "sczn3_last_result_json";
+  const VENDOR_BUY = "sczn3_vendor_buy_url";
+
+  const backendBase =
+    sessionStorage.getItem("sczn3_backend_base") ||
+    "https://sczn3-backend-new1.onrender.com";
 
   function $(id){ return document.getElementById(id); }
-  function esc(s){
-    return String(s || "")
-      .replaceAll("&","&amp;")
-      .replaceAll("<","&lt;")
-      .replaceAll(">","&gt;");
+  function safeJsonParse(s){ try { return JSON.parse(String(s||"")); } catch { return null; } }
+
+  const backBtn   = $("backBtn");
+  const savedBtn  = $("savedBtn");
+  const receiptBtn= $("receiptBtn");
+
+  const inlineMsg = $("inlineMsg");
+  const detailsBox= $("detailsBox");
+
+  const buyMoreBtn= $("buyMoreBtn");
+
+  function setMsg(msg){
+    if (inlineMsg) inlineMsg.textContent = String(msg || "");
   }
 
-  const backBtn    = $("backBtn");
-  const savedBtn   = $("savedBtn");
-  const receiptBtn = $("receiptBtn");
-  const buyMoreBtn = $("buyMoreBtn");
-
-  const statusLine = $("statusLine");
-  const scoreEl    = $("scoreEl");
-  const windEl     = $("windEl");
-  const elevEl     = $("elevEl");
-  const distEl     = $("distEl");
-  const poibEl     = $("poibEl");
-
-  const debugBox   = $("debugBox"); // optional
-
-  function status(msg){
-    if (statusLine) statusLine.textContent = String(msg || "");
+  function setDetails(html){
+    if (detailsBox) detailsBox.innerHTML = html || "";
   }
 
   function setVendorBuyLink(){
@@ -41,83 +41,142 @@
     }
   }
 
-  function readLast(){
-    const raw = sessionStorage.getItem(LAST_KEY) || "";
-    try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+  function getDistance(){
+    const n = Number(sessionStorage.getItem(DIST_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 100;
   }
 
-  function two(n){
-    const x = Number(n);
-    return Number.isFinite(x) ? x.toFixed(2) : "--";
+  function getTapsPayload(){
+    const obj = safeJsonParse(sessionStorage.getItem(TAPS_KEY) || "");
+    if (!obj || typeof obj !== "object") return null;
+    return obj;
   }
 
-  function render(){
+  function validatePayload(p){
+    // Must have bull + holes (at least 1)
+    const bullOk =
+      p && p.bull &&
+      Number.isFinite(Number(p.bull.x)) &&
+      Number.isFinite(Number(p.bull.y));
+
+    const holesOk =
+      p && Array.isArray(p.holes) && p.holes.length >= 1 &&
+      p.holes.every(h => Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)));
+
+    return bullOk && holesOk;
+  }
+
+  function esc(s){
+    return String(s || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  function renderCalmMissingState(){
+    setMsg("Nothing to score yet.");
+    setDetails(`
+      <div class="card">
+        <div class="kicker">Tap-n-Score™</div>
+        <div class="title">Waiting on taps</div>
+        <div class="sub">Go back, tap at least 1 bullet hole, then press Results.</div>
+      </div>
+    `);
+  }
+
+  function renderBackendError(statusCode, text){
+    setMsg("Couldn’t score that photo.");
+    setDetails(`
+      <div class="card">
+        <div class="kicker">Tap-n-Score™</div>
+        <div class="title">Try again</div>
+        <div class="sub">Go back and confirm your taps.</div>
+        <div class="tinyMuted">Backend returned ${esc(statusCode)}.</div>
+        ${text ? `<pre class="tinyCode">${esc(text)}</pre>` : ``}
+      </div>
+    `);
+  }
+
+  function renderResults(data){
+    // Minimal safe render (you can expand later)
+    const score = (data && (data.score ?? data.smartScore ?? data.smart_score));
+    const clicks = data && (data.clicks || data.scopeClicks || data.scope_clicks) || {};
+    const dirs   = data && (data.directions || data.dirs) || {};
+    const poib   = (data && (data.poib ?? data.POIB)) ?? null;
+
+    const wind = clicks.windage ?? clicks.wind ?? "--";
+    const elev = clicks.elevation ?? clicks.elev ?? "--";
+    const wdir = dirs.windage ?? "";
+    const edir = dirs.elevation ?? "";
+
+    setMsg("Scored.");
+    setDetails(`
+      <div class="card">
+        <div class="kicker">Results</div>
+        <div class="title">Tap-n-Score™</div>
+
+        <div class="row"><span class="k">Score</span><span class="v">${esc(score ?? "--")}</span></div>
+        <div class="row"><span class="k">Windage</span><span class="v">${esc(String(wind))} ${esc(String(wdir))}</span></div>
+        <div class="row"><span class="k">Elevation</span><span class="v">${esc(String(elev))} ${esc(String(edir))}</span></div>
+        <div class="row"><span class="k">Distance</span><span class="v">${esc(getDistance())} yds</span></div>
+        <div class="row"><span class="k">POIB</span><span class="v">${esc(poib ?? "--")}</span></div>
+      </div>
+    `);
+  }
+
+  async function run(){
     setVendorBuyLink();
 
-    const dist = Number(sessionStorage.getItem(DIST_KEY) || 100);
-    if (distEl) distEl.textContent = `${dist} yds`;
-
-    const last = readLast();
-
-    if (!last || typeof last !== "object") {
-      status("No results yet. Go back and run a session.");
-      if (scoreEl) scoreEl.textContent = "--";
-      if (windEl) windEl.textContent = "--";
-      if (elevEl) elevEl.textContent = "--";
-      if (poibEl) poibEl.textContent = "--";
+    const payload = getTapsPayload();
+    if (!validatePayload(payload)){
+      // Guardrail: DO NOT call backend
+      renderCalmMissingState();
       return;
     }
 
-    // If backend sends error-like payload, show calm message
-    const ok = (typeof last.ok === "boolean") ? last.ok : true;
-    if (ok === false) {
-      const msg = last?.error?.message || "Analyze failed. Tap holes and try again.";
-      status(msg);
+    setMsg("Scoring…");
 
-      if (scoreEl) scoreEl.textContent = "--";
-      if (windEl) windEl.textContent = "--";
-      if (elevEl) elevEl.textContent = "--";
-      if (poibEl) poibEl.textContent = "--";
+    // Build request body expected by backend
+    // We send tapsJson (bull + holes) and distanceYards.
+    const body = {
+      mode: "tapnscore",
+      distanceYards: getDistance(),
+      tapsJson: payload
+    };
 
-      if (debugBox) debugBox.textContent = JSON.stringify(last, null, 2);
+    let res;
+    try{
+      res = await fetch(`${backendBase}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (e){
+      renderBackendError("NETWORK", String(e && e.message ? e.message : e));
       return;
     }
 
-    status("Results ready.");
-
-    // Score
-    if (scoreEl) scoreEl.textContent = (typeof last.score !== "undefined") ? String(last.score) : "--";
-
-    // Clicks + directions (always two decimals when numeric)
-    const w = last?.clicks?.windage;
-    const e = last?.clicks?.elevation;
-    const wd = last?.directions?.windage || "";
-    const ed = last?.directions?.elevation || "";
-
-    if (windEl) windEl.textContent = `${two(w)} ${wd}`.trim() || "--";
-    if (elevEl) elevEl.textContent = `${two(e)} ${ed}`.trim() || "--";
-
-    // POIB if present
-    const poib = last?.poib || last?.POIB || last?.centroid;
-    if (poibEl) {
-      if (poib && typeof poib === "object") {
-        const x = (typeof poib.x !== "undefined") ? two(poib.x) : "--";
-        const y = (typeof poib.y !== "undefined") ? two(poib.y) : "--";
-        poibEl.textContent = `${x}, ${y}`;
-      } else {
-        poibEl.textContent = "--";
-      }
+    if (!res.ok){
+      const txt = await res.text().catch(() => "");
+      renderBackendError(res.status, txt);
+      return;
     }
 
-    if (debugBox) debugBox.textContent = "";
+    const data = await res.json().catch(() => null);
+
+    // Save for Receipt page
+    try { sessionStorage.setItem(LAST_KEY, JSON.stringify(data || {})); } catch {}
+
+    renderResults(data);
   }
 
-  // ===== INIT =====
-  (function init(){
-    render();
+  // Nav
+  if (backBtn){
+    backBtn.addEventListener("click", () => window.location.href = `./index.html?v=${Date.now()}`);
+  }
+  if (savedBtn){
+    savedBtn.addEventListener("click", () => window.location.href = `./saved.html?v=${Date.now()}`);
+  }
+  if (receiptBtn){
+    receiptBtn.addEventListener("click", () => window.location.href = `./receipt.html?v=${Date.now()}`);
+  }
 
-    if (backBtn) backBtn.addEventListener("click", () => window.location.href = `./index.html?v=${Date.now()}`);
-    if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = `./saved.html?v=${Date.now()}`);
-    if (receiptBtn) receiptBtn.addEventListener("click", () => window.location.href = `./receipt.html?v=${Date.now()}`);
-  })();
+  run();
 })();
