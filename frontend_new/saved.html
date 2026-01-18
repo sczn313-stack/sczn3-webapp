@@ -1,15 +1,75 @@
-<!-- sczn3-webapp/frontend_new/saved.html (FULL FILE REPLACEMENT) -->
+<!-- frontend_new/saved.html  (FULL CUT/PASTE REPLACEMENT)
+     Purpose:
+     - One unified Saved system (matches receipt.js storage)
+     - Reliable iOS navigation
+     - Vendor buy button available
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Tap-n-Score — Saved</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <div id="savedRoot"></div>
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+  <title>Tap-n-Score™ — Saved</title>
 
-  <script src="./saved.js?v=1"></script>
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+  </style>
+
+  <link rel="stylesheet" href="./styles.css?v=20260118e">
+
+  <style>
+    .topRow{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      margin-bottom:10px;
+    }
+    .savedCard{
+      border:1px solid rgba(255,255,255,0.14);
+      background:rgba(255,255,255,0.04);
+      border-radius:18px;
+      padding:14px;
+      margin: 10px 0;
+    }
+    .when{opacity:.8;font-size:13px;margin-bottom:8px}
+    .meta{opacity:.75;font-size:13px;margin-bottom:10px}
+    .line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
+    .line:last-child{border-bottom:none}
+    .k{opacity:.75}
+    .v{font-weight:800}
+    .btnRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .btnRow button{flex:1 1 120px}
+  </style>
+</head>
+
+<body>
+  <div class="page" style="padding:16px; max-width:720px; margin:0 auto;">
+    <div class="topRow">
+      <div>
+        <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">TAP-N-SCORE™</div>
+        <h1 style="margin:8px 0 4px 0;">Saved</h1>
+        <div id="miniStatus" class="subtle" style="margin-bottom:6px;">Loading…</div>
+      </div>
+
+      <a id="buyMoreBtn" class="btnSecondary" href="#" style="display:none;">Buy more targets</a>
+    </div>
+
+    <div id="savedRoot"></div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+      <button id="startBtn" class="btnPrimary" type="button">Start new session</button>
+      <button id="clearAllBtn" class="btnSecondary" type="button">Clear all</button>
+    </div>
+
+    <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
+  </div>
+
+  <script src="./saved.js?v=20260118e"></script>
 </body>
 </html>
