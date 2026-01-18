@@ -6,16 +6,13 @@
   --text:#fff;
   --muted:rgba(255,255,255,.70);
 
-  /* hero accent */
   --heroBorder:rgba(255,255,255,.14);
   --accentA: rgba(30, 90, 255, .22);
   --accentB: rgba(255, 30, 80, .16);
 
-  /* red/white/blue */
   --red:#ff3b30;
   --blue:#0a84ff;
 
-  /* green "quiet hint" */
   --green:#34c759;
   --greenBg: rgba(52, 199, 89, .14);
   --greenBorder: rgba(52, 199, 89, .34);
@@ -44,6 +41,13 @@ html,body{
 .subtle{color:var(--muted); font-size:16px; line-height:1.25}
 .strong{font-weight:800}
 .mono{white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:14px}
+
+/* Headline: reduce dominance of "Upload" */
+.h1{
+  margin: 8px 0 10px;
+  font-size: clamp(36px, 8vw, 54px);
+  letter-spacing: -0.02em;
+}
 
 /* Brand */
 .brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:10px}
@@ -86,6 +90,7 @@ html,body{
   -webkit-tap-highlight-color:transparent;
   user-select:none;
 }
+.uploadHero:active{transform:translateY(1px)}
 .uploadHeroInner{
   padding:18px 18px;
   min-height:84px;
@@ -107,12 +112,12 @@ html,body{
   font-weight:700;
 }
 
-/* Controls row */
+/* Controls row (tight + no run-off) */
 .controlsRow{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:10px;
   flex-wrap:wrap;
 }
 
@@ -120,11 +125,11 @@ html,body{
   display:flex;
   align-items:center;
   gap:10px;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
 }
 
 .distanceBox input{
-  width:120px;
+  width:108px;
   padding:10px 12px;
   border-radius:16px;
   border:1px solid var(--border);
@@ -134,31 +139,12 @@ html,body{
   outline:none;
 }
 
-/* ✅ Green boxed whisper (button) */
-.seeResultsHint{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding:8px 10px;
-  border-radius:14px;
-  border:1px solid var(--greenBorder);
-  background:var(--greenBg);
-  color:rgba(255,255,255,.92);
-  font-weight:900;
-  font-size:14px;
-  letter-spacing:.01em;
-  margin-top:2px;
-  cursor:pointer;
-}
-.seeResultsHint:active{transform:translateY(1px)}
-
 .tapsBlock{
   display:flex;
   align-items:center;
   gap:10px;
+  flex-wrap:nowrap;
   margin-left:auto;
-  flex-wrap:wrap;
-  justify-content:flex-end;
 }
 
 .tapsLine{font-size:18px; white-space:nowrap}
@@ -174,10 +160,6 @@ html,body{
   -webkit-tap-highlight-color:transparent;
 }
 .btn:active{transform:translateY(1px)}
-.btnPrimary{
-  background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.16);
-}
 .btnSecondary{ background:rgba(255,255,255,.05); }
 .btnTight{
   padding:10px 12px;
@@ -185,16 +167,7 @@ html,body{
   white-space:nowrap;
 }
 
-.w100{width:100%}
-
-.card{
-  background:linear-gradient(180deg,var(--card2),var(--card));
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:14px;
-}
-
-/* ✅ Micro-slot */
+/* Micro-slot */
 .microSlot{
   margin-top:12px;
   display:flex;
@@ -202,7 +175,7 @@ html,body{
   gap:10px;
 }
 
-/* Pinch hint (quiet) */
+/* Pinch hint */
 .pinchHint{
   width:100%;
   border-radius:18px;
@@ -237,6 +210,24 @@ html,body{
 }
 .vendorArrow{ font-size:22px; opacity:.65; }
 
+/* ✅ Green boxed whisper (ACTIVE button) */
+.seeResultsHint{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:12px 14px;
+  border-radius:18px;
+  border:1px solid var(--greenBorder);
+  background:var(--greenBg);
+  color:rgba(255,255,255,.94);
+  font-weight:900;
+  font-size:15px;
+  letter-spacing:.01em;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.seeResultsHint:active{transform:translateY(1px)}
+
 /* Inputs */
 .input{
   width:100%;
@@ -249,7 +240,14 @@ html,body{
   outline:none;
 }
 
-/* Target container (FIT) */
+.card{
+  background:linear-gradient(180deg,var(--card2),var(--card));
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:14px;
+}
+
+/* Target container (FIT + show corners) */
 .targetWrap{
   position:relative;
   width:100%;
@@ -271,7 +269,7 @@ html,body{
 .targetImg{
   display:block;
   max-width:100%;
-  max-height:60vh;
+  max-height:62vh;
   width:auto;
   height:auto;
   border-radius:14px;
@@ -302,7 +300,8 @@ html,body{
 }
 
 @media (max-width:420px){
-  .distanceBox input{width:105px}
+  .distanceBox input{width:96px}
   .tapsLine{font-size:16px}
   .btnTight{padding:9px 10px}
+  .seeResultsHint{padding:11px 12px}
 }
