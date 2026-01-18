@@ -1,70 +1,68 @@
+<!-- sczn3-webapp/frontend_new/receipt.html (FULL FILE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Tap-n-Score — Receipt</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tap-n-Score™ — Receipt</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
-
-  <section class="screen">
-    <div class="topBar">
-      <button id="backBtn" class="secondaryBtn" type="button">Back</button>
-      <div class="topTitle">Receipt</div>
-      <button id="savedBtn" class="secondaryBtn" type="button">Saved</button>
+  <div class="resultsWrap receiptWrap">
+    <div class="resultsTop">
+      <div class="resultsKicker">Receipt</div>
+      <div class="resultsTitle">Add setup details</div>
+      <div class="resultsSub">Then Save or Export.</div>
     </div>
 
-    <!-- TOP actions (no scroll) -->
-    <div class="actionsTop">
-      <button id="saveBtn" class="primaryBtn" type="button">Save Session</button>
-      <button id="exportBtn" class="secondaryBtn" type="button">Export</button>
+    <!-- Vendor plug (top) -->
+    <a id="buyMoreBtn" class="btnSecondary receiptVendorBtn" href="#" target="_blank" rel="noreferrer" style="display:none;">
+      Buy more targets
+    </a>
+
+    <div class="receiptForm">
+      <label class="field">
+        <div class="fieldLabel">Scope</div>
+        <input id="scopeInput" class="fieldInput" type="text" placeholder="e.g., Vortex Razor 3-18" autocomplete="off" />
+      </label>
+
+      <label class="field">
+        <div class="fieldLabel">Ammo</div>
+        <input id="ammoInput" class="fieldInput" type="text" placeholder="e.g., 77gr SMK / 168gr" autocomplete="off" />
+      </label>
+
+      <label class="field">
+        <div class="fieldLabel">Gun</div>
+        <input id="gunInput" class="fieldInput" type="text" placeholder="e.g., AR-15 / 6.5CM bolt" autocomplete="off" />
+      </label>
+
+      <label class="field">
+        <div class="fieldLabel">Distance (yards)</div>
+        <input id="yardsInput" class="fieldInput" type="number" inputmode="numeric" min="1" step="1" />
+      </label>
+
+      <label class="field">
+        <div class="fieldLabel">Notes</div>
+        <textarea id="notesInput" class="fieldTextArea" rows="4" placeholder="Optional"></textarea>
+      </label>
     </div>
 
-    <div id="miniStatus" class="miniStatus">Add setup details, then Save or Export.</div>
+    <div id="previewBox" class="receiptPreview"></div>
 
-    <div class="card">
-      <div class="cardTitle">Setup</div>
-
-      <div class="formGrid">
-        <div class="formRow">
-          <label for="scopeInput">Scope</label>
-          <input id="scopeInput" type="text" placeholder="e.g., Nightforce ATACR 1-8" />
-        </div>
-
-        <div class="formRow">
-          <label for="ammoInput">Ammo</label>
-          <input id="ammoInput" type="text" placeholder="e.g., 77gr OTM" />
-        </div>
-
-        <div class="formRow">
-          <label for="gunInput">Gun</label>
-          <input id="gunInput" type="text" placeholder="e.g., 16&quot; AR-15" />
-        </div>
-
-        <div class="formRow">
-          <label for="yardsInput">Distance (yds)</label>
-          <input id="yardsInput" inputmode="numeric" type="number" min="1" step="1" placeholder="100" />
-        </div>
-
-        <div class="formRow">
-          <label for="notesInput">Notes</label>
-          <textarea id="notesInput" rows="3" placeholder="Optional…"></textarea>
-        </div>
-      </div>
+    <div class="resultsBottom">
+      <div id="miniStatus" class="subtle"></div>
     </div>
+  </div>
 
-    <div class="card">
-      <div class="cardTitle">Preview</div>
-      <div id="previewBox" class="receiptPreview"></div>
+  <!-- STICKY ACTION BAR (always visible on iPhone) -->
+  <div class="stickyBar">
+    <button id="backBtn" class="btnSecondary" type="button">Back</button>
+    <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+    <button id="exportBtn" class="btnSecondary" type="button">Export</button>
+    <button id="saveBtn" class="btnPrimary" type="button">Save</button>
+  </div>
 
-      <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
-        Buy more targets
-      </a>
-    </div>
-
-  </section>
-
-  <script type="module" src="receipt.js"></script>
+  <script src="./receipt.js"></script>
 </body>
 </html>
