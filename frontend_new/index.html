@@ -14,8 +14,8 @@
     a{color:inherit}
   </style>
 
-  <!-- IMPORTANT: cache-bust so iOS doesn't keep an old/empty CSS -->
-  <link rel="stylesheet" href="./styles.css?v=20260118a">
+  <!-- cache-bust -->
+  <link rel="stylesheet" href="./styles.css?v=20260118b">
 </head>
 
 <body>
@@ -25,12 +25,9 @@
     <div id="statusLine" class="subtle" style="margin-bottom:14px;">Ready. Tap ADD PHOTO.</div>
 
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-      <!-- If you want CAMERA ONLY, keep capture="environment".
-           If you want camera + photo library, delete capture attribute. -->
-      <label class="btnPrimary" style="display:inline-block; cursor:pointer;">
-        Add photo
-        <input id="photoInput" type="file" accept="image/*" capture="environment" style="display:none;">
-      </label>
+      <!-- IMPORTANT: no capture attr => camera + photo library picker on iOS -->
+      <button id="addPhotoBtn" class="btnPrimary" type="button">Add photo</button>
+      <input id="photoInput" type="file" accept="image/*" style="display:none;">
 
       <div style="display:flex; gap:8px; align-items:center;">
         <div class="subtle" style="font-weight:600;">Distance</div>
@@ -48,7 +45,7 @@
       <div class="subtle" style="margin-bottom:8px; font-weight:600;">Target</div>
 
       <!-- TAP AREA (wrapper receives taps) -->
-      <div id="targetImageWrap">
+      <div id="targetImageWrap" style="display:none;">
         <img id="targetImage" alt="Target preview" />
       </div>
 
@@ -60,39 +57,13 @@
     <div class="subtle" style="margin-bottom:6px;">Vendor link (optional)</div>
     <input id="vendorInput" type="url" placeholder="Paste vendor buy link here" style="margin-bottom:12px;">
 
-    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">
-      See results
-    </button>
+    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">See results</button>
 
     <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
   </div>
 
   <!-- cache-bust scripts too -->
-  <script src="./api.js?v=20260118a"></script>
-  <script src="./index.js?v=20260118a"></script>
-
-  <!-- Minimal glue: load photo into #targetImage so taps can begin -->
-  <script>
-    (function () {
-      const input = document.getElementById("photoInput");
-      const img = document.getElementById("targetImage");
-      const hint = document.getElementById("emptyHint");
-
-      if (!input || !img) return;
-
-      input.addEventListener("change", () => {
-        const f = input.files && input.files[0];
-        if (!f) return;
-
-        const r = new FileReader();
-        r.onload = () => {
-          img.src = String(r.result || "");
-          if (hint) hint.textContent = "Photo loaded. Tap bullet holes (Tap-n-Score).";
-          try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", String(r.result || "")); } catch {}
-        };
-        r.readAsDataURL(f);
-      });
-    })();
-  </script>
+  <script src="./api.js?v=20260118b"></script>
+  <script src="./index.js?v=20260118b"></script>
 </body>
 </html>
