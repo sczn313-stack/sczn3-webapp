@@ -1,85 +1,114 @@
-/* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
-/* Small, stable, iOS-safe. Prevents white flashes and ensures tap dots show. */
-
-:root { color-scheme: dark; }
-
-html, body {
-  margin: 0;
-  padding: 0;
-  background: #000;
-  color: #fff;
-  font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+:root{
+  --bg:#000;
+  --card:#0b0b0b;
+  --stroke:rgba(255,255,255,.12);
+  --stroke2:rgba(255,255,255,.18);
+  --text:rgba(255,255,255,.92);
+  --muted:rgba(255,255,255,.68);
 }
 
-.page { padding: 16px; max-width: 720px; margin: 0 auto; }
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--text)}
+.page{padding:16px; max-width:740px; margin:0 auto}
+.brand{opacity:.75; letter-spacing:.16em; font-size:12px}
+.h1{margin:8px 0 4px 0; font-size:44px; line-height:1.05}
+.subtle{color:var(--muted)}
+.strong{font-weight:700}
 
-.subtle { opacity: 0.75; }
+.row{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:14px 0}
+.rowBetween{justify-content:space-between}
+.mb6{margin-bottom:6px}
+.mb8{margin-bottom:8px}
+.mt10{margin-top:10px}
+.mt12{margin-top:12px}
+.mt18{margin-top:18px}
+.w100{width:100%}
+.tapsLine{font-size:16px}
 
-h1 { margin: 8px 0 4px 0; }
+.btn{
+  appearance:none;
+  border:1px solid var(--stroke2);
+  background:rgba(255,255,255,.06);
+  color:var(--text);
+  border-radius:999px;
+  padding:14px 18px;
+  font-weight:800;
+  font-size:18px;
+}
+.btn:active{transform:scale(.99)}
+.btnPrimary{
+  background:rgba(255,255,255,.10);
+}
+.btnSecondary{
+  background:rgba(255,255,255,.06);
+}
+.btn input[type="file"]{display:none}
 
-input, button {
-  font: inherit;
+.distanceBox{display:flex; align-items:center; gap:8px}
+.distanceBox input{
+  width:130px;
+  padding:12px 12px;
+  border-radius:14px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.04);
+  color:var(--text);
+  font-size:18px;
 }
 
-input[type="number"], input[type="url"] {
-  background: rgba(255,255,255,0.06);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px;
-  padding: 10px 12px;
-  outline: none;
+.input{
+  width:100%;
+  padding:14px 14px;
+  border-radius:14px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.04);
+  color:var(--text);
+  font-size:16px;
+  margin-bottom:12px;
 }
 
-.btnPrimary, .btnSecondary {
-  border-radius: 999px;
-  padding: 12px 18px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.08);
-  color: #fff;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
+.card{
+  border:1px solid var(--stroke);
+  background:var(--card);
+  border-radius:20px;
+  padding:14px;
 }
 
-.btnPrimary { font-weight: 700; }
-.btnSecondary { font-weight: 600; opacity: 0.9; }
-
-.targetBox {
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.12);
-  padding: 12px;
-  background: rgba(255,255,255,0.04);
+.targetWrap{
+  position:relative;
+  width:100%;
+  min-height:220px;
+  border-radius:16px;
+  overflow:hidden;
+  border:1px solid var(--stroke);
+  background:#111;
 }
 
-#targetImageWrap {
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  border-radius: 14px;
-  overflow: hidden;
-  background: rgba(255,255,255,0.03);
-  /* critical for iOS tap behavior */
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
+.targetImg{
+  display:block;
+  width:100%;
+  height:auto;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
 }
 
-#targetImage {
-  width: 100%;
-  height: auto;
-  display: block;
-  /* critical: taps go to wrapper, not <img> */
-  pointer-events: none;
+.dotsLayer{
+  position:absolute;
+  inset:0;
+  pointer-events:none; /* dots never steal taps */
 }
 
-.tapDot {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(255,165,0,0.92);
-  box-shadow: 0 0 6px rgba(0,0,0,0.55);
-  pointer-events: none;
-  z-index: 50; /* ensure on top of image */
+/* visible tap dot */
+.dot{
+  position:absolute;
+  width:16px;
+  height:16px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,.92);
+  background:rgba(0,0,0,.35);
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 0 2px rgba(0,0,0,.25);
 }
+
+.footer{ text-align:center; margin-top:18px }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space:pre-wrap }
