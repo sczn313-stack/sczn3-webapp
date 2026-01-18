@@ -1,80 +1,82 @@
 // backend_new/server.js
+// Express backend for Tap-n-Score
+// Routes:
+//  GET  /ping
+//  POST /tapscore  { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
+
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
 
-/**
- * CORS (iOS Safari safe)
- * - allow all origins for now (tighten later)
- * - answer preflight OPTIONS
- */
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
-app.options("*", cors());
+// If you want to restrict origins later, do it here.
+app.use(cors({
+  origin: "*",
+  methods: ["GET","POST","OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
 
-/**
- * Body size
- * IMPORTANT: Do NOT send the base64 photo to backend right now.
- * Only send distance + taps.
- */
-app.use(express.json({ limit: "2mb" }));
+// IMPORTANT: allow enough JSON size if you ever send base64.
+// Right now frontend sends imageDataUrl: null, so this is just safe.
+app.use(express.json({ limit: "10mb" }));
 
-/** Health check */
-app.get("/health", (req, res) => {
-  res.status(200).json({ ok: true, service: "sczn3-backend-new1" });
-});
+app.get("/", (req, res) => res.json({ ok: true, service: "sczn3-backend-new1" }));
+app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping" }));
 
-/** Tap-n-Score endpoint */
+function isNum(n){ return typeof n === "number" && Number.isFinite(n); }
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
 app.post("/tapscore", (req, res) => {
   try {
-    const { distanceYds, taps } = req.body || {};
+    const body = req.body || {};
+    const distanceYds = Number(body.distanceYds || 100);
 
-    if (!distanceYds || !Array.isArray(taps) || taps.length < 1) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing distanceYds or taps[]",
-        got: { distanceYds, tapsType: typeof taps, tapsLen: taps?.length },
-      });
+    const bullTap = body.bullTap;
+    const taps = Array.isArray(body.taps) ? body.taps : [];
+
+    if (!bullTap || !isNum(bullTap.x) || !isNum(bullTap.y)) {
+      return res.status(400).json({ ok:false, error:"Missing bullTap {x,y}." });
+    }
+    if (taps.length < 1) {
+      return res.status(400).json({ ok:false, error:"Need at least 1 bullet-hole tap." });
     }
 
-    // POIB (average of taps in pixel coords). Later convert to inches/MOA.
-    const sum = taps.reduce(
-      (a, p) => ({ x: a.x + Number(p.x || 0), y: a.y + Number(p.y || 0) }),
-      { x: 0, y: 0 }
-    );
+    // Normalize/clamp
+    const bull = { x: clamp01(Number(bullTap.x)), y: clamp01(Number(bullTap.y)) };
+    const pts = taps
+      .filter(p => p && isNum(p.x) && isNum(p.y))
+      .map(p => ({ x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) }));
 
-    const poib = {
-      x: sum.x / taps.length,
-      y: sum.y / taps.length,
-    };
+    if (pts.length < 1) {
+      return res.status(400).json({ ok:false, error:"No valid taps." });
+    }
 
-    // Temporary placeholders so we can confirm front/back are talking.
+    // POIB = average of hole taps
+    const sum = pts.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x:0, y:0 });
+    const poib = { x: sum.x / pts.length, y: sum.y / pts.length };
+
+    // Canonical: correction = bull - POIB (direction to move POIB to bull)
+    const delta = { x: bull.x - poib.x, y: bull.y - poib.y };
+
+    // NOTE: We are NOT converting to inches/MOA/clicks here because that requires a known scale.
+    // This backend returns normalized values only (0..1), so the frontend can display/verify.
+
     return res.json({
       ok: true,
-      distanceYds: Number(distanceYds),
-      tapsCount: taps.length,
+      distanceYds,
+      tapsCount: pts.length,
+      bullTap: bull,
       poib,
+      delta, // bull - POIB
       windage: "--",
       elevation: "--",
-      score: "--",
+      score: "--"
     });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    return res.status(500).json({ ok:false, error:"Server error", detail: String(e && e.message ? e.message : e) });
   }
 });
 
-/** Root */
-app.get("/", (req, res) => {
-  res.status(200).send("SCZN3 backend alive. Try /health");
-});
-
+// Render uses PORT
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`SCZN3 backend listening on ${PORT}`);
-});
+app.listen(PORT, () => console.log(`tapscore backend listening on ${PORT}`));
