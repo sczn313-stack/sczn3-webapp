@@ -7,12 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <style>
-    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    a{color:inherit}
-  </style>
-
-  <link rel="stylesheet" href="./styles.css?v=20260118z1">
+  <link rel="stylesheet" href="./styles.css?v=20260118z2">
 </head>
 
 <body>
@@ -23,19 +18,18 @@
     <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
 
     <section class="row">
-      <!-- SINGLE BUTTON -->
-      <button id="addPhotoBtn" class="btn btnPrimary" type="button">
+      <!-- SINGLE CAMERA BUTTON (iOS-safe). The label opens the input reliably. -->
+      <label id="addPhotoBtn" class="btn btnPrimary" for="photoInput" role="button" tabindex="0">
         Add photo
-      </button>
+      </label>
 
-      <!-- SINGLE HIDDEN CAMERA INPUT -->
+      <!-- IMPORTANT: NOT display:none -->
       <input
         id="photoInput"
-        class="fileInput"
+        class="fileInputHidden"
         type="file"
         accept="image/*"
         capture="environment"
-        style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;"
       />
 
       <div class="distanceBox">
@@ -53,12 +47,13 @@
     <section class="card">
       <div class="subtle strong mb8">Target</div>
 
+      <!-- Tap area -->
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
         <img id="targetImage" class="targetImg" alt="Target preview" />
-        <div id="dotsLayer" class="dotsLayer"></div>
+        <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
       </div>
 
-      <div id="emptyHint" class="subtle mt10">Add a photo, then tap bullet holes.</div>
+      <div id="emptyHint" class="subtle mt10">Add a photo, then tap bull first, then bullet holes.</div>
     </section>
 
     <div class="subtle mb6">Vendor link (optional)</div>
@@ -68,7 +63,7 @@
 
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <div id="resultsText" class="mono"></div>
+      <pre id="resultsText" class="mono"></pre>
 
       <div class="row mt12">
         <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
@@ -80,7 +75,8 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118z1"></script>
-  <script src="./index.js?v=20260118z1"></script>
+  <!-- api.js must define window.tapscore(payload) -->
+  <script src="./api.js?v=20260118z2"></script>
+  <script src="./index.js?v=20260118z2"></script>
 </body>
 </html>
