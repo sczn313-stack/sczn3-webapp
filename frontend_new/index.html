@@ -8,7 +8,7 @@
 </head>
 <body>
 
-  <!-- LANDING (NO CTA) -->
+  <!-- LANDING (NO CTA, NO LINKS) -->
   <section id="landing" class="screen screen-center">
     <div class="stack">
       <div class="h1">Tap-n-Score™</div>
@@ -22,14 +22,15 @@
       <div class="gap"></div>
 
       <div class="sig">After-Shot Intelligence™</div>
+      <div class="tiny">(tap anywhere)</div>
     </div>
   </section>
 
-  <!-- UPLOAD / TAP STAGE -->
+  <!-- MAIN (UPLOAD + TAP) -->
   <section id="main" class="screen" style="display:none;">
 
     <div class="topBar">
-      <button id="uploadBtn" class="primaryBtn">Upload</button>
+      <button id="uploadBtn" class="primaryBtn" type="button">Upload</button>
 
       <div class="distanceWrap">
         <label for="distanceYards">Distance</label>
@@ -40,64 +41,97 @@
 
     <div id="miniStatus" class="miniStatus">Ready.</div>
 
-    <!-- Hidden inputs (Choose vs Camera) -->
+    <!-- Hidden inputs -->
     <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
     <input id="targetPhotoCamera"  type="file" accept="image/*" capture="environment" style="display:none;" />
 
-    <!-- Tap stage (hidden until photo is loaded) -->
     <div id="tapStage" style="display:none;">
       <div class="tapHeader">
         <div id="tapCountText" class="tapCount">Taps: 0</div>
-        <button id="clearTapsBtn" class="secondaryBtn">Clear taps</button>
+        <div class="tapHeaderBtns">
+          <button id="zoomBtn" class="secondaryBtn" type="button">Zoom</button>
+          <button id="clearTapsBtn" class="secondaryBtn" type="button">Clear taps</button>
+        </div>
       </div>
 
       <div id="thumbWrap" class="thumbWrap">
         <img id="thumb" alt="Target" />
-        <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100" aria-label="Tap layer"></svg>
+        <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100"></svg>
       </div>
 
-      <div class="hint">
-        Tap bull first, then tap holes.
-      </div>
+      <div class="hint">Tap bull first, then tap holes.</div>
 
-      <button id="pressToSee" class="primaryBtn disabled">Press to see results</button>
+      <button id="pressToSee" class="primaryBtn disabled" type="button">Press to see results</button>
 
       <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
         Buy more targets
       </a>
     </div>
 
+    <!-- Analyze overlay (optional, safe if index.js expects it) -->
+    <div id="analyzeOverlay" class="analyzeOverlay" style="display:none;">
+      <div class="analyzeCard">
+        <div class="analyzeTitle">Analyzing…</div>
+        <div class="analyzeSub">After-Shot Intelligence™</div>
+      </div>
+    </div>
+
   </section>
 
-  <!-- PICK OVERLAY (Choose / Camera) -->
+  <!-- PICK SHEET -->
   <div id="pickOverlay" class="sheetOverlay" style="display:none;">
     <div class="sheet">
       <div class="sheetTitle">Add target photo</div>
-
-      <button id="pickChoose" class="sheetBtn">Choose from Library</button>
-      <button id="pickCamera" class="sheetBtn">Use Camera</button>
-
-      <button id="pickCancel" class="sheetCancel">Cancel</button>
+      <button id="pickChoose" class="sheetBtn" type="button">Choose from Library</button>
+      <button id="pickCamera" class="sheetBtn" type="button">Use Camera</button>
+      <button id="pickCancel" class="sheetCancel" type="button">Cancel</button>
     </div>
+  </div>
+
+  <!-- ZOOM OVERLAY (PINCH SAFE) -->
+  <div id="zoomOverlay" class="zoomOverlay" style="display:none;">
+    <div class="zoomTop">
+      <div class="zoomTitle">Zoom + Tap</div>
+      <div class="zoomBtns">
+        <button id="zoomClearBtn" class="secondaryBtn" type="button">Clear</button>
+        <button id="zoomDoneBtn" class="primaryBtn" type="button">Done</button>
+      </div>
+    </div>
+
+    <div id="zoomScroller" class="zoomScroller">
+      <div id="zoomCanvas" class="zoomCanvas">
+        <img id="zoomImg" alt="Zoom Target" />
+        <svg id="zoomTapLayer" class="zoomTapLayer" viewBox="0 0 100 100"></svg>
+      </div>
+    </div>
+
+    <div class="zoomHint">Pinch to zoom, then tap bull first, then holes.</div>
   </div>
 
   <script type="module" src="api.js"></script>
   <script type="module" src="index.js"></script>
 
-  <!-- AUTO FLOW: Tap landing -> show main -> open sheet (no CTA) -->
+  <!-- SAFE AUTO FLOW: REVEAL MAIN + OPEN SHEET (NO NAVIGATION) -->
   <script>
     (function(){
       const landing = document.getElementById("landing");
       const main = document.getElementById("main");
       const uploadBtn = document.getElementById("uploadBtn");
+
       function go(){
+        if (!landing || !main) return;
         landing.style.display = "none";
         main.style.display = "block";
-        if (uploadBtn) uploadBtn.click();
+        setTimeout(() => { if (uploadBtn) uploadBtn.click(); }, 50);
       }
+
       landing.addEventListener("click", go);
-      landing.addEventListener("touchstart", function(e){ e.preventDefault(); go(); }, { passive:false });
+      landing.addEventListener("touchstart", function(e){
+        e.preventDefault();
+        go();
+      }, { passive:false });
     })();
   </script>
+
 </body>
 </html>
