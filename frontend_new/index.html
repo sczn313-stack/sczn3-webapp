@@ -1,3 +1,11 @@
+<!-- frontend_new/index.html  (FULL CUT/PASTE REPLACEMENT)
+     Purpose:
+     - One clean upload/tap page (no duplicate inline scripts)
+     - Camera + Photo Library (NO capture attr)
+     - IDs match index.js exactly
+     - iOS-safe dark base + cache-busted assets
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -8,14 +16,13 @@
 
   <title>Tap-n-Score™</title>
 
-  <!-- HARD BASE: prevents "white / unstyled flash" even if CSS fails -->
+  <!-- HARD BASE: prevents white/unstyled flash even if CSS fails -->
   <style>
     html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
     a{color:inherit}
   </style>
 
-  <!-- cache-bust -->
-  <link rel="stylesheet" href="./styles.css?v=20260118b">
+  <link rel="stylesheet" href="./styles.css?v=20260118f">
 </head>
 
 <body>
@@ -25,9 +32,11 @@
     <div id="statusLine" class="subtle" style="margin-bottom:14px;">Ready. Tap ADD PHOTO.</div>
 
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-      <!-- IMPORTANT: no capture attr => camera + photo library picker on iOS -->
-      <button id="addPhotoBtn" class="btnPrimary" type="button">Add photo</button>
-      <input id="photoInput" type="file" accept="image/*" style="display:none;">
+      <!-- BOTH camera + photo library -->
+      <label class="btnPrimary" style="display:inline-block; cursor:pointer;">
+        Add photo
+        <input id="photoInput" type="file" accept="image/*" style="display:none;">
+      </label>
 
       <div style="display:flex; gap:8px; align-items:center;">
         <div class="subtle" style="font-weight:600;">Distance</div>
@@ -41,11 +50,11 @@
       <button id="clearTapsBtn" class="btnSecondary" type="button">Clear taps</button>
     </div>
 
-    <div class="targetBox" id="targetBox" style="margin-bottom:14px;">
+    <div class="targetBox" style="margin-bottom:14px;">
       <div class="subtle" style="margin-bottom:8px; font-weight:600;">Target</div>
 
-      <!-- TAP AREA (wrapper receives taps) -->
-      <div id="targetImageWrap" style="display:none;">
+      <!-- TAP AREA (wrapper receives taps; image does not intercept taps) -->
+      <div id="targetImageWrap">
         <img id="targetImage" alt="Target preview" />
       </div>
 
@@ -57,13 +66,15 @@
     <div class="subtle" style="margin-bottom:6px;">Vendor link (optional)</div>
     <input id="vendorInput" type="url" placeholder="Paste vendor buy link here" style="margin-bottom:12px;">
 
-    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">See results</button>
+    <button id="seeResultsBtn" class="btnPrimary" type="button" style="width:100%;">
+      See results
+    </button>
 
     <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
   </div>
 
-  <!-- cache-bust scripts too -->
-  <script src="./api.js?v=20260118b"></script>
-  <script src="./index.js?v=20260118b"></script>
+  <!-- Cache-bust scripts -->
+  <script src="./api.js?v=20260118f"></script>
+  <script src="./index.js?v=20260118f"></script>
 </body>
 </html>
