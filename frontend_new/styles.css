@@ -1,7 +1,8 @@
-/* frontend_new/styles.css  (SMALL CSS — CUT/PASTE APPEND OR REPLACE BLOCK)
-   Purpose:
-   1) Kill white flash / keep everything dark
-   2) Make tap wrapper + dots ALWAYS visible and tappable on iOS
+/* styles.css — PINCH-ZOOM ENABLED (FULL COPY/PASTE BLOCK)
+   Paste this at the VERY BOTTOM of styles.css so it overrides anything above.
+   Changes vs prior:
+   - Allows 2-finger pinch-zoom (no touch-action:none)
+   - Still keeps 1-finger taps clean (JS prevents default only for single touch)
 */
 
 :root{
@@ -17,40 +18,50 @@ html, body{
   color:var(--fg);
 }
 
-/* The wrapper is the tap surface */
+/* Tap surface */
 #targetImageWrap{
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  display: block;
-  background: #0b0b0b;
-  border-radius: 14px;
-  overflow: hidden;
+  position: relative !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+  min-height: 240px !important;
 
-  /* critical for iOS tap behavior */
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
+  background: #0b0b0b !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+
+  /* IMPORTANT: allow pinch zoom */
+  touch-action: pinch-zoom !important;
+
+  -webkit-user-select: none !important;
+  user-select: none !important;
+
+  /* prevent iOS "callout" */
+  -webkit-touch-callout: none !important;
 }
 
-/* Image itself should NOT steal taps */
+/* Image should not steal taps */
 #targetImage{
-  width: 100%;
-  height: auto;
-  display: block;
-  pointer-events: none;
-  -webkit-user-drag: none;
+  width: 100% !important;
+  height: auto !important;
+  display: block !important;
+
+  pointer-events: none !important;
+  -webkit-user-drag: none !important;
 }
 
-/* The visible dot you should see on every tap */
+/* Big visible dot on every tap */
 .tapDot{
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 165, 0, 0.95);
-  box-shadow: 0 0 6px rgba(0,0,0,.6);
-  pointer-events: none;
-  z-index: 10;
+  position: absolute !important;
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  transform: translate(-50%, -50%) !important;
+
+  background: rgba(255, 165, 0, 0.95) !important;
+  border: 2px solid rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.65) !important;
+
+  pointer-events: none !important;
+  z-index: 9999 !important;
 }
