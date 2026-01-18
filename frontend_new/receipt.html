@@ -1,66 +1,51 @@
-<!-- sczn3-webapp/frontend_new/receipt.html (FULL FILE REPLACEMENT) -->
+<!-- sczn3-webapp/frontend_new/receipt.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes" />
   <title>Tap-n-Score™ — Receipt</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
-  <div class="resultsWrap receiptWrap">
-    <div class="resultsTop">
-      <div class="resultsKicker">Receipt</div>
-      <div class="resultsTitle">Add setup details</div>
-      <div class="resultsSub">Then Save or Export.</div>
+  <div class="wrap">
+    <div class="card">
+      <div class="kicker">RECEIPT</div>
+      <div class="title">Tap-n-Score™</div>
+
+      <div id="miniStatus" class="status">Loading…</div>
+
+      <div class="formGrid">
+        <label class="lbl">Scope</label>
+        <input id="scopeInput" class="input" placeholder="e.g., 1/4 MOA scope" />
+
+        <label class="lbl">Ammo</label>
+        <input id="ammoInput" class="input" placeholder="e.g., 77gr OTM" />
+
+        <label class="lbl">Gun</label>
+        <input id="gunInput" class="input" placeholder="e.g., 16&quot; AR" />
+
+        <label class="lbl">Yards</label>
+        <input id="yardsInput" class="input" type="number" inputmode="numeric" min="1" step="1" />
+
+        <label class="lbl">Notes</label>
+        <textarea id="notesInput" class="input" rows="3" placeholder="Optional notes"></textarea>
+      </div>
+
+      <div id="previewBox" class="previewBox"></div>
+
+      <div class="btnRow">
+        <button id="backBtn" class="btnSecondary" type="button">Back</button>
+        <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+        <button id="saveBtn" class="btnPrimary" type="button">Save</button>
+        <button id="exportBtn" class="btnSecondary" type="button">Export</button>
+      </div>
+
+      <div class="vendorRow">
+        <a id="buyMoreBtn" class="btnSecondary fullWidth" href="#" style="display:none;">Buy more targets</a>
+      </div>
     </div>
-
-    <!-- Vendor plug (top) -->
-    <a id="buyMoreBtn" class="btnSecondary receiptVendorBtn" href="#" target="_blank" rel="noreferrer" style="display:none;">
-      Buy more targets
-    </a>
-
-    <div class="receiptForm">
-      <label class="field">
-        <div class="fieldLabel">Scope</div>
-        <input id="scopeInput" class="fieldInput" type="text" placeholder="e.g., Vortex Razor 3-18" autocomplete="off" />
-      </label>
-
-      <label class="field">
-        <div class="fieldLabel">Ammo</div>
-        <input id="ammoInput" class="fieldInput" type="text" placeholder="e.g., 77gr SMK / 168gr" autocomplete="off" />
-      </label>
-
-      <label class="field">
-        <div class="fieldLabel">Gun</div>
-        <input id="gunInput" class="fieldInput" type="text" placeholder="e.g., AR-15 / 6.5CM bolt" autocomplete="off" />
-      </label>
-
-      <label class="field">
-        <div class="fieldLabel">Distance (yards)</div>
-        <input id="yardsInput" class="fieldInput" type="number" inputmode="numeric" min="1" step="1" />
-      </label>
-
-      <label class="field">
-        <div class="fieldLabel">Notes</div>
-        <textarea id="notesInput" class="fieldTextArea" rows="4" placeholder="Optional"></textarea>
-      </label>
-    </div>
-
-    <div id="previewBox" class="receiptPreview"></div>
-
-    <div class="resultsBottom">
-      <div id="miniStatus" class="subtle"></div>
-    </div>
-  </div>
-
-  <!-- STICKY ACTION BAR (always visible on iPhone) -->
-  <div class="stickyBar">
-    <button id="backBtn" class="btnSecondary" type="button">Back</button>
-    <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
-    <button id="exportBtn" class="btnSecondary" type="button">Export</button>
-    <button id="saveBtn" class="btnPrimary" type="button">Save</button>
   </div>
 
   <script src="./receipt.js"></script>
