@@ -7,7 +7,12 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118z3">
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+  </style>
+
+  <link rel="stylesheet" href="./styles.css?v=20260118a1">
 </head>
 
 <body>
@@ -18,15 +23,14 @@
     <div id="statusLine" class="subtle">Ready. Tap ADD PHOTO.</div>
 
     <section class="row">
-      <!-- CAMERA ONLY (iOS will show Camera only — that's OK) -->
-      <label class="btn btnPrimary fileLabel" id="cameraLabel">
+      <!-- SINGLE BUTTON: iOS will offer Camera OR Photo Library -->
+      <label class="btn btnPrimary fileLabel" id="addPhotoLabel">
         Add photo
         <input
           id="photoInput"
           class="fileInput"
           type="file"
           accept="image/*"
-          capture="environment"
         />
       </label>
 
@@ -35,17 +39,18 @@
         <input id="distanceInput" type="number" value="100" min="1" step="1" />
         <div class="subtle strong">yds</div>
       </div>
+
+      <button id="clearTapsBtn" class="btn btnSecondary" type="button">Clear taps</button>
     </section>
 
     <section class="row rowBetween">
       <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
-      <button id="clearTapsBtn" class="btn btnSecondary" type="button">Clear taps</button>
     </section>
 
     <section class="card">
       <div class="subtle strong mb8">Target</div>
 
-      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
+      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
         <img id="targetImage" class="targetImg" alt="Target preview" />
         <div id="dotsLayer" class="dotsLayer"></div>
       </div>
@@ -60,7 +65,7 @@
 
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <pre id="resultsPre" class="mono"></pre>
+      <pre id="resultsPre" class="mono" style="margin:0; white-space:pre-wrap;"></pre>
 
       <div class="row mt12">
         <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
@@ -72,7 +77,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118z3"></script>
-  <script src="./index.js?v=20260118z3"></script>
+  <script src="./api.js?v=20260118a1"></script>
+  <script src="./index.js?v=20260118a1"></script>
 </body>
 </html>
