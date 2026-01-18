@@ -1,67 +1,85 @@
-/* styles.css — PINCH-ZOOM ENABLED (FULL COPY/PASTE BLOCK)
-   Paste this at the VERY BOTTOM of styles.css so it overrides anything above.
-   Changes vs prior:
-   - Allows 2-finger pinch-zoom (no touch-action:none)
-   - Still keeps 1-finger taps clean (JS prevents default only for single touch)
-*/
+/* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
+/* Small, stable, iOS-safe. Prevents white flashes and ensures tap dots show. */
 
-:root{
-  color-scheme: dark;
-  --bg:#000;
-  --fg:#fff;
+:root { color-scheme: dark; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
-html, body{
-  margin:0;
-  padding:0;
-  background:var(--bg);
-  color:var(--fg);
+.page { padding: 16px; max-width: 720px; margin: 0 auto; }
+
+.subtle { opacity: 0.75; }
+
+h1 { margin: 8px 0 4px 0; }
+
+input, button {
+  font: inherit;
 }
 
-/* Tap surface */
-#targetImageWrap{
-  position: relative !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  display: block !important;
-  min-height: 240px !important;
-
-  background: #0b0b0b !important;
-  border-radius: 14px !important;
-  overflow: hidden !important;
-
-  /* IMPORTANT: allow pinch zoom */
-  touch-action: pinch-zoom !important;
-
-  -webkit-user-select: none !important;
-  user-select: none !important;
-
-  /* prevent iOS "callout" */
-  -webkit-touch-callout: none !important;
+input[type="number"], input[type="url"] {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  outline: none;
 }
 
-/* Image should not steal taps */
-#targetImage{
-  width: 100% !important;
-  height: auto !important;
-  display: block !important;
-
-  pointer-events: none !important;
-  -webkit-user-drag: none !important;
+.btnPrimary, .btnSecondary {
+  border-radius: 999px;
+  padding: 12px 18px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Big visible dot on every tap */
-.tapDot{
-  position: absolute !important;
-  width: 18px !important;
-  height: 18px !important;
-  border-radius: 50% !important;
-  transform: translate(-50%, -50%) !important;
+.btnPrimary { font-weight: 700; }
+.btnSecondary { font-weight: 600; opacity: 0.9; }
 
-  background: rgba(255, 165, 0, 0.95) !important;
-  border: 2px solid rgba(0, 0, 0, 0.55) !important;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.65) !important;
+.targetBox {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 12px;
+  background: rgba(255,255,255,0.04);
+}
 
-  pointer-events: none !important;
-  z-index: 9999 !important;
+#targetImageWrap {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.03);
+  /* critical for iOS tap behavior */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#targetImage {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* critical: taps go to wrapper, not <img> */
+  pointer-events: none;
+}
+
+.tapDot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255,165,0,0.92);
+  box-shadow: 0 0 6px rgba(0,0,0,0.55);
+  pointer-events: none;
+  z-index: 50; /* ensure on top of image */
 }
