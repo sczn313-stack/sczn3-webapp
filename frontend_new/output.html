@@ -3,41 +3,32 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=1, maximum-scale=5" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Tap-n-Score — Results</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="resultsWrap">
+
+  <main class="resultsWrap">
     <div class="resultsTop">
-      <div class="resultsKicker">Results</div>
+      <div class="resultsKicker">RESULTS</div>
       <div class="resultsTitle">Tap-n-Score™</div>
-      <div id="statusLine" class="resultsSub">Ready.</div>
+      <div id="inlineMsg" class="resultsSub">Loading…</div>
     </div>
 
-    <div class="resultsCard">
-      <div class="receiptLine"><span class="k">Score</span><span id="scoreVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">Windage</span><span id="windVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">Elevation</span><span id="elevVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">Distance</span><span id="distVal" class="v">--</span></div>
-      <div class="receiptLine"><span class="k">POIB</span><span id="poibVal" class="v">--</span></div>
-    </div>
-
-    <pre id="rawJson" class="rawJson" style="display:none;"></pre>
+    <section id="detailsBox"></section>
 
     <div class="resultsActions">
       <button id="backBtn" class="btnSecondary" type="button">Back</button>
       <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
       <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
-      <a id="buyMoreBtn" class="btnSecondary btnLink" href="#" style="display:none;">Buy more targets</a>
     </div>
 
-    <div class="resultsBottom">
-      <div class="subtle">After-Shot Intelligence™</div>
+    <div class="resultsActions">
+      <a id="buyMoreBtn" class="btnPrimary" href="#" style="display:none">Buy more targets</a>
     </div>
-  </div>
+  </main>
 
-  <script src="./api.js?v=1"></script>
-  <script src="./output.js?v=2"></script>
+  <script src="./output.js"></script>
 </body>
 </html>
