@@ -1,4 +1,4 @@
-// sczn3-webapp/frontend_new/receipt.js (FULL REPLACEMENT)
+// sczn3-webapp/frontend_new/receipt.js (FULL FILE REPLACEMENT)
 // Receipt builder BEFORE saving.
 // Save to localStorage + Export to clipboard/file.
 
@@ -55,7 +55,7 @@
     const url = sessionStorage.getItem(VENDOR_BUY);
     if (buyMoreBtn && url){
       buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "block";
+      buyMoreBtn.style.display = "inline-block";
     }
   }
 
@@ -73,10 +73,18 @@
     return String(s || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   }
 
-  function fmt2(x){
-    const n = Number(x);
-    if (!Number.isFinite(n)) return "--";
-    return n.toFixed(2);
+  function ensureLast(){
+    const last = getLastResult();
+    if (!last){
+      status("No results found. Go back and run a session.");
+      // hard-disable actions so nobody can “save a failure”
+      if (saveBtn) saveBtn.disabled = true;
+      if (exportBtn) exportBtn.disabled = true;
+      return false;
+    }
+    if (saveBtn) saveBtn.disabled = false;
+    if (exportBtn) exportBtn.disabled = false;
+    return true;
   }
 
   function buildModel(){
@@ -102,17 +110,20 @@
 
       preview: {
         score,
-        wind: `${fmt2(clicksWind)} ${dirWind}`.trim(),
-        elev: `${fmt2(clicksElev)} ${dirElev}`.trim()
+        wind: `${clicksWind} ${dirWind}`.trim(),
+        elev: `${clicksElev} ${dirElev}`.trim()
       }
     };
   }
 
   function renderPreview(){
+    const ok = ensureLast();
     const m = buildModel();
     if (!previewBox) return;
 
     previewBox.innerHTML = `
+      ${!ok ? `<div class="resultsNote"><div class="noteLine">No results to receipt.</div><div class="noteLine subtle">Go back and analyze first.</div></div>` : ``}
+
       <div class="receiptLine"><span class="k">Score</span><span class="v">${esc(m.preview.score)}</span></div>
       <div class="receiptLine"><span class="k">Windage</span><span class="v">${esc(m.preview.wind)}</span></div>
       <div class="receiptLine"><span class="k">Elevation</span><span class="v">${esc(m.preview.elev)}</span></div>
@@ -128,14 +139,6 @@
 
       <div class="tinyMuted">Receipt ID: ${esc(m.id)} • ${esc(m.created_at)}</div>
     `;
-  }
-
-  function ensureLast(){
-    if (!getLastResult()){
-      status("No results found. Go back and run a session.");
-      return false;
-    }
-    return true;
   }
 
   function doSave(){
@@ -176,25 +179,26 @@ Notes: ${m.notes || "—"}
       status("Receipt copied to clipboard.");
       alert("Receipt copied to clipboard.");
       return;
+    } catch {}
+
+    try{
+      const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Tap-n-Score_Receipt_${m.id}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      status("Receipt exported as a file.");
     } catch {
-      try{
-        const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `Tap-n-Score_Receipt_${m.id}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        status("Receipt exported as a file.");
-      } catch {
-        status("Export failed.");
-        alert("Export failed on this device/browser.");
-      }
+      status("Export failed.");
+      alert("Export failed on this device/browser.");
     }
   }
 
+  // INIT
   (function init(){
     setVendorBuyLink();
 
@@ -208,17 +212,13 @@ Notes: ${m.notes || "—"}
     });
 
     renderPreview();
-
-    if (!ensureLast()){
-      status("No results found. Go back and run a session.");
-    } else {
+    if (ensureLast()){
       status("Add setup details, then Save or Export.");
     }
   })();
 
   if (backBtn)  backBtn.addEventListener("click", () => window.location.href = "./output.html?v=" + Date.now());
   if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
-
-  if (saveBtn)   saveBtn.addEventListener("click", doSave);
-  if (exportBtn) exportBtn.addEventListener("click", doExport);
+  if (saveBtn)  saveBtn.addEventListener("click", doSave);
+  if (exportBtn)exportBtn.addEventListener("click", doExport);
 })();
