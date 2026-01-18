@@ -7,12 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <!-- tiny fallback so you never get a white page -->
-  <style>
-    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  </style>
-
-  <link rel="stylesheet" href="./styles.css?v=20260118v31">
+  <link rel="stylesheet" href="./styles.css?v=20260118z9">
 </head>
 
 <body>
@@ -25,78 +20,103 @@
       </div>
     </div>
 
+    <!-- Small title (not huge) -->
     <h1 class="h1">Upload</h1>
 
-    <!-- ONE button (hero) opens iOS picker: Camera / Photo Library / Browse -->
-    <label id="uploadHeroBtn" class="uploadHero" for="photoInput" aria-label="Upload target photo">
+    <!-- HERO UPLOAD -->
+    <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
+        <div class="uploadHeroSub">Camera · Photo Library · Files</div>
       </div>
-    </label>
+    </button>
 
-    <!-- REAL input (hidden). IMPORTANT: no capture="" so iOS offers library/files too -->
-    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
+    <!-- Hidden inputs -->
+    <input id="inputCamera"  class="fileInputReal" type="file" accept="image/*" capture="environment">
+    <input id="inputLibrary" class="fileInputReal" type="file" accept="image/*">
+    <input id="inputFiles"   class="fileInputReal" type="file" accept="image/*">
 
-    <!-- Controls -->
+    <!-- iOS-friendly chooser (custom, clean) -->
+    <div id="pickerModal" class="modal" aria-hidden="true">
+      <div class="modalSheet" role="dialog" aria-modal="true" aria-label="Choose photo source">
+        <div class="modalTitle">Choose source</div>
+
+        <button id="pickCameraBtn" class="modalBtn" type="button">Camera</button>
+        <button id="pickLibraryBtn" class="modalBtn" type="button">Photo Library</button>
+        <button id="pickFilesBtn" class="modalBtn" type="button">Files</button>
+
+        <button id="pickCancelBtn" class="modalBtn modalCancel" type="button">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Controls row -->
     <section class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
-        <input id="distanceInput" type="number" value="100" min="1" step="1" inputmode="numeric" />
+        <input id="distanceInput" type="number" value="100" min="1" step="1" />
         <div class="subtle strong">yds</div>
       </div>
 
       <div class="tapsBlock">
         <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
       </div>
     </section>
 
-    <!-- Anchor line (hidden until photo is loaded) -->
-    <div id="anchorLine" class="subtle strong mt12 mb8" style="display:none;"></div>
-
-    <!-- Micro-slot: pinch hint (shows only briefly after first tap) + Vendor CTA (shows when results is available) -->
-    <div id="microSlot" class="microSlot" style="display:none;">
+    <!-- Micro slot (appears only after photo + taps) -->
+    <section id="microSlot" class="microSlot" style="display:none;">
+      <!-- Pinch hint (temporary) -->
       <div id="pinchHint" class="pinchHint" style="display:none;">Pinch to zoom</div>
 
-      <!-- vendor CTA (hidden until we have a vendorLink to use) -->
-      <a id="vendorCta" class="vendorBuyBtn" href="#" target="_blank" rel="noopener" style="display:none;">
-        <div class="vendorIcon">🛒</div>
-        <div class="vendorText">Buy more targets like this</div>
-        <div class="vendorArrow">›</div>
-      </a>
-    </div>
+      <!-- Green See results (ACTIVE) -->
+      <button id="seeResultsHint" class="seeResultsHint" type="button" style="display:none;">See results</button>
+    </section>
 
-    <!-- Target card -->
-    <section class="card mt12">
+    <!-- Vendor CTA (appears when green See results appears) -->
+    <section id="vendorCtaWrap" class="mt12" style="display:none;">
+      <a id="vendorBuyBtn" class="vendorBuyBtn" href="#" target="_blank" rel="noopener noreferrer">
+        <span class="vendorIcon">🛒</span>
+        <span class="vendorText">Buy more targets like this</span>
+        <span class="vendorArrow">›</span>
+      </a>
+    </section>
+
+    <!-- Target + instruction line (hidden until photo exists) -->
+    <section class="card mt14">
+      <div id="anchorLine" class="anchorLine" style="display:none;">
+        Tap bull’s-eye (aim point) first · then tap bullet holes.
+      </div>
+
       <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
-        <div class="targetCanvas">
+        <div id="targetCanvas" class="targetCanvas">
           <img id="targetImage" class="targetImg" alt="Target preview" />
           <div id="dotsLayer" class="dotsLayer"></div>
         </div>
       </div>
+
+      <div id="emptyHint" class="subtle mt12">Upload a target photo to begin.</div>
     </section>
 
-    <!-- GREEN active “See results” box (hidden until it’s applicable) -->
-    <div id="seeResultsWrap" class="mt12" style="display:none;">
-      <div id="seeResultsHint" class="seeResultsHint" role="button" tabindex="0" aria-label="See results">
-        See results
-      </div>
-    </div>
-
-    <!-- Vendor link input stays where it is -->
-    <div class="subtle mb6 mt18">Vendor link (optional)</div>
+    <!-- Vendor link input (optional) -->
+    <div class="subtle mt14 mb6">Vendor link (optional)</div>
     <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
 
-    <!-- Results -->
+    <!-- Results panel -->
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
       <div id="resultsText" class="mono"></div>
+
+      <div class="row mt12">
+        <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
+        <button id="savedBtn" class="btn btnSecondary" type="button">Saved</button>
+        <button id="receiptBtn" class="btn btnSecondary" type="button">Receipt</button>
+      </div>
     </section>
 
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118v31"></script>
-  <script src="./index.js?v=20260118v31"></script>
+  <script src="./api.js?v=20260118z9"></script>
+  <script src="./index.js?v=20260118z9"></script>
 </body>
 </html>
