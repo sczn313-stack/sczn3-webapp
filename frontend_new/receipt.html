@@ -1,4 +1,58 @@
-<!-- sczn3-webapp/frontend_new/receipt.html (FULL FILE REPLACEMENT) -->
+<!-- frontend_new/output.html  (FULL CUT/PASTE REPLACEMENT)
+     Purpose: always-dark, no popups, reads sessionStorage("sczn3_last_result_json"),
+     shows results or clean error, and gives Back / Retry / Receipt / Saved.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+  <title>Tap-n-Score™ — Results</title>
+
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+  </style>
+
+  <link rel="stylesheet" href="./styles.css?v=20260118c">
+</head>
+
+<body>
+  <div class="page" style="padding:16px; max-width:720px; margin:0 auto;">
+    <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">TAP-N-SCORE™</div>
+    <h1 style="margin:8px 0 8px 0;">Results</h1>
+
+    <div id="statusBox" class="subtle" style="margin:10px 0 14px 0; opacity:.9;">
+      Loading…
+    </div>
+
+    <div class="targetBox" style="margin-bottom:14px;">
+      <div style="display:grid; grid-template-columns: 1fr; gap:10px; font-size:16px;">
+        <div><span class="subtle">Score</span> <span id="scoreVal">--</span></div>
+        <div><span class="subtle">Windage</span> <span id="windVal">--</span></div>
+        <div><span class="subtle">Elevation</span> <span id="elevVal">--</span></div>
+        <div><span class="subtle">Distance</span> <span id="distVal">--</span></div>
+        <div><span class="subtle">Tip</span> <span id="tipVal">--</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="backBtn" class="btnSecondary" type="button">Back</button>
+      <button id="retryBtn" class="btnSecondary" type="button">Retry</button>
+      <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
+      <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+    </div>
+
+    <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
+  </div>
+
+  <script src="./api.js?v=20260118c"></script>
+  <script src="./output.js?v=20260118c"></script>
+</body>
+</html><!-- sczn3-webapp/frontend_new/receipt.html (FULL FILE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
