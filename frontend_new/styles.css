@@ -1,135 +1,214 @@
 :root{
   --bg:#000;
   --fg:#fff;
-  --muted:rgba(255,255,255,.70);
+  --muted:rgba(255,255,255,.60);
+  --muted2:rgba(255,255,255,.40);
   --card:rgba(255,255,255,.06);
-  --stroke:rgba(255,255,255,.12);
+  --card2:rgba(255,255,255,.09);
+  --border:rgba(255,255,255,.12);
+  --btn:rgba(255,255,255,.10);
+  --btn2:rgba(255,255,255,.14);
+  --shadow:0 10px 28px rgba(0,0,0,.55);
 }
 
-html,body{
-  margin:0;
-  padding:0;
-  background:var(--bg);
-  color:var(--fg);
-  font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+a{color:inherit}
+
+.page{
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 18px 16px 28px;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
 }
 
-.page{max-width:920px;margin:0 auto;padding:18px 14px 40px}
-.brand{letter-spacing:.06em;font-weight:700;font-size:12px;opacity:.75;margin-bottom:8px}
-.h1{font-size:44px;line-height:1.0;margin:10px 0 6px}
-.subtle{color:var(--muted)}
-.strong{font-weight:700}
-.mb6{margin-bottom:6px}
-.mb8{margin-bottom:8px}
-.mt10{margin-top:10px}
-.mt12{margin-top:12px}
-.mt18{margin-top:18px}
-
-.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.rowBetween{justify-content:space-between}
-
-.btn{
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.07);
-  color:var(--fg);
-  padding:12px 14px;
-  border-radius:14px;
-  font-weight:700;
-  cursor:pointer;
+.brand{
+  font-weight:800;
+  letter-spacing:.10em;
+  font-size:16px;
+  color:var(--muted2);
+  margin-top: 4px;
 }
 
-.btnPrimary{background:rgba(255,255,255,.12)}
-.btnSecondary{background:rgba(255,255,255,.07)}
-.w100{width:100%}
-
-.input{
-  width:100%;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.06);
-  color:var(--fg);
-  padding:12px 14px;
-  border-radius:14px;
-  outline:none;
+.h1{
+  font-size:72px;
+  line-height: .95;
+  margin: 14px 0 8px;
+  font-weight: 900;
 }
 
-.distanceBox{
-  display:flex;
-  align-items:center;
-  gap:10px;
+.status{
+  color: var(--muted);
+  font-size: 22px;
+  margin: 0 0 12px;
 }
+.statusStrong{ color: var(--fg); font-weight: 800; }
 
-.distanceBox input{
-  width:92px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.06);
-  color:var(--fg);
-  padding:10px 12px;
-  border-radius:12px;
-  outline:none;
-}
+.subtle{ color: var(--muted); }
+.strong{ font-weight: 800; }
+.mb6{ margin-bottom: 6px; }
+.mb8{ margin-bottom: 8px; }
+.mt10{ margin-top: 10px; }
+.mt12{ margin-top: 12px; }
+.mt14{ margin-top: 14px; }
+.mt18{ margin-top: 18px; }
+
+.row{ display:flex; gap:12px; align-items:center; }
+.rowBetween{ justify-content: space-between; align-items: center; }
+.w100{ width:100%; }
 
 .card{
-  background:var(--card);
-  border:1px solid var(--stroke);
-  border-radius:16px;
-  padding:14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--shadow);
 }
 
-.targetWrap{
-  position:relative;
+/* Inputs */
+.input, input[type="number"], input[type="url"]{
   width:100%;
-  overflow:hidden;
-  border-radius:14px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.03);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.07);
+  color: var(--fg);
+  padding: 14px 14px;
+  font-size: 18px;
+  outline: none;
+}
+input[type="number"]{
+  width: 140px;
+  text-align: left;
+}
 
-  /* iOS tap behavior */
-  touch-action:none;
-  -webkit-user-select:none;
-  user-select:none;
+/* Buttons */
+.btn{
+  border: 1px solid var(--border);
+  background: var(--btn);
+  color: var(--fg);
+  border-radius: 18px;
+  padding: 14px 16px;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active{ transform: scale(.995); }
+
+.btnPrimary{
+  background: var(--btn2);
+}
+
+.btnSecondary{
+  background: rgba(255,255,255,.08);
+}
+
+/* BIG UPLOAD BOX BUTTON */
+.uploadBtn{
+  width: 100%;
+  min-height: 76px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+
+  /* Auto-fit so “Upload target photo” always looks clean */
+  font-size: clamp(20px, 5.1vw, 30px);
+  line-height: 1.05;
+  letter-spacing: .2px;
+  padding: 18px 18px;
+}
+
+/* Invisible input sits on top and captures tap */
+.fileBtn{ position: relative; overflow: hidden; }
+.fileInput{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* Distance + taps layout */
+.distanceBox{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.tapsBlock{
+  display:flex;
+  gap:12px;
+  align-items:center;
+}
+.tapsLine{
+  font-size: 20px;
+}
+
+/* Target preview */
+.targetWrap{
+  width:100%;
+  background: rgba(0,0,0,.55);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  min-height: 140px;
 }
 
 .targetImg{
-  display:block;
   width:100%;
   height:auto;
+  display:block;
 }
 
+/* Dots overlay */
 .dotsLayer{
   position:absolute;
   inset:0;
-  pointer-events:none; /* dots never steal taps */
+  pointer-events:none;
 }
 
 .tapDot{
   position:absolute;
-  width:14px;
-  height:14px;
-  border-radius:999px;
-  transform:translate(-50%,-50%);
-  box-shadow:0 0 0 2px rgba(0,0,0,.55);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(0,0,0,.65);
+  background: rgba(255, 208, 0, .95); /* holes default */
+  box-shadow: 0 8px 16px rgba(0,0,0,.35);
 }
 
 .tapDot[data-kind="bull"]{
-  background:rgba(80,170,255,.95);
+  background: rgba(120, 185, 255, .95); /* bull tap */
 }
 
-.tapDot[data-kind="hole"]{
-  background:rgba(255,200,40,.95);
+.mono{
+  background: rgba(0,0,0,.45);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  color: rgba(255,255,255,.92);
+  margin: 0;
 }
 
-/* label-as-button that triggers camera input */
-.fileLabel{
-  position:relative;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
+.footer{
+  text-align:center;
+  margin-top: 22px;
+  color: var(--muted2);
+  font-weight: 700;
 }
 
-.fileInput{
-  position:absolute;
-  inset:0;
-  opacity:0;
-  width:100%;
-  height:100%;
+/* Mobile tuning */
+@media (max-width: 420px){
+  .h1{ font-size: 62px; }
+  input[type="number"]{ width: 120px; }
+  .tapsLine{ font-size: 18px; }
 }
