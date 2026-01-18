@@ -1,17 +1,12 @@
-/* sczn3-webapp/frontend_new/styles.css  (FULL REPLACEMENT)
-   Dark, clean, iOS friendly
-*/
+/* styles.css (FULL REPLACEMENT) */
 
 :root{
   --bg:#050607;
-  --card:#111214;
-  --card2:#0c0d0f;
+  --card:rgba(255,255,255,0.06);
   --text:#f5f6f7;
-  --muted:#a7acb3;
+  --muted:rgba(255,255,255,0.55);
   --stroke:rgba(255,255,255,0.12);
   --stroke2:rgba(255,255,255,0.18);
-  --btn:#1c1d20;
-  --btn2:#141518;
 }
 
 *{ box-sizing:border-box; }
@@ -20,7 +15,7 @@ a{ color:inherit; }
 
 .screen{
   min-height:100vh;
-  padding:18px 16px 100px;
+  padding:18px 16px 30px;
 }
 
 .screen-center{
@@ -47,7 +42,7 @@ a{ color:inherit; }
 
 .topTitle{
   font-size:16px;
-  font-weight:800;
+  font-weight:900;
   letter-spacing:0.2px;
   opacity:0.9;
 }
@@ -69,24 +64,24 @@ a{ color:inherit; }
   background:transparent;
   color:var(--text);
   font-size:18px;
-  font-weight:800;
+  font-weight:900;
   text-align:right;
 }
 .distanceWrap .unit{ font-size:12px; color:rgba(255,255,255,0.55); }
 
 .miniStatus{
-  margin:10px 2px 14px;
+  margin:10px 2px 12px;
   color:rgba(255,255,255,0.55);
   font-size:14px;
 }
 
-.primaryBtn, .secondaryBtn, .sheetBtn, .sheetCancel{
+.primaryBtn, .secondaryBtn{
   border:none;
   outline:none;
   border-radius:18px;
   padding:14px 16px;
   font-size:16px;
-  font-weight:800;
+  font-weight:900;
   cursor:pointer;
 }
 
@@ -95,16 +90,20 @@ a{ color:inherit; }
   color:var(--text);
   border:1px solid var(--stroke2);
 }
-
 .secondaryBtn{
   background:rgba(255,255,255,0.06);
   color:var(--text);
   border:1px solid var(--stroke);
 }
+.primaryBtn.disabled{ opacity:0.6; }
 
-.primaryBtn.disabled{
-  opacity:0.6;
+.actionsTop{
+  display:flex;
+  gap:10px;
+  margin:12px 0 6px;
 }
+.actionsTop .primaryBtn{ flex:1; }
+.actionsTop .secondaryBtn{ flex:1; }
 
 .card{
   background:rgba(255,255,255,0.06);
@@ -117,7 +116,7 @@ a{ color:inherit; }
 .cardTitle{
   font-size:14px;
   color:rgba(255,255,255,0.6);
-  font-weight:800;
+  font-weight:900;
   margin-bottom:10px;
 }
 
@@ -154,46 +153,9 @@ a{ color:inherit; }
   gap:10px;
 }
 .tapCount{
-  font-weight:800;
+  font-weight:900;
   color:rgba(255,255,255,0.7);
   font-size:14px;
-}
-
-.sheetOverlay{
-  position:fixed;
-  left:0; top:0;
-  width:100%; height:100%;
-  background:rgba(0,0,0,0.55);
-  display:flex;
-  align-items:flex-end;
-  justify-content:center;
-  padding:18px;
-  z-index:50;
-}
-.sheet{
-  width:100%;
-  max-width:560px;
-  background:rgba(18,18,18,0.92);
-  border:1px solid var(--stroke);
-  border-radius:22px;
-  padding:14px;
-}
-.sheetTitle{
-  font-size:14px;
-  font-weight:800;
-  color:rgba(255,255,255,0.6);
-  margin-bottom:10px;
-}
-.sheetBtn{
-  width:100%;
-  background:rgba(255,255,255,0.08);
-  border:1px solid var(--stroke);
-  margin-bottom:10px;
-}
-.sheetCancel{
-  width:100%;
-  background:rgba(255,255,255,0.05);
-  border:1px solid var(--stroke);
 }
 
 .linkBtn{
@@ -204,25 +166,97 @@ a{ color:inherit; }
   border:1px solid var(--stroke);
   background:rgba(255,255,255,0.06);
   text-decoration:none;
-  font-weight:800;
+  font-weight:900;
 }
 
-.actionsSticky{
-  position:fixed;
-  left:0;
-  right:0;
-  bottom:0;
-  padding:14px 16px calc(14px + env(safe-area-inset-bottom));
-  background:rgba(5,6,7,0.82);
-  border-top:1px solid var(--stroke);
+.resultsGrid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+}
+.metric{
+  background:rgba(0,0,0,0.18);
+  border:1px solid var(--stroke);
+  border-radius:16px;
+  padding:12px;
+}
+.metric .k{
+  font-size:12px;
+  color:rgba(255,255,255,0.55);
+  font-weight:900;
+}
+.metric .v{
+  margin-top:6px;
+  font-size:18px;
+  font-weight:950;
+  letter-spacing:0.2px;
+}
+
+.formGrid{ display:flex; flex-direction:column; gap:12px; }
+.formRow label{
+  display:block;
+  font-size:12px;
+  color:rgba(255,255,255,0.55);
+  font-weight:900;
+  margin:0 0 6px;
+}
+.formRow input, .formRow textarea{
+  width:100%;
+  background:rgba(0,0,0,0.18);
+  border:1px solid var(--stroke);
+  border-radius:14px;
+  padding:12px;
+  color:var(--text);
+  font-size:16px;
+  font-weight:700;
+  outline:none;
+}
+.formRow textarea{ resize:vertical; }
+
+.receiptPreview{
+  background:rgba(0,0,0,0.18);
+  border:1px solid var(--stroke);
+  border-radius:16px;
+  padding:12px;
+}
+.receiptLine{
   display:flex;
-  gap:10px;
-  z-index:20;
+  justify-content:space-between;
+  gap:12px;
+  padding:6px 0;
 }
-.actionsSticky .primaryBtn{ flex:1; }
-.actionsSticky .secondaryBtn{ flex:1; }
+.receiptLine .k{
+  color:rgba(255,255,255,0.55);
+  font-weight:900;
+  font-size:12px;
+}
+.receiptLine .v{
+  font-weight:950;
+  font-size:14px;
+  text-align:right;
+}
+.hr{
+  height:1px;
+  background:rgba(255,255,255,0.12);
+  margin:10px 0;
+}
+.notesBox{
+  margin-top:10px;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,0.04);
+  color:rgba(255,255,255,0.75);
+  font-size:13px;
+  line-height:1.35;
+}
+.tinyMuted{
+  margin-top:10px;
+  font-size:12px;
+  color:rgba(255,255,255,0.45);
+}
 
-/* ===== ZOOM OVERLAY ===== */
+/* ===== ZOOM OVERLAY (from prior step) ===== */
 .zoomOverlay{
   position:fixed;
   left:0; top:0;
@@ -233,7 +267,6 @@ a{ color:inherit; }
   flex-direction:column;
   padding-top: env(safe-area-inset-top);
 }
-
 .zoomTop{
   display:flex;
   align-items:center;
@@ -243,23 +276,14 @@ a{ color:inherit; }
   border-bottom:1px solid var(--stroke);
   background:rgba(5,6,7,0.92);
 }
-.zoomTitle{
-  font-size:14px;
-  font-weight:900;
-  opacity:0.9;
-}
-.zoomBtns{
-  display:flex;
-  gap:10px;
-}
-
+.zoomTitle{ font-size:14px; font-weight:950; opacity:0.9; }
+.zoomBtns{ display:flex; gap:10px; }
 .zoomScroller{
   flex:1;
   overflow:auto;
   -webkit-overflow-scrolling:touch;
   padding:10px;
 }
-
 .zoomCanvas{
   position:relative;
   display:inline-block;
@@ -267,24 +291,15 @@ a{ color:inherit; }
   overflow:hidden;
   border:1px solid var(--stroke);
   background:#000;
-  /* allow native zoom gestures on iOS */
   touch-action: manipulation;
 }
-
-#zoomImg{
-  display:block;
-  width:100%;
-  height:auto;
-  transform-origin: 0 0;
-}
-
+#zoomImg{ display:block; width:100%; height:auto; }
 .zoomTapLayer{
   position:absolute;
   left:0; top:0;
   width:100%;
   height:100%;
 }
-
 .zoomHint{
   padding:10px 12px calc(10px + env(safe-area-inset-bottom));
   border-top:1px solid var(--stroke);
