@@ -1,12 +1,11 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
-// NOTE: No top-left instruction/status text anymore (we hardcoded the Target line).
 
-const photoInput  = document.getElementById("photoInput");
-
-const targetImage = document.getElementById("targetImage");
-const imageWrap   = document.getElementById("targetImageWrap");
-const dotsLayer   = document.getElementById("dotsLayer");
+const photoInput   = document.getElementById("photoInput");
+const targetImage  = document.getElementById("targetImage");
+const imageWrap    = document.getElementById("targetImageWrap");
+const dotsLayer    = document.getElementById("dotsLayer");
+const targetInstr  = document.getElementById("targetInstr");
 
 const tapsCountEl   = document.getElementById("tapsCount");
 const clearTapsBtn  = document.getElementById("clearTapsBtn");
@@ -20,6 +19,11 @@ function setTapsCount(n){
 
 function hasPhoto(){
   return !!(targetImage && targetImage.src);
+}
+
+function setInstrVisible(on){
+  if (!targetInstr) return;
+  targetInstr.style.display = on ? "block" : "none";
 }
 
 /** --- Tap state --- **/
@@ -55,12 +59,14 @@ if (photoInput){
 
     if (!file){
       if (targetImage) targetImage.src = "";
+      setInstrVisible(false);
       clearAll();
       return;
     }
     if (!file.type || !file.type.startsWith("image/")){
       alert("That file is not an image.");
       if (targetImage) targetImage.src = "";
+      setInstrVisible(false);
       clearAll();
       return;
     }
@@ -72,15 +78,20 @@ if (photoInput){
 
       try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", dataUrl); } catch {}
       clearAll();
+      setInstrVisible(true); // ✅ only show instruction once photo exists
     };
     reader.onerror = () => {
       alert("Could not read that photo.");
       if (targetImage) targetImage.src = "";
+      setInstrVisible(false);
       clearAll();
     };
     reader.readAsDataURL(file);
   });
 }
+
+// ensure hidden on first load
+setInstrVisible(false);
 
 /** --- Tap capture --- **/
 function onTap(clientX, clientY){
@@ -125,11 +136,11 @@ async function doResults(){
       return;
     }
     if (!bullTap) {
-      alert("Tap the bull’s-eye first (Tap 1).");
+      alert("Tap the Bullseye / Aim Point first (Tap 1).");
       return;
     }
     if (taps.length < 1) {
-      alert("Tap at least 1 bullet hole after the bull.");
+      alert("Tap at least 1 bullet hole after the Bullseye.");
       return;
     }
 
