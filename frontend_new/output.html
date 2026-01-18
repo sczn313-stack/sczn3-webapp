@@ -1,3 +1,8 @@
+<!-- frontend_new/output.html  (FULL CUT/PASTE REPLACEMENT)
+     Purpose: always-dark, no popups, reads sessionStorage("sczn3_last_result_json"),
+     shows results or clean error, and gives Back / Retry / Receipt / Saved.
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,41 +14,42 @@
 
   <style>
     html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
   </style>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118b">
+  <link rel="stylesheet" href="./styles.css?v=20260118c">
 </head>
 
 <body>
   <div class="page" style="padding:16px; max-width:720px; margin:0 auto;">
-    <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">RESULTS</div>
-    <h1 style="margin:8px 0 6px 0;">Tap-n-Score™</h1>
+    <div style="opacity:.75; letter-spacing:.12em; font-size:12px;">TAP-N-SCORE™</div>
+    <h1 style="margin:8px 0 8px 0;">Results</h1>
 
-    <!-- THIS IS THE KEY FIX: ALWAYS EXISTS, so output.js NEVER uses alert() -->
     <div id="statusBox" class="subtle" style="margin:10px 0 14px 0; opacity:.9;">
-      Ready.
+      Loading…
     </div>
 
-    <div class="resultsBox" style="padding:14px; border-radius:16px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04);">
-      <div style="display:grid; grid-template-columns: 1fr; gap:8px; font-size:16px;">
+    <div class="targetBox" style="margin-bottom:14px;">
+      <div style="display:grid; grid-template-columns: 1fr; gap:10px; font-size:16px;">
         <div><span class="subtle">Score</span> <span id="scoreVal">--</span></div>
         <div><span class="subtle">Windage</span> <span id="windVal">--</span></div>
         <div><span class="subtle">Elevation</span> <span id="elevVal">--</span></div>
         <div><span class="subtle">Distance</span> <span id="distVal">--</span></div>
-        <div><span class="subtle">POIB</span> <span id="poibVal">--</span></div>
+        <div><span class="subtle">Tip</span> <span id="tipVal">--</span></div>
       </div>
     </div>
 
-    <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <button id="backBtn" class="btnSecondary" type="button">Back</button>
-      <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+      <button id="retryBtn" class="btnSecondary" type="button">Retry</button>
       <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
+      <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
     </div>
 
     <div style="text-align:center; margin-top:18px;" class="subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=20260118b"></script>
-  <script src="./output.js?v=20260118b"></script>
+  <script src="./api.js?v=20260118c"></script>
+  <script src="./output.js?v=20260118c"></script>
 </body>
 </html>
