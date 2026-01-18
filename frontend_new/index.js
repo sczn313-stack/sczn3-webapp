@@ -1,6 +1,7 @@
 // sczn3-webapp/frontend_new/index.js (FULL FILE REPLACEMENT)
 // Upload + Tap UI. Stores tapsJson (bull + holes) in sessionStorage for backend.
 // Fender plug: never call backend unless taps exist.
+// iOS fix: DO NOT force capture camera-only (removes capture="environment") so user gets Library + Files + Camera.
 
 (function () {
   const DIST_KEY  = "sczn3_distance_yards";
@@ -11,24 +12,23 @@
 
   function $(id){ return document.getElementById(id); }
 
-  // These IDs must exist in your index.html:
+  // Expected IDs in index.html:
   // uploadBtn, distanceInput, vendorInput (optional), statusLine (optional),
-  // imgEl (the displayed target image), tapsCount (optional),
-  // clearTapsBtn (optional), goResultsBtn (the "Press to see results" button)
-  const uploadBtn    = $("uploadBtn");
-  const distanceInput= $("distanceInput");
-  const vendorInput  = $("vendorInput");
-  const statusLine   = $("statusLine");
+  // imgEl (displayed target image), tapsCount (optional),
+  // clearTapsBtn (optional), goResultsBtn ("Press to see results")
+  const uploadBtn     = $("uploadBtn");
+  const distanceInput = $("distanceInput");
+  const vendorInput   = $("vendorInput");
+  const statusLine    = $("statusLine");
 
-  const imgEl        = $("imgEl");
-  const tapsCount    = $("tapsCount");
-  const clearTapsBtn = $("clearTapsBtn");
-  const goResultsBtn = $("goResultsBtn");
+  const imgEl         = $("imgEl");
+  const tapsCount     = $("tapsCount");
+  const clearTapsBtn  = $("clearTapsBtn");
+  const goResultsBtn  = $("goResultsBtn");
 
-  // Internal state
   let currentFile = null;
-  let tapHoles = []; // [{x,y}] in natural image coords
-  let bull = null;   // {x,y} in natural image coords
+  let tapHoles = []; // [{x,y}] natural image coords
+  let bull = null;   // {x,y} natural image coords
 
   function status(msg){
     if (statusLine) statusLine.textContent = String(msg || "");
@@ -75,7 +75,6 @@
     const xDisp = clientX - rect.left;
     const yDisp = clientY - rect.top;
 
-    // Outside image area? ignore
     if (xDisp < 0 || yDisp < 0 || xDisp > rect.width || yDisp > rect.height) return null;
 
     const nw = imgEl.naturalWidth || rect.width;
@@ -88,10 +87,7 @@
   }
 
   function ensureBull(){
-    if (!imgEl) return;
-    if (bull) return;
-
-    // Fender plug bull: image center in natural coords
+    if (!imgEl || bull) return;
     const nw = imgEl.naturalWidth || 0;
     const nh = imgEl.naturalHeight || 0;
     if (nw > 0 && nh > 0) bull = { x: nw / 2, y: nh / 2 };
@@ -102,14 +98,11 @@
 
     currentFile = file;
 
-    // Store photo for receipt
     const dataUrl = await fileToDataUrl(file);
     sessionStorage.setItem(PHOTO_KEY, dataUrl);
 
-    // Reset taps
     clearTaps();
 
-    // Show image
     if (imgEl) {
       imgEl.src = dataUrl;
       imgEl.onload = () => {
@@ -131,11 +124,11 @@
   }
 
   function openPicker(){
-    // iOS friendly: create a hidden input each time
+    // iOS-friendly: create a fresh input every time.
+    // IMPORTANT: No `capture` attribute => iOS shows Camera + Photo Library + Files.
     const inp = document.createElement("input");
     inp.type = "file";
     inp.accept = "image/*";
-    inp.capture = "environment";
     inp.style.display = "none";
     document.body.appendChild(inp);
 
@@ -154,7 +147,7 @@
       return;
     }
 
-    // DO NOT prevent default => allow pinch zoom behavior on iOS
+    // Do NOT preventDefault => keep pinch zoom behavior
     const p = naturalPointFromEvent(ev);
     if (!p) return;
 
@@ -167,7 +160,6 @@
   }
 
   async function goResults(){
-    // Fender plug: no taps => no backend call
     if (tapHoles.length === 0) {
       status("Tap at least one hole before results.");
       return;
@@ -177,14 +169,11 @@
       return;
     }
 
-    // Clear last (fresh run)
     sessionStorage.removeItem(LAST_KEY);
 
-    // Persist distance + vendor
     setDistance(distanceInput ? distanceInput.value : 100);
     if (vendorInput) setVendor(vendorInput.value);
 
-    // Call backend with tapsJson
     status("Analyzing…");
 
     try {
@@ -198,21 +187,15 @@
         tapsJson
       });
 
-      // Store full result for output.html
       sessionStorage.setItem(LAST_KEY, JSON.stringify(out.data || {}));
-
-      // Navigate (cache-bust)
       window.location.href = `./output.html?v=${Date.now()}`;
     } catch (e) {
-      // Calm inline error (no scary screen)
       const msg = String(e && e.message ? e.message : e);
       status(msg || "Analyze failed.");
     }
   }
 
-  // ===== INIT =====
   (function init(){
-    // Defaults
     setDistance(sessionStorage.getItem(DIST_KEY) || 100);
     if (vendorInput) vendorInput.value = sessionStorage.getItem(VENDOR_BUY) || "";
 
