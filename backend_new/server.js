@@ -1,5 +1,9 @@
 /**
- * backend_new/server.js — SCZN3 Backend NEW — Tap-N-Score + dx/dy override
+ * backend_new/server.js  (FULL CUT/PASTE REPLACEMENT)
+ * Tap-N-Score backend:
+ * - accepts tapsJson as NORMALIZED coords (0..1) OR NATURAL pixels
+ * - auto-detects normalized vs pixels
+ * - returns dx/dy and click corrections with 2 decimals
  *
  * Conventions (inches):
  *  - dx > 0 => RIGHT, dx < 0 => LEFT
@@ -7,15 +11,19 @@
  *
  * Endpoints:
  *  - GET  /health
- *  - POST /api/analyze  (multipart form-data, field "image")
+ *  - POST /api/analyze  (JSON or multipart)
  *
- * Fields:
- *  - distanceYards  (number, required)
- *  - moaPerClick    (number, optional, default 0.25)
- *  - dx, dy         (string/number, optional)   <-- override inches
- *  - tapsJson       (string JSON, optional)     <-- [{x,y}, ...] in NATURAL pixels (bull first)
- *  - targetWIn      (number, optional, default 8.5)
- *  - targetHIn      (number, optional, default 11)
+ * JSON body fields:
+ *  - distanceYards (number, required)
+ *  - moaPerClick   (number, optional, default 0.25)
+ *  - tapsJson      (string JSON, optional)  [{x,y}, ...] bull first
+ *  - targetWIn     (number, optional, default 8.5)
+ *  - targetHIn     (number, optional, default 11)
+ *  - nw, nh        (number, optional) natural image px dims (if taps are px)
+ *
+ * NOTE:
+ *  If taps are normalized (0..1): we convert using target inches directly.
+ *  If taps are pixels: we need nw/nh (or infer from max coords).
  */
 
 const express = require("express");
@@ -23,11 +31,12 @@ const cors = require("cors");
 const multer = require("multer");
 
 const SERVICE = "sczn3-backend-new";
-const BUILD = "BACKEND_NEW_PARSER_V3_TAPNSCORE";
+const BUILD = "BACKEND_NEW_TAPNSCORE_V4_NORM_OR_PX";
 
 const app = express();
 
 app.use(cors({ origin: true, credentials: false }));
+app.use(express.json({ limit: "2mb" })); // allow JSON posts
 
 // Always JSON (avoid HTML error pages)
 app.use((req, res, next) => {
@@ -60,7 +69,8 @@ function round2(n) {
 }
 
 function fmt2(n) {
-  return round2(n).toFixed(2);
+  const x = round2(n);
+  return x.toFixed(2);
 }
 
 function inchesPerMOA(yards) {
@@ -83,20 +93,82 @@ function safeJsonParse(s) {
 }
 
 function scoreFromBullAndGroup(dxIn, dyIn) {
-  // Simple “distance from bull” score placeholder (keep yours if you already have one)
-  // Smaller miss => higher score. Tuned so it doesn’t go negative.
+  // placeholder score: smaller miss => higher score
   const r = Math.sqrt(dxIn * dxIn + dyIn * dyIn);
   const base = 650;
   const penalty = r * 60;
   return Math.max(0, Math.round(base - penalty));
 }
 
-app.post("/api/analyze", upload.single("image"), async (req, res) => {
+// Determine if taps look normalized (0..1-ish) or pixel coords
+function detectTapMode(taps) {
+  // If all values are between 0 and 1.2 -> treat as normalized
+  let looksNorm = true;
+  for (const p of taps) {
+    const x = num(p?.x, NaN);
+    const y = num(p?.y, NaN);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return "BAD";
+    if (x < 0 || y < 0 || x > 1.2 || y > 1.2) looksNorm = false;
+  }
+  return looksNorm ? "NORM" : "PX";
+}
+
+// Compute dx/dy inches from taps
+function tapsToInches({ taps, targetWIn, targetHIn, nw, nh }) {
+  const mode = detectTapMode(taps);
+  if (mode === "BAD") return { ok: false, mode: "BAD_TAPS" };
+
+  const bull = taps[0];
+  const holes = taps.slice(1);
+  if (!holes.length) return { ok: false, mode: "NEED_HOLES" };
+
+  // group center in same coord system as taps
+  let sx = 0, sy = 0;
+  for (const p of holes) { sx += num(p.x, 0); sy += num(p.y, 0); }
+  const gcx = sx / holes.length;
+  const gcy = sy / holes.length;
+
+  if (mode === "NORM") {
+    // taps are 0..1 relative to displayed wrapper
+    // Convert directly to inches:
+    // dx inches = (gcx - bull.x) * targetWIn
+    // dy inches = -((gcy - bull.y) * targetHIn) (pixel y grows down; norm y follows same)
+    const dxIn = (gcx - num(bull.x, 0)) * targetWIn;
+    const dyIn = -((gcy - num(bull.y, 0)) * targetHIn);
+    return { ok: true, mode: "TAP_NORM_TO_INCHES", dxIn, dyIn };
+  }
+
+  // mode === PX
+  // need natural image dims; if absent, infer from max coords
+  let naturalW = num(nw, NaN);
+  let naturalH = num(nh, NaN);
+
+  if (!Number.isFinite(naturalW) || naturalW <= 0 || !Number.isFinite(naturalH) || naturalH <= 0) {
+    let mx = 0, my = 0;
+    for (const p of taps) {
+      mx = Math.max(mx, num(p.x, 0));
+      my = Math.max(my, num(p.y, 0));
+    }
+    naturalW = Math.max(1, mx);
+    naturalH = Math.max(1, my);
+  }
+
+  const pxPerInX = naturalW / targetWIn;
+  const pxPerInY = naturalH / targetHIn;
+
+  const dxIn = (gcx - num(bull.x, 0)) / pxPerInX;
+  const dyIn = -((gcy - num(bull.y, 0)) / pxPerInY);
+
+  return { ok: true, mode: "TAP_PX_TO_INCHES", dxIn, dyIn };
+}
+
+// Unified handler for JSON or multipart
+async function handleAnalyze(req, res) {
   try {
-    // image is optional for Tap-N-Score-only mode, but keep the field so FormData is consistent
-    // (Your frontend currently always sends the image.)
-    const distanceYards = num(req.body.distanceYards, NaN);
-    const moaPerClick = num(req.body.moaPerClick, 0.25);
+    const body = req.body || {};
+
+    const distanceYards = num(body.distanceYards, NaN);
+    const moaPerClick = num(body.moaPerClick, 0.25);
 
     if (!Number.isFinite(distanceYards) || distanceYards <= 0) {
       res.status(400).send(JSON.stringify({
@@ -106,12 +178,12 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       return;
     }
 
-    const targetWIn = num(req.body.targetWIn, 8.5);
-    const targetHIn = num(req.body.targetHIn, 11.0);
+    const targetWIn = num(body.targetWIn, 8.5);
+    const targetHIn = num(body.targetHIn, 11.0);
 
-    // 1) DX/DY OVERRIDE (inches) — highest priority
-    const dxOverride = num(req.body.dx, NaN);
-    const dyOverride = num(req.body.dy, NaN);
+    // Accept dx/dy override inches if provided (optional)
+    const dxOverride = num(body.dx, NaN);
+    const dyOverride = num(body.dy, NaN);
 
     let dxIn = NaN;
     let dyIn = NaN;
@@ -122,62 +194,33 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       dyIn = dyOverride;
       mode = "OVERRIDE_DXDY_IN";
     } else {
-      // 2) Tap-N-Score mode: bull first, then holes
-      const taps = safeJsonParse(req.body.tapsJson);
-      if (Array.isArray(taps) && taps.length >= 2) {
-        const bull = taps[0];
-        const holes = taps.slice(1);
-
-        // Use uploaded image natural size if available from client (preferred)
-        // If not provided, infer from max tap values (ok for now)
-        const nw = num(req.body.nw, NaN);
-        const nh = num(req.body.nh, NaN);
-
-        let naturalW = Number.isFinite(nw) && nw > 0 ? nw : NaN;
-        let naturalH = Number.isFinite(nh) && nh > 0 ? nh : NaN;
-
-        if (!Number.isFinite(naturalW) || !Number.isFinite(naturalH)) {
-          // fallback: infer from taps (not perfect but works)
-          let mx = 0, my = 0;
-          for (const p of taps) {
-            mx = Math.max(mx, num(p.x, 0));
-            my = Math.max(my, num(p.y, 0));
-          }
-          naturalW = Math.max(1, mx);
-          naturalH = Math.max(1, my);
-        }
-
-        const pxPerInX = naturalW / targetWIn;
-        const pxPerInY = naturalH / targetHIn;
-
-        // group center px
-        let sx = 0, sy = 0;
-        for (const p of holes) { sx += num(p.x, 0); sy += num(p.y, 0); }
-        const gcx = sx / holes.length;
-        const gcy = sy / holes.length;
-
-        // dx inches: right +
-        dxIn = (gcx - num(bull.x, 0)) / pxPerInX;
-
-        // dy inches: UP +, but pixel y grows DOWN -> flip
-        dyIn = -((gcy - num(bull.y, 0)) / pxPerInY);
-
-        mode = "TAPNSCORE_PIXELS_TO_INCHES";
+      const taps = safeJsonParse(body.tapsJson);
+      if (!Array.isArray(taps) || taps.length < 2) {
+        res.status(422).send(JSON.stringify({
+          ok: false,
+          error: { code: "NO_INPUT", message: "Need dx/dy override OR tapsJson with bull+holes." }
+        }));
+        return;
       }
+
+      const nw = num(body.nw, NaN);
+      const nh = num(body.nh, NaN);
+
+      const calc = tapsToInches({ taps, targetWIn, targetHIn, nw, nh });
+      if (!calc.ok) {
+        res.status(422).send(JSON.stringify({
+          ok: false,
+          error: { code: "BAD_TAPS", message: "Invalid taps. Bull first, then at least one hole." }
+        }));
+        return;
+      }
+
+      dxIn = calc.dxIn;
+      dyIn = calc.dyIn;
+      mode = calc.mode;
     }
 
-    if (!Number.isFinite(dxIn) || !Number.isFinite(dyIn)) {
-      res.status(422).send(JSON.stringify({
-        ok: false,
-        error: {
-          code: "NO_INPUT",
-          message: "Need either (dx & dy) inches override OR tapsJson with bull+holes."
-        }
-      }));
-      return;
-    }
-
-    // CORRECTION inches (what to dial) = move impact to bull = -(cluster offset)
+    // CORRECTION inches = move impact to bull = -(cluster offset)
     const corrDx = -dxIn;
     const corrDy = -dyIn;
 
@@ -185,7 +228,11 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
     const elevDir = dirFromSign(corrDy, "UP", "DOWN");
 
     const inchPerMOA = inchesPerMOA(distanceYards);
-    const clicks = (inches) => round2(Math.abs(inches) / (inchPerMOA * moaPerClick));
+
+    const clicks = (inches) => {
+      const raw = Math.abs(inches) / (inchPerMOA * moaPerClick);
+      return fmt2(raw);
+    };
 
     const windClicks = clicks(corrDx);
     const elevClicks = clicks(corrDy);
@@ -194,8 +241,10 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
 
     const tip =
       mode === "OVERRIDE_DXDY_IN"
-        ? `DEMO override active — dx=${fmt2(dxIn)} in, dy=${fmt2(dyIn)} in.`
-        : `Tap-N-Score active — bull first, then holes.`;
+        ? `Override active — dx=${fmt2(dxIn)} in, dy=${fmt2(dyIn)} in.`
+        : (mode === "TAP_NORM_TO_INCHES"
+            ? "Tap-N-Score active (normalized taps). Bull first, then holes."
+            : "Tap-N-Score active (pixel taps). Bull first, then holes.");
 
     res.status(200).send(JSON.stringify({
       ok: true,
@@ -204,10 +253,14 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       mode,
       distanceYards,
       moaPerClick,
-      // what the frontend expects:
-      correction_in: { dx: round2(corrDx), dy: round2(corrDy) },
+
+      // report offsets and corrections with 2 decimals
+      offset_in:      { dx: round2(dxIn),   dy: round2(dyIn) },
+      correction_in:  { dx: round2(corrDx), dy: round2(corrDy) },
+
       directions: { windage: windDir, elevation: elevDir },
-      clicks: { windage: fmt2(windClicks), elevation: fmt2(elevClicks) },
+      clicks: { windage: windClicks, elevation: elevClicks },
+
       score,
       tip
     }));
@@ -217,7 +270,9 @@ app.post("/api/analyze", upload.single("image"), async (req, res) => {
       error: { code: "SERVER_ERROR", message: String(err?.message || err) }
     }));
   }
-});
+}
+
+app.post("/api/analyze", upload.single("image"), handleAnalyze);
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`${SERVICE} on ${PORT} build=${BUILD}`));
