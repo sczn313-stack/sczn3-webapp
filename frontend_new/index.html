@@ -1,14 +1,95 @@
-<!-- ONE BUTTON (Hero) -->
-<button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
-  <div class="uploadHeroInner">
-    <div class="uploadHeroTitle">Upload target photo</div>
-  </div>
-</button>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+  <title>Tap-n-Score™</title>
 
-<!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
-<input
-  id="photoInput"
-  class="fileInputReal"
-  type="file"
-  accept="image/*"
-/>
+  <!-- CRITICAL CSS (so you NEVER get that white page again) -->
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+    /* hide real input but keep it functional */
+    .fileInputReal{
+      position:absolute;
+      left:-9999px; top:auto;
+      width:1px; height:1px;
+      opacity:0;
+      pointer-events:none;
+    }
+  </style>
+
+  <link rel="stylesheet" href="./styles.css?v=20260118z99">
+</head>
+
+<body>
+  <main class="page">
+
+    <div class="brandRow">
+      <div class="brand">
+        <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
+      </div>
+    </div>
+
+    <h1 class="h1">Upload</h1>
+
+    <!-- ✅ ONE HERO BUTTON that opens Camera / Photo Library / Files -->
+    <label id="uploadHeroBtn" class="uploadHero" for="photoInput" aria-label="Upload target photo">
+      <div class="uploadHeroInner">
+        <div class="uploadHeroTitle">Upload target photo</div>
+      </div>
+    </label>
+
+    <!-- ✅ REAL INPUT (hidden). IMPORTANT: NO capture="" -->
+    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
+
+    <!-- Controls row -->
+    <section class="controlsRow mt14">
+      <div class="distanceBox">
+        <div class="subtle strong">Distance</div>
+        <input id="distanceInput" type="number" value="100" min="1" step="1" />
+        <div class="subtle strong">yds</div>
+      </div>
+
+      <div class="tapsBlock">
+        <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
+      </div>
+    </section>
+
+    <!-- Anchor line (only shows after photo is loaded) -->
+    <div id="anchorLine" class="subtle strong mt12 mb8"></div>
+
+    <!-- Target -->
+    <section class="card mt12">
+      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
+        <div class="targetCanvas">
+          <img id="targetImage" class="targetImg" alt="Target preview" />
+          <div id="dotsLayer" class="dotsLayer"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vendor -->
+    <div class="subtle mb6 mt18">Vendor link (optional)</div>
+    <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
+
+    <!-- You said: green “See Results” should be the active button (not bottom button).
+         So we’ll keep a button if you already wired it, or you can trigger it from your green box.
+         For now, keep the real button hidden until you decide. -->
+    <button id="seeResultsBtn" class="btn btnPrimary w100 mt12" type="button" style="display:none;">See results</button>
+
+    <section id="resultsBox" class="card mt18" style="display:none;">
+      <div class="subtle strong mb8">Results</div>
+      <div id="resultsText" class="mono"></div>
+    </section>
+
+    <div class="footer subtle">Tap-n-Score™</div>
+  </main>
+
+  <script src="./api.js?v=20260118z99"></script>
+  <script src="./index.js?v=20260118z99"></script>
+</body>
+</html>
