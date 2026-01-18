@@ -134,7 +134,7 @@ html,body{
   outline:none;
 }
 
-/* ✅ Green boxed whisper */
+/* ✅ Green boxed whisper (button) */
 .seeResultsHint{
   display:inline-flex;
   align-items:center;
@@ -148,7 +148,9 @@ html,body{
   font-size:14px;
   letter-spacing:.01em;
   margin-top:2px;
+  cursor:pointer;
 }
+.seeResultsHint:active{transform:translateY(1px)}
 
 .tapsBlock{
   display:flex;
@@ -192,8 +194,28 @@ html,body{
   padding:14px;
 }
 
-/* Vendor sticky slot */
-.vendorCta{ margin-top:12px; }
+/* ✅ Micro-slot */
+.microSlot{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+/* Pinch hint (quiet) */
+.pinchHint{
+  width:100%;
+  border-radius:18px;
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.05);
+  color:rgba(255,255,255,.78);
+  font-weight:800;
+  font-size:14px;
+  letter-spacing:.01em;
+}
+
+/* Vendor CTA */
 .vendorBuyBtn{
   display:flex;
   align-items:center;
@@ -227,7 +249,7 @@ html,body{
   outline:none;
 }
 
-/* Target container (FIT: show all corners) */
+/* Target container (FIT) */
 .targetWrap{
   position:relative;
   width:100%;
@@ -246,7 +268,6 @@ html,body{
   width:100%;
 }
 
-/* FIT: keep whole target visible on mobile */
 .targetImg{
   display:block;
   max-width:100%;
