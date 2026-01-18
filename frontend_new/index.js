@@ -1,5 +1,7 @@
 (() => {
-  const photoInput = document.getElementById("photoInput");
+  const camInput   = document.getElementById("photoInputCam");
+  const libInput   = document.getElementById("photoInputLib");
+
   const targetImg  = document.getElementById("targetImage");
   const wrap       = document.getElementById("targetImageWrap");
   const dotsLayer  = document.getElementById("dotsLayer");
@@ -16,12 +18,12 @@
   const resultsText = document.getElementById("resultsText");
   const backBtn     = document.getElementById("backBtn");
 
-  /** state **/
-  let taps = []; // [{x:0..1, y:0..1}] relative to displayed image box
+  let taps = [];
   let imageDataUrl = "";
 
   function setStatus(msg){
-    if (window.setStatus) window.setStatus(msg);
+    const el = document.getElementById("statusLine");
+    if (el) el.textContent = String(msg || "");
   }
 
   function updateCount(){
@@ -29,8 +31,7 @@
   }
 
   function clearDots(){
-    if (!dotsLayer) return;
-    dotsLayer.innerHTML = "";
+    if (dotsLayer) dotsLayer.innerHTML = "";
   }
 
   function addDotAt(px, py){
@@ -44,8 +45,8 @@
 
   function clearAllTaps(){
     taps = [];
-    updateCount();
     clearDots();
+    updateCount();
     setStatus("Taps cleared.");
   }
 
@@ -58,35 +59,50 @@
     if (resultsBox) resultsBox.style.display = "none";
   }
 
-  /** Load photo **/
-  if (photoInput && targetImg) {
-    photoInput.addEventListener("change", () => {
-      const f = photoInput.files && photoInput.files[0];
-      if (!f) {
-        setStatus("No photo selected.");
-        return;
-      }
-      if (!f.type || !f.type.startsWith("image/")) {
-        setStatus("That file is not an image.");
-        return;
-      }
+  function loadFileFromInput(inputEl, label){
+    const file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) {
+      setStatus(`${label}: no photo selected.`);
+      return;
+    }
+    if (!file.type || !file.type.startsWith("image/")) {
+      setStatus(`${label}: that file is not an image.`);
+      return;
+    }
 
-      const r = new FileReader();
-      r.onload = () => {
-        imageDataUrl = String(r.result || "");
-        targetImg.src = imageDataUrl;
-        if (emptyHint) emptyHint.textContent = "Photo loaded. Tap bullet holes.";
-        clearAllTaps();
-        hideResults();
-        setStatus("Photo loaded. Tap bullet holes.");
-        try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", imageDataUrl); } catch {}
-      };
-      r.onerror = () => setStatus("Could not read that photo.");
-      r.readAsDataURL(f);
-    });
+    setStatus(`${label}: loading photo...`);
+
+    const r = new FileReader();
+    r.onload = () => {
+      imageDataUrl = String(r.result || "");
+      if (targetImg) targetImg.src = imageDataUrl;
+
+      if (emptyHint) emptyHint.textContent = "Photo loaded. Tap bullet holes.";
+      clearAllTaps();
+      hideResults();
+
+      setStatus("Photo loaded. Tap bullet holes.");
+      try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", imageDataUrl); } catch {}
+
+      // ✅ Clear AFTER load (iOS-safe)
+      try { inputEl.value = ""; } catch {}
+    };
+
+    r.onerror = () => {
+      setStatus(`${label}: could not read that photo.`);
+      try { inputEl.value = ""; } catch {}
+    };
+
+    r.readAsDataURL(file);
   }
 
-  /** Tap handler **/
+  if (camInput){
+    camInput.addEventListener("change", () => loadFileFromInput(camInput, "Camera"));
+  }
+  if (libInput){
+    libInput.addEventListener("change", () => loadFileFromInput(libInput, "Library"));
+  }
+
   function handleTap(clientX, clientY){
     if (!wrap) return;
 
@@ -94,25 +110,19 @@
     const x = clientX - rect.left;
     const y = clientY - rect.top;
 
-    // ignore if outside
     if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
 
-    // store normalized
     const nx = rect.width  ? (x / rect.width)  : 0;
     const ny = rect.height ? (y / rect.height) : 0;
 
     taps.push({ x: nx, y: ny });
     updateCount();
-
-    // draw dot where tapped (in pixels)
     addDotAt(x, y);
   }
 
-  if (wrap) {
-    // pointer events work on iOS Safari
+  if (wrap){
     wrap.addEventListener("pointerdown", (e) => {
-      // Only when photo loaded (optional). If you want taps even without photo, remove this.
-      if (!imageDataUrl) {
+      if (!imageDataUrl){
         setStatus("Add a photo first.");
         return;
       }
@@ -120,44 +130,34 @@
     }, { passive: true });
   }
 
-  /** Clear taps **/
   if (clearBtn) clearBtn.addEventListener("click", clearAllTaps);
-
-  /** Results **/
   if (backBtn) backBtn.addEventListener("click", hideResults);
 
-  if (seeBtn) {
+  if (seeBtn){
     seeBtn.addEventListener("click", async () => {
-      // Must have api.js
       if (!window.tapscore) {
         alert("Analyze function missing (api.js not loaded).");
         return;
       }
-
       if (!imageDataUrl) {
         alert("Add a photo first.");
         return;
       }
-
       if (!taps.length) {
         alert("Tap at least 1 bullet hole.");
         return;
       }
 
       const distanceYds = Number(distanceInput && distanceInput.value ? distanceInput.value : 100) || 100;
-      const vendorLink = String(vendorInput && vendorInput.value ? vendorInput.value : "").trim();
+      const vendorLink  = String(vendorInput && vendorInput.value ? vendorInput.value : "").trim();
 
       setStatus("Analyzing...");
       try {
-        // NOTE: sending imageDataUrl is optional; remove if backend doesn’t want it.
+        // If backend doesn’t want imageDataUrl, remove it here:
         const payload = { distanceYds, taps, vendorLink, imageDataUrl };
 
         const out = await window.tapscore(payload);
-
-        // display whatever backend returns
-        const pretty = typeof out === "string" ? out : JSON.stringify(out, null, 2);
-        showResults(pretty);
-
+        showResults(JSON.stringify(out, null, 2));
         setStatus("Done.");
       } catch (err) {
         console.error(err);
