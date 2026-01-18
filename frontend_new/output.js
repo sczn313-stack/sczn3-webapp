@@ -1,41 +1,37 @@
 // sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
-// Calm guardrails: do NOT call backend unless we have valid tapsJson (bull + holes).
+// NEVER uses alert(). Always writes status into #statusBox.
 
 (function () {
-  const DIST_KEY   = "sczn3_distance_yards";
-  const TAPS_KEY   = "sczn3_taps_json";
-  const LAST_KEY   = "sczn3_last_result_json";
-  const VENDOR_BUY = "sczn3_vendor_buy_url";
+  const DIST_KEY = "sczn3_distance_yards";
+  const TAPS_KEY = "sczn3_taps_json";
+  const LAST_KEY = "sczn3_last_result_json";
 
   function $(id){ return document.getElementById(id); }
+
+  const statusBox = $("statusBox");
+
+  const scoreEl = $("scoreVal");
+  const windEl  = $("windVal");
+  const elevEl  = $("elevVal");
+  const distEl  = $("distVal");
+  const poibEl  = $("poibVal");
 
   const backBtn    = $("backBtn");
   const savedBtn   = $("savedBtn");
   const receiptBtn = $("receiptBtn");
 
-  const statusBox  = $("statusBox") || $("resultsError") || $("resultsTop");
-  const scoreEl    = $("scoreVal");
-  const windEl     = $("windVal");
-  const elevEl     = $("elevVal");
-  const distEl     = $("distVal");
-  const poibEl     = $("poibVal");
+  function setText(el, v){
+    if (!el) return;
+    el.textContent = String(v ?? "");
+  }
 
-  function setInline(msg){
-    if (statusBox){
-      statusBox.textContent = String(msg || "");
-      statusBox.style.opacity = "0.9";
-    } else {
-      alert(String(msg || ""));
-    }
+  function setStatus(msg){
+    if (!statusBox) return;
+    statusBox.textContent = String(msg || "");
   }
 
   function safeJsonParse(s){
     try { return JSON.parse(String(s || "")); } catch { return null; }
-  }
-
-  function setText(el, v){
-    if (!el) return;
-    el.textContent = String(v ?? "");
   }
 
   function getDistance(){
@@ -51,32 +47,39 @@
 
   function hasValidTaps(obj){
     if (!obj) return false;
-    const bullOk = obj.bull && Number.isFinite(obj.bull.x) && Number.isFinite(obj.bull.y);
-    const holesOk = Array.isArray(obj.holes) && obj.holes.length > 0
-      && obj.holes.every(h => h && Number.isFinite(h.x) && Number.isFinite(h.y));
+    const bullOk =
+      obj.bull &&
+      Number.isFinite(obj.bull.x) &&
+      Number.isFinite(obj.bull.y);
+
+    const holesOk =
+      Array.isArray(obj.holes) &&
+      obj.holes.length > 0 &&
+      obj.holes.every(h => h && Number.isFinite(h.x) && Number.isFinite(h.y));
+
     return !!(bullOk && holesOk);
   }
 
-  async function callBackend(){
+  async function analyze(){
     const distanceYards = getDistance();
+    setText(distEl, `${distanceYards} yds`);
+
     const tapsPayload = getTapsPayload();
 
-    // HARD GUARD: no backend call unless valid
+    // GUARD: do not call backend without valid taps
     if (!hasValidTaps(tapsPayload)){
-      setInline("Tap bullet holes first. Then press See results.");
+      setStatus("Tap bullet holes first. Then press See results.");
       setText(scoreEl, "--");
       setText(windEl, "--");
       setText(elevEl, "--");
-      setText(distEl, `${distanceYards} yds`);
       setText(poibEl, "--");
       return;
     }
 
-    setInline("Analyzing…");
+    setStatus("Analyzing…");
 
-    // This assumes api.js exposes a function like analyzeTapNScore(payload)
-    // If your api.js uses a different name, paste it and I’ll match it.
-    try{
+    try {
+      // Prefer a wrapper if api.js defines it; else fallback to /api/analyze
       const res = await (window.apiAnalyze
         ? window.apiAnalyze({ distanceYards, tapsJson: tapsPayload })
         : fetch("/api/analyze", {
@@ -86,21 +89,18 @@
           }).then(r => r.json())
       );
 
-      // Store last result for receipt/saved
       try { sessionStorage.setItem(LAST_KEY, JSON.stringify(res || {})); } catch {}
 
       if (!res || res.ok === false){
-        setInline("Could not analyze this photo. Try retapping your holes.");
+        setStatus("Analyze failed. Try retapping your holes.");
         setText(scoreEl, "--");
         setText(windEl, "--");
         setText(elevEl, "--");
-        setText(distEl, `${distanceYards} yds`);
         setText(poibEl, "--");
         return;
       }
 
-      // Render minimal fields safely
-      setInline("Done.");
+      setStatus("Done.");
 
       const score = (typeof res.score !== "undefined") ? res.score : "--";
       const wind  = res?.clicks?.windage ?? "--";
@@ -112,23 +112,21 @@
       setText(scoreEl, score);
       setText(windEl, `${wind} ${wdir}`.trim());
       setText(elevEl, `${elev} ${edir}`.trim());
-      setText(distEl, `${distanceYards} yds`);
       setText(poibEl, poib);
 
-    } catch (err){
-      setInline("Network or server error. Try again.");
+    } catch (e){
+      setStatus("Network/server error. Try again.");
       setText(scoreEl, "--");
       setText(windEl, "--");
       setText(elevEl, "--");
-      setText(distEl, `${distanceYards} yds`);
       setText(poibEl, "--");
     }
   }
 
-  // Nav
+  // Nav (cache-bust for iOS)
   if (backBtn) backBtn.addEventListener("click", () => window.location.href = "./index.html?v=" + Date.now());
   if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
   if (receiptBtn) receiptBtn.addEventListener("click", () => window.location.href = "./receipt.html?v=" + Date.now());
 
-  callBackend();
+  analyze();
 })();
