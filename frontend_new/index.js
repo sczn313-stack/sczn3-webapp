@@ -1,14 +1,18 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
 
-const photoInput = document.getElementById("photoInput");
-const targetImage = document.getElementById("targetImage");       // <img>
-const imageWrap   = document.getElementById("targetImageWrap");   // wrapper div
-const tapsCountEl = document.getElementById("tapsCount");
-const clearTapsBtn = document.getElementById("clearTapsBtn");
+const addPhotoBtn   = document.getElementById("addPhotoBtn");
+const photoInput    = document.getElementById("photoInput");
+
+const targetImage   = document.getElementById("targetImage");       // <img>
+const imageWrap     = document.getElementById("targetImageWrap");   // wrapper div
+const emptyHint     = document.getElementById("emptyHint");
+const tapsCountEl   = document.getElementById("tapsCount");
+
+const clearTapsBtn  = document.getElementById("clearTapsBtn");
 const seeResultsBtn = document.getElementById("seeResultsBtn");
 const distanceInput = document.getElementById("distanceInput");
-const vendorInput = document.getElementById("vendorInput");
+const vendorInput   = document.getElementById("vendorInput");
 
 function setStatus(msg){
   const el = document.getElementById("statusLine");
@@ -21,13 +25,17 @@ function setTapsCount(n){
 
 function showPreview(dataUrl){
   if (!targetImage) return;
+
   targetImage.src = dataUrl;
+
   if (imageWrap) imageWrap.style.display = "block";
+  if (emptyHint) emptyHint.style.display = "none";
 }
 
 function clearPreview(){
   if (targetImage) targetImage.src = "";
   if (imageWrap) imageWrap.style.display = "none";
+  if (emptyHint) emptyHint.style.display = "block";
 }
 
 /** --- Tap state --- **/
@@ -51,11 +59,13 @@ function clearDots(){
 
 function addDotAt(px, py, kind){
   if (!imageWrap) return;
+
   const dot = document.createElement("div");
   dot.className = "tapDot";
   dot.dataset.kind = kind || "hole";
   dot.style.left = `${px}px`;
-  dot.style.top = `${py}px`;
+  dot.style.top  = `${py}px`;
+
   imageWrap.appendChild(dot);
 }
 
@@ -64,19 +74,34 @@ function clearAll(){
   taps = [];
   clearDots();
   setTapsCount(0);
+
+  // also hide results panel when resetting
+  const box = document.getElementById("resultsBox");
+  if (box) box.style.display = "none";
+
   instruction();
+}
+
+/** --- Button -> Camera open (REQUIRED for iOS Safari) --- **/
+if (addPhotoBtn && photoInput){
+  addPhotoBtn.addEventListener("click", () => {
+    // must be called inside a user gesture for iOS to open camera
+    photoInput.click();
+  });
 }
 
 /** --- Photo load --- **/
 if (photoInput){
   photoInput.addEventListener("change", () => {
     const file = photoInput.files && photoInput.files[0];
+
     if (!file){
       setStatus("No photo selected.");
       clearPreview();
       clearAll();
       return;
     }
+
     if (!file.type || !file.type.startsWith("image/")){
       setStatus("That file is not an image.");
       clearPreview();
@@ -85,18 +110,24 @@ if (photoInput){
     }
 
     const reader = new FileReader();
+
     reader.onload = () => {
       const dataUrl = String(reader.result || "");
       showPreview(dataUrl);
+
       try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", dataUrl); } catch {}
+
+      // reset taps each new photo
       clearAll();
       instruction();
     };
+
     reader.onerror = () => {
       setStatus("Could not read that photo.");
       clearPreview();
       clearAll();
     };
+
     reader.readAsDataURL(file);
   });
 }
@@ -112,7 +143,7 @@ function onTap(clientX, clientY){
   // must be inside imageWrap
   if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
 
-  const nx = rect.width ? (x / rect.width) : 0;
+  const nx = rect.width  ? (x / rect.width)  : 0;
   const ny = rect.height ? (y / rect.height) : 0;
 
   if (!bullTap){
@@ -123,14 +154,16 @@ function onTap(clientX, clientY){
     setTapsCount(taps.length);
     addDotAt(x, y, "hole");
   }
+
   instruction();
 }
 
-// Use pointer events (works for mouse + touch)
+// Pointer events (touch + mouse). Add touch-action to avoid scroll stealing taps.
 if (imageWrap){
   imageWrap.style.position = "relative";
+  imageWrap.style.touchAction = "none";
+
   imageWrap.addEventListener("pointerdown", (e) => {
-    // prevent iOS selection/scroll quirks
     e.preventDefault();
     onTap(e.clientX, e.clientY);
   });
@@ -158,31 +191,30 @@ async function doResults(){
     }
 
     const distanceYds = Number(distanceInput?.value || 100);
-    const vendorLink = String(vendorInput?.value || "").trim();
+    const vendorLink  = String(vendorInput?.value || "").trim();
 
-    // stored already, but grab fresh
-    const imageDataUrl = targetImage.src;
-
+    // We are NOT sending the image by default (bandwidth + speed)
     const payload = {
       distanceYds,
       vendorLink,
       bullTap,
       taps,
-      imageDataUrl: null // keep null unless you *really* need to send image (saves bandwidth)
+      imageDataUrl: null
     };
 
     setStatus("Analyzing...");
+
     if (typeof window.tapscore !== "function") {
       throw new Error("Analyze function missing (api.js not loaded).");
     }
 
     const out = await window.tapscore(payload);
 
-    // Show raw output in the "Results" panel if you have one, otherwise alert
-    const box = document.getElementById("resultsBox");
-    const pre = document.getElementById("resultsPre");
+    // Show output in Results panel
+    const box  = document.getElementById("resultsBox");
+    const text = document.getElementById("resultsText");
 
-    if (pre) pre.textContent = JSON.stringify(out, null, 2);
+    if (text) text.textContent = JSON.stringify(out, null, 2);
     if (box) box.style.display = "block";
 
     setStatus("Done.");
