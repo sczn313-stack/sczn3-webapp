@@ -1,4 +1,4 @@
-// sczn3-webapp/frontend_new/receipt.js (NEW FILE)
+// sczn3-webapp/frontend_new/receipt.js (FULL REPLACEMENT)
 // Receipt builder BEFORE saving.
 // Save to localStorage + Export to clipboard/file.
 
@@ -12,10 +12,10 @@
 
   function $(id){ return document.getElementById(id); }
 
-  const backBtn  = $("backBtn");
-  const savedBtn = $("savedBtn");
-  const saveBtn  = $("saveBtn");
-  const exportBtn= $("exportBtn");
+  const backBtn   = $("backBtn");
+  const savedBtn  = $("savedBtn");
+  const saveBtn   = $("saveBtn");
+  const exportBtn = $("exportBtn");
 
   const miniStatus = $("miniStatus");
   const buyMoreBtn = $("buyMoreBtn");
@@ -55,7 +55,7 @@
     const url = sessionStorage.getItem(VENDOR_BUY);
     if (buyMoreBtn && url){
       buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "inline-block";
+      buyMoreBtn.style.display = "block";
     }
   }
 
@@ -71,6 +71,12 @@
 
   function esc(s){
     return String(s || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  function fmt2(x){
+    const n = Number(x);
+    if (!Number.isFinite(n)) return "--";
+    return n.toFixed(2);
   }
 
   function buildModel(){
@@ -96,8 +102,8 @@
 
       preview: {
         score,
-        wind: `${clicksWind} ${dirWind}`.trim(),
-        elev: `${clicksElev} ${dirElev}`.trim()
+        wind: `${fmt2(clicksWind)} ${dirWind}`.trim(),
+        elev: `${fmt2(clicksElev)} ${dirElev}`.trim()
       }
     };
   }
@@ -141,7 +147,7 @@
     saveSaved(arr);
 
     status("Saved. Opening Saved Sessions…");
-    window.location.href = "./saved.html";
+    window.location.href = "./saved.html?v=" + Date.now();
   }
 
   async function doExport(){
@@ -189,7 +195,6 @@ Notes: ${m.notes || "—"}
     }
   }
 
-  // ===== INIT =====
   (function init(){
     setVendorBuyLink();
 
@@ -211,9 +216,9 @@ Notes: ${m.notes || "—"}
     }
   })();
 
-  if (backBtn) backBtn.addEventListener("click", () => window.location.href = "./output.html");
-  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html");
+  if (backBtn)  backBtn.addEventListener("click", () => window.location.href = "./output.html?v=" + Date.now());
+  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = "./saved.html?v=" + Date.now());
 
-  if (saveBtn) saveBtn.addEventListener("click", doSave);
+  if (saveBtn)   saveBtn.addEventListener("click", doSave);
   if (exportBtn) exportBtn.addEventListener("click", doExport);
 })();
