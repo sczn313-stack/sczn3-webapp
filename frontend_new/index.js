@@ -1,12 +1,5 @@
 // sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
-// Upload page + Tap N Score capture (iOS-safe menu: Choose vs Camera)
-// + Zoom overlay with pinch-friendly fullscreen tap mode
-//
-// Stores:
-//  sczn3_targetPhoto_dataUrl
-//  sczn3_targetPhoto_fileName
-//  sczn3_distance_yards
-//  sczn3_tap_points_json   <-- array of {x,y} in NATURAL image pixels (bull first)
+// iOS-native picker ONLY (no custom sheet) + Tap-N-Score + Zoom overlay
 
 (function () {
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
@@ -16,40 +9,30 @@
 
   function $(id){ return document.getElementById(id); }
 
-  // ===== DOM (must match HTML) =====
-  const uploadBtn          = $("uploadBtn");
+  const uploadBtn     = $("uploadBtn");
+  const photoInput    = $("targetPhotoInput");
 
-  const fileLibrary        = $("targetPhotoLibrary");
-  const fileCamera         = $("targetPhotoCamera");
+  const tapStage      = $("tapStage");
+  const tapCountText  = $("tapCountText");
+  const thumb         = $("thumb");
+  const tapLayer      = $("tapLayer");
+  const clearTapsBtn  = $("clearTapsBtn");
 
-  const pickOverlay        = $("pickOverlay");
-  const pickChoose         = $("pickChoose");
-  const pickCamera         = $("pickCamera");
-  const pickCancel         = $("pickCancel");
+  const zoomBtn       = $("zoomBtn");
+  const zoomOverlay   = $("zoomOverlay");
+  const zoomDoneBtn   = $("zoomDoneBtn");
+  const zoomClearBtn  = $("zoomClearBtn");
+  const zoomScroller  = $("zoomScroller");
+  const zoomImg       = $("zoomImg");
+  const zoomTapLayer  = $("zoomTapLayer");
 
-  const tapStage           = $("tapStage");
-  const tapCountText       = $("tapCountText");
-
-  const thumb              = $("thumb");
-  const tapLayer           = $("tapLayer");
-  const clearTapsBtn       = $("clearTapsBtn");
-
-  const zoomBtn            = $("zoomBtn");
-  const zoomOverlay        = $("zoomOverlay");
-  const zoomDoneBtn        = $("zoomDoneBtn");
-  const zoomClearBtn       = $("zoomClearBtn");
-  const zoomScroller       = $("zoomScroller");
-  const zoomImg            = $("zoomImg");
-  const zoomTapLayer       = $("zoomTapLayer");
-
-  const distanceInput      = $("distanceYards");
-  const pressToSee         = $("pressToSee");
-  const buyMoreBtn         = $("buyMoreBtn");
-  const miniStatus         = $("miniStatus");
+  const distanceInput = $("distanceYards");
+  const pressToSee    = $("pressToSee");
+  const buyMoreBtn    = $("buyMoreBtn");
+  const miniStatus    = $("miniStatus");
 
   function status(msg){
-    if (!miniStatus) return;
-    miniStatus.textContent = String(msg || "");
+    if (miniStatus) miniStatus.textContent = String(msg || "");
   }
 
   function setPressEnabled(enabled){
@@ -94,7 +77,6 @@
     });
   }
 
-  // Map tap (client coords on displayed image) -> NATURAL image pixel coords
   function clientToNaturalFromImg(imgEl, e){
     if (!imgEl) return null;
 
@@ -148,51 +130,38 @@
     if (zoomImg && zoomTapLayer) renderTapSvg(zoomTapLayer, zoomImg);
   }
 
-  function showThumb(dataUrl){
-    if (!thumb) return;
-
+  function showPhoto(dataUrl){
     if (tapStage) tapStage.style.display = "block";
 
-    thumb.src = dataUrl;
+    if (thumb){
+      thumb.src = dataUrl;
+      thumb.onload = () => {
+        redrawTapLayers();
+        status("Photo loaded. Tap bull first, then holes.");
+      };
+      thumb.onerror = () => status("ERROR: photo failed to load.");
+    }
 
-    thumb.onload = () => {
-      redrawTapLayers();
-      status("Photo loaded. Tap the bull first, then holes.");
-    };
-
-    thumb.onerror = () => {
-      status("ERROR: photo failed to load.");
-    };
+    if (zoomImg){
+      zoomImg.src = dataUrl;
+      zoomImg.onload = () => redrawTapLayers();
+    }
   }
 
-  function openSheet(){
-    if (!pickOverlay) return;
-    pickOverlay.style.display = "flex";
+  function resetInput(){
+    if (photoInput) photoInput.value = "";
   }
 
-  function closeSheet(){
-    if (!pickOverlay) return;
-    pickOverlay.style.display = "none";
-  }
-
-  function resetInput(input){
-    if (!input) return;
-    input.value = ""; // iOS: selecting same photo requires clearing
-  }
-
-  async function handlePickedFileFrom(inputEl){
-    const file = inputEl && inputEl.files && inputEl.files[0];
-
+  async function handlePickedFile(){
+    const file = photoInput && photoInput.files && photoInput.files[0];
     if (!file){
       status("No file selected.");
       return;
     }
 
-    status(`Selected: ${file.name || "photo"}`);
-
     if (!file.type || !file.type.startsWith("image/")){
       alert("Please choose an image file.");
-      resetInput(inputEl);
+      resetInput();
       setPressEnabled(false);
       status("ERROR: Not an image.");
       return;
@@ -207,21 +176,14 @@
         return;
       }
 
-      // HARD RESET: new photo = new tap session
+      // HARD RESET taps on new photo
       saveTaps([]);
       if (tapLayer) tapLayer.innerHTML = "";
       if (zoomTapLayer) zoomTapLayer.innerHTML = "";
       setTapCount(0);
 
-      showThumb(dataUrl);
+      showPhoto(dataUrl);
 
-      // prepare zoom image too
-      if (zoomImg){
-        zoomImg.src = dataUrl;
-        zoomImg.onload = () => redrawTapLayers();
-      }
-
-      // store
       sessionStorage.setItem(PHOTO_KEY, dataUrl);
       sessionStorage.setItem(FILE_KEY, file.name || "target.jpg");
 
@@ -235,7 +197,7 @@
     }
   }
 
-  // ===== ZOOM OVERLAY =====
+  // ===== ZOOM =====
   function openZoom(){
     const dataUrl = sessionStorage.getItem(PHOTO_KEY);
     if (!dataUrl){
@@ -245,7 +207,6 @@
     if (zoomOverlay) zoomOverlay.style.display = "flex";
     if (zoomImg) zoomImg.src = dataUrl;
 
-    // iOS: scroll to center-ish
     setTimeout(() => {
       if (zoomScroller) zoomScroller.scrollTop = 0;
       redrawTapLayers();
@@ -257,122 +218,34 @@
     redrawTapLayers();
   }
 
-  // ===== INIT =====
-  (function init(){
-    status("Ready. Tap UPLOAD.");
-
-    const savedDist = sessionStorage.getItem(DIST_KEY);
-    if (distanceInput && savedDist) distanceInput.value = savedDist;
-
-    const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
-    if (buyMoreBtn && buyUrl) buyMoreBtn.href = buyUrl;
-    if (buyMoreBtn && buyUrl) buyMoreBtn.style.display = "inline-block";
-
-    const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
-    if (savedPhoto){
-      showThumb(savedPhoto);
-      if (zoomImg) zoomImg.src = savedPhoto;
-      setPressEnabled(true);
-    } else {
-      setPressEnabled(false);
-      setTapCount(0);
-      if (tapStage) tapStage.style.display = "none";
-    }
-
-    const taps = loadTaps();
-    setTapCount(taps.length);
-    redrawTapLayers();
-
-    saveDistance();
-  })();
-
-  // ===== OPEN MENU =====
-  if (uploadBtn){
-    uploadBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      openSheet();
-    });
-  }
-
-  // Close sheet if tap outside
-  if (pickOverlay){
-    pickOverlay.addEventListener("click", (e) => {
-      if (e.target === pickOverlay) closeSheet();
-    });
-  }
-
-  // ===== MENU ACTIONS =====
-  if (pickCancel){
-    pickCancel.addEventListener("click", () => closeSheet());
-  }
-
-  if (pickChoose && fileLibrary){
-    pickChoose.addEventListener("click", () => {
-      closeSheet();
-      resetInput(fileLibrary);
-      status("Opening library/files picker...");
-      fileLibrary.click();
-    });
-  }
-
-  if (pickCamera && fileCamera){
-    pickCamera.addEventListener("click", () => {
-      closeSheet();
-      resetInput(fileCamera);
-      status("Opening camera...");
-      fileCamera.click();
-    });
-  }
-
-  // ===== INPUT EVENTS =====
-  function bindInput(inputEl){
-    if (!inputEl) return;
-    inputEl.addEventListener("change", () => handlePickedFileFrom(inputEl));
-    inputEl.addEventListener("input",  () => handlePickedFileFrom(inputEl));
-  }
-  bindInput(fileLibrary);
-  bindInput(fileCamera);
-
-  // ===== Distance save =====
-  if (distanceInput){
-    distanceInput.addEventListener("input", saveDistance);
-    distanceInput.addEventListener("change", saveDistance);
-  }
-
-  // ===== Tap capture (normal view) =====
+  // ===== Tap capture =====
   function pushTapFrom(imgEl, e){
     if (!imgEl || !imgEl.naturalWidth) return;
-
     const pt = clientToNaturalFromImg(imgEl, e);
     if (!pt) return;
 
     const taps = loadTaps();
     taps.push({ x: pt.x, y: pt.y });
     saveTaps(taps);
+
     redrawTapLayers();
     status(`Taps: ${taps.length}`);
   }
 
+  // Normal view taps
   if (tapLayer){
-    const onTap = (e) => {
-      e.preventDefault();
-      pushTapFrom(thumb, e);
-    };
+    const onTap = (e) => { e.preventDefault(); pushTapFrom(thumb, e); };
     tapLayer.addEventListener("click", onTap);
     tapLayer.addEventListener("touchstart", onTap, { passive:false });
   }
 
-  // ===== Tap capture (zoom overlay) =====
+  // Zoom view taps
   if (zoomTapLayer){
-    const onZoomTap = (e) => {
-      e.preventDefault();
-      pushTapFrom(zoomImg, e);
-    };
+    const onZoomTap = (e) => { e.preventDefault(); pushTapFrom(zoomImg, e); };
     zoomTapLayer.addEventListener("click", onZoomTap);
     zoomTapLayer.addEventListener("touchstart", onZoomTap, { passive:false });
   }
 
-  // ===== Clear taps =====
   function clearTaps(){
     saveTaps([]);
     if (tapLayer) tapLayer.innerHTML = "";
@@ -381,19 +254,31 @@
     status("Taps cleared.");
   }
 
-  if (clearTapsBtn){
-    clearTapsBtn.addEventListener("click", clearTaps);
-  }
-  if (zoomClearBtn){
-    zoomClearBtn.addEventListener("click", clearTaps);
+  if (clearTapsBtn) clearTapsBtn.addEventListener("click", clearTaps);
+  if (zoomClearBtn) zoomClearBtn.addEventListener("click", clearTaps);
+
+  if (zoomBtn) zoomBtn.addEventListener("click", openZoom);
+  if (zoomDoneBtn) zoomDoneBtn.addEventListener("click", closeZoom);
+
+  // ===== Upload button -> iOS native picker =====
+  if (uploadBtn && photoInput){
+    uploadBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      resetInput();
+      status("Opening photo picker…");
+      photoInput.click(); // iOS shows Library + Take Photo automatically
+    });
   }
 
-  // ===== Zoom open/close =====
-  if (zoomBtn){
-    zoomBtn.addEventListener("click", openZoom);
+  if (photoInput){
+    photoInput.addEventListener("change", handlePickedFile);
+    photoInput.addEventListener("input", handlePickedFile);
   }
-  if (zoomDoneBtn){
-    zoomDoneBtn.addEventListener("click", closeZoom);
+
+  // ===== Distance save =====
+  if (distanceInput){
+    distanceInput.addEventListener("input", saveDistance);
+    distanceInput.addEventListener("change", saveDistance);
   }
 
   // ===== PRESS TO SEE =====
@@ -413,4 +298,31 @@
       window.location.href = "./output.html";
     });
   }
+
+  // ===== INIT =====
+  (function init(){
+    status("Ready. Tap UPLOAD.");
+
+    const savedDist = sessionStorage.getItem(DIST_KEY);
+    if (distanceInput && savedDist) distanceInput.value = savedDist;
+
+    const buyUrl = sessionStorage.getItem("sczn3_vendor_buy_url");
+    if (buyMoreBtn && buyUrl){
+      buyMoreBtn.href = buyUrl;
+      buyMoreBtn.style.display = "inline-block";
+    }
+
+    const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
+    if (savedPhoto){
+      showPhoto(savedPhoto);
+      setPressEnabled(true);
+    } else {
+      setPressEnabled(false);
+      setTapCount(0);
+      if (tapStage) tapStage.style.display = "none";
+    }
+
+    setTapCount(loadTaps().length);
+    redrawTapLayers();
+  })();
 })();
