@@ -1,44 +1,43 @@
-<!-- sczn3-webapp/frontend_new/output.html (FULL REPLACEMENT) -->
+<!-- sczn3-webapp/frontend_new/output.html (FULL FILE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes" />
-  <title>Tap-n-Score™ — Results</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=1, maximum-scale=5" />
+  <title>Tap-n-Score — Results</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="kicker">RESULTS</div>
-      <div class="title">Tap-n-Score™</div>
+  <div class="resultsWrap">
+    <div class="resultsTop">
+      <div class="resultsKicker">Results</div>
+      <div class="resultsTitle">Tap-n-Score™</div>
+      <div id="statusLine" class="resultsSub">Ready.</div>
+    </div>
 
-      <div id="status" class="status">Analyzing…</div>
+    <div class="resultsCard">
+      <div class="receiptLine"><span class="k">Score</span><span id="scoreVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">Windage</span><span id="windVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">Elevation</span><span id="elevVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">Distance</span><span id="distVal" class="v">--</span></div>
+      <div class="receiptLine"><span class="k">POIB</span><span id="poibVal" class="v">--</span></div>
+    </div>
 
-      <div class="resultsBox">
-        <div class="line"><span class="k">Score</span><span id="score" class="v">--</span></div>
-        <div class="line"><span class="k">Windage</span><span id="wind" class="v">--</span></div>
-        <div class="line"><span class="k">Elevation</span><span id="elev" class="v">--</span></div>
-        <div class="line"><span class="k">Distance</span><span id="dist" class="v">--</span></div>
-        <div class="line"><span class="k">POIB</span><span id="poib" class="v">--</span></div>
+    <pre id="rawJson" class="rawJson" style="display:none;"></pre>
 
-        <pre id="raw" class="raw"></pre>
-      </div>
+    <div class="resultsActions">
+      <button id="backBtn" class="btnSecondary" type="button">Back</button>
+      <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
+      <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
+      <a id="buyMoreBtn" class="btnSecondary btnLink" href="#" style="display:none;">Buy more targets</a>
+    </div>
 
-      <div class="btnRow">
-        <button id="backBtn" class="btnSecondary" type="button">Back</button>
-        <button id="savedBtn" class="btnSecondary" type="button">Saved</button>
-        <button id="receiptBtn" class="btnSecondary" type="button">Receipt</button>
-      </div>
-
-      <div class="vendorRow">
-        <a id="buyMoreBtn" class="btnSecondary fullWidth" href="#" style="display:none;">Buy more targets</a>
-      </div>
+    <div class="resultsBottom">
+      <div class="subtle">After-Shot Intelligence™</div>
     </div>
   </div>
 
-  <script src="./api.js"></script>
-  <script src="./output.js"></script>
+  <script src="./api.js?v=1"></script>
+  <script src="./output.js?v=2"></script>
 </body>
 </html>
