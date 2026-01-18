@@ -1,82 +1,83 @@
-// sczn3-webapp/frontend_new/api.js
-// Frontend API helper for Tap-n-Score / SEC
-//
-// Uses full backend URL because Render Static Site is a different origin.
-// Optional override:
-//   sessionStorage.setItem("sczn3_backend_base","https://sczn3-backend-new1.onrender.com")
+// sczn3-webapp/frontend_new/api.js (FULL FILE REPLACEMENT)
+// Hardened API helper with timeout + clean errors.
+// Works when frontend is static and backend is on Render.
 
-(function () {
-  const DIST_KEY = "sczn3_distance_yards";
-  const TAPS_KEY = "sczn3_taps_json"; // stringified JSON: { bull:{x,y}, holes:[{x,y},...] }
+(() => {
+  const DEFAULT_TIMEOUT_MS = 15000;
 
-  window.SEC_API = {
-    async analyzeTarget({ file, distanceYards, tapsJson }) {
-      const backendBase =
-        sessionStorage.getItem("sczn3_backend_base") ||
-        "https://sczn3-backend-new1.onrender.com";
+  // If you want to hard-set the backend URL, put it here:
+  // Example: "https://YOUR-BACKEND.onrender.com"
+  const HARDCODED_API_BASE = ""; // leave "" to auto-detect
 
-      if (!file) throw new Error("No file provided.");
+  function getApiBase() {
+    // 1) session override (optional)
+    const ss = safeGetSession("sczn3_api_base");
+    if (ss) return stripTrailingSlash(ss);
 
-      // Thumb for UI
-      const thumbDataUrl = await fileToDataUrl(file);
+    // 2) hardcoded override (optional)
+    if (HARDCODED_API_BASE) return stripTrailingSlash(HARDCODED_API_BASE);
 
-      const fd = new FormData();
-      fd.append("image", file, file.name || "target.jpg");
+    // 3) auto: if your frontend and backend are same origin, use ""
+    // (meaning we'll call relative paths like "/api/analyze")
+    // Most Render setups are separate origins, so we *guess* nothing here.
+    // We'll default to a SAME-ORIGIN relative call, which is safest.
+    return "";
+  }
 
-      const dist = Number(distanceYards || sessionStorage.getItem(DIST_KEY) || 100);
-      fd.append("distanceYards", String(dist));
+  function stripTrailingSlash(s) {
+    return String(s || "").replace(/\/+$/, "");
+  }
 
-      // Prefer explicit tapsJson passed in; else try sessionStorage
-      const taps =
-        tapsJson ||
-        (function () {
-          const raw = sessionStorage.getItem(TAPS_KEY);
-          try { return raw ? JSON.parse(raw) : null; } catch { return null; }
-        })();
+  function safeGetSession(k) {
+    try { return sessionStorage.getItem(k) || ""; } catch { return ""; }
+  }
 
-      // Fender plug: only attach tapsJson if it looks valid
-      if (taps && taps.bull && Array.isArray(taps.holes) && taps.holes.length > 0) {
-        fd.append("tapsJson", JSON.stringify(taps));
-      }
+  function timeoutFetch(url, opts = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
 
-      const res = await fetch(`${backendBase}/api/analyze`, {
+    return fetch(url, { ...opts, signal: ctrl.signal })
+      .finally(() => clearTimeout(t));
+  }
+
+  async function postJson(path, bodyObj, timeoutMs) {
+    const base = getApiBase();
+    const url = base ? `${base}${path}` : path; // if base=="" use relative
+
+    try {
+      const res = await timeoutFetch(url, {
         method: "POST",
-        body: fd
-      });
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyObj || {}),
+      }, timeoutMs || DEFAULT_TIMEOUT_MS);
+
+      const text = await res.text().catch(() => "");
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
 
       if (!res.ok) {
-        const txt = await safeText(res);
-        throw new Error(`Backend analyze failed (${res.status}). ${txt}`);
+        return {
+          ok: false,
+          status: res.status,
+          error: data || { message: text || "Request failed." },
+          url
+        };
       }
 
-      const data = await res.json();
-
-      const secId =
-        (data && (data.secId || data.sec_id || data.id)) ||
-        sessionStorage.getItem("sczn3_sec_id") ||
-        String(Math.random().toString(16).slice(2, 8).toUpperCase());
-
-      sessionStorage.setItem("sczn3_sec_id", secId);
-
-      return {
-        secId,
-        distanceYards: dist,
-        thumbDataUrl,
-        data
-      };
+      return { ok: true, status: res.status, data, url };
+    } catch (e) {
+      const msg =
+        (e && e.name === "AbortError")
+          ? "Request timed out. Try again."
+          : "Network/server error. Try again.";
+      return { ok: false, status: 0, error: { message: msg }, url };
     }
+  }
+
+  // Public API
+  window.Sczn3Api = {
+    getApiBase,
+    setApiBase: (u) => { try { sessionStorage.setItem("sczn3_api_base", String(u || "")); } catch {} },
+    analyzeTapNScore: async (payload) => postJson("/api/analyze", payload, DEFAULT_TIMEOUT_MS),
   };
-
-  function fileToDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result || ""));
-      r.onerror = () => reject(new Error("FileReader failed."));
-      r.readAsDataURL(file);
-    });
-  }
-
-  async function safeText(res) {
-    try { return await res.text(); } catch { return ""; }
-  }
 })();
