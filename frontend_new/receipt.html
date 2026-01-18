@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Tap-n-Score — Receipt Builder</title>
+  <title>Tap-n-Score — Receipt</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -11,11 +11,17 @@
   <section class="screen">
     <div class="topBar">
       <button id="backBtn" class="secondaryBtn" type="button">Back</button>
-      <div class="topTitle">Receipt Builder</div>
-      <button id="startNewBtn" class="secondaryBtn" type="button">New</button>
+      <div class="topTitle">Receipt</div>
+      <button id="savedBtn" class="secondaryBtn" type="button">Saved</button>
     </div>
 
-    <div id="miniStatus" class="miniStatus">Add your setup details, then save.</div>
+    <!-- TOP actions (no scroll) -->
+    <div class="actionsTop">
+      <button id="saveBtn" class="primaryBtn" type="button">Save Session</button>
+      <button id="exportBtn" class="secondaryBtn" type="button">Export</button>
+    </div>
+
+    <div id="miniStatus" class="miniStatus">Add setup details, then Save or Export.</div>
 
     <div class="card">
       <div class="cardTitle">Setup</div>
@@ -23,7 +29,7 @@
       <div class="formGrid">
         <div class="formRow">
           <label for="scopeInput">Scope</label>
-          <input id="scopeInput" type="text" placeholder="e.g., Vortex Razor 1-6" />
+          <input id="scopeInput" type="text" placeholder="e.g., Nightforce ATACR 1-8" />
         </div>
 
         <div class="formRow">
@@ -43,27 +49,20 @@
 
         <div class="formRow">
           <label for="notesInput">Notes</label>
-          <textarea id="notesInput" rows="3" placeholder="Optional notes…"></textarea>
+          <textarea id="notesInput" rows="3" placeholder="Optional…"></textarea>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="cardTitle">Receipt Preview</div>
-
-      <div id="receiptPreview" class="receiptPreview">
-        <!-- populated by receipt.js -->
-      </div>
+      <div class="cardTitle">Preview</div>
+      <div id="previewBox" class="receiptPreview"></div>
 
       <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
         Buy more targets
       </a>
     </div>
 
-    <div class="actionsSticky">
-      <button id="saveSessionBtn" class="primaryBtn" type="button">Save Session</button>
-      <button id="exportBtn" class="secondaryBtn" type="button">Export Receipt</button>
-    </div>
   </section>
 
   <script type="module" src="receipt.js"></script>
