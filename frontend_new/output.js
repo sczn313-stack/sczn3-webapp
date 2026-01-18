@@ -1,129 +1,186 @@
 // sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
-// Results screen: guard + analyze.
-// Prevents scary backend 422 by refusing to call backend if tapsJson missing.
+// Fender rule: NEVER call backend unless tapsJson has bull + >=1 holes.
+// Calm inline message instead of scary failure.
+// Keeps sessionStorage keys compatible with receipt.js.
 
 (function () {
-  const DIST_KEY   = "sczn3_distance_yards";
-  const LAST_KEY   = "sczn3_last_result_json";
-  const PHOTO_KEY  = "sczn3_targetPhoto_dataUrl";
-  const TAPS_KEY   = "sczn3_taps_json";
+  const SS_LAST   = "sczn3_last_result_json";
+  const SS_DIST   = "sczn3_distance_yards";
+  const SS_TAPS   = "sczn3_taps_json";     // expected: { bull:{x,y}, holes:[{x,y}...] }
+  const SS_VENDOR = "sczn3_vendor_buy_url";
 
   function $(id){ return document.getElementById(id); }
+  function safeJsonParse(s){ try{ return JSON.parse(String(s||"")); } catch { return null; } }
 
-  const backBtn    = $("backBtn");
-  const savedBtn   = $("savedBtn");
-  const receiptBtn = $("receiptBtn");
-
-  const statusEl   = $("miniStatus") || $("status") || $("inlineStatus");
-
-  // display fields (optional if your HTML has them)
-  const scoreEl = $("scoreVal");
-  const windEl  = $("windVal");
-  const elevEl  = $("elevVal");
-  const distEl  = $("distVal");
-  const poibEl  = $("poibVal");
-  const rawEl   = $("rawJson");
+  const statusEl = $("statusLine") || $("miniStatus") || null;
 
   function status(msg){
     if (statusEl) statusEl.textContent = String(msg || "");
   }
 
-  function safeJsonParse(s){
-    try { return JSON.parse(String(s || "")); } catch { return null; }
+  function go(url){
+    window.location.href = `${url}?v=${Date.now()}`;
   }
 
   function getDistance(){
-    const n = Number(sessionStorage.getItem(DIST_KEY));
+    const n = Number(sessionStorage.getItem(SS_DIST));
     return Number.isFinite(n) && n > 0 ? n : 100;
   }
 
-  function getPhotoDataUrl(){
-    return sessionStorage.getItem(PHOTO_KEY) || "";
-  }
-
-  function getTapsJson(){
-    const raw = sessionStorage.getItem(TAPS_KEY) || "";
-    const obj = safeJsonParse(raw);
+  function getTaps(){
+    const obj = safeJsonParse(sessionStorage.getItem(SS_TAPS) || "");
     return obj && typeof obj === "object" ? obj : null;
   }
 
-  function renderResult(model){
-    // model is whatever backend returns
-    // We attempt to populate common fields if elements exist
-    const score = model?.score ?? model?.smartScore ?? "--";
-
-    const clicksW = model?.clicks?.windage ?? model?.clicks_windage ?? "--";
-    const clicksE = model?.clicks?.elevation ?? model?.clicks_elevation ?? "--";
-    const dirW    = model?.directions?.windage ?? model?.windageDir ?? "";
-    const dirE    = model?.directions?.elevation ?? model?.elevDir ?? "";
-    const poib    = model?.poib ?? model?.POIB ?? "--";
-
-    if (scoreEl) scoreEl.textContent = String(score);
-    if (windEl)  windEl.textContent  = `${clicksW} ${dirW}`.trim() || "--";
-    if (elevEl)  elevEl.textContent  = `${clicksE} ${dirE}`.trim() || "--";
-    if (distEl)  distEl.textContent  = `${getDistance()} yds`;
-    if (poibEl)  poibEl.textContent  = String(poib);
-
-    if (rawEl) rawEl.textContent = JSON.stringify(model, null, 2);
+  function hasValidTaps(t){
+    const bullOk = !!(t && t.bull && Number.isFinite(Number(t.bull.x)) && Number.isFinite(Number(t.bull.y)));
+    const holesOk = !!(t && Array.isArray(t.holes) && t.holes.length >= 1);
+    return bullOk && holesOk;
   }
 
-  async function analyze(){
-    // Fender Plug: require tapsJson
-    const tapsJson = getTapsJson();
-    if (!tapsJson || !Array.isArray(tapsJson.holes) || tapsJson.holes.length < 1){
-      status("No taps found for this session. Go back and tap the holes, then try again.");
-      // Do NOT call backend
+  function setVendorBuyLink(){
+    const url = sessionStorage.getItem(SS_VENDOR);
+    const a = $("buyMoreBtn");
+    if (a && url){
+      a.href = url;
+      a.style.display = "inline-flex";
+    }
+  }
+
+  function renderResultCard(result){
+    // Minimal, tolerant rendering (won’t explode if result shape changes)
+    const scoreEl = $("scoreVal");
+    const windEl  = $("windVal");
+    const elevEl  = $("elevVal");
+    const distEl  = $("distVal");
+    const poibEl  = $("poibVal");
+    const rawEl   = $("rawJson");
+
+    if (distEl) distEl.textContent = `${getDistance()} yds`;
+
+    if (!result){
+      if (scoreEl) scoreEl.textContent = "--";
+      if (windEl)  windEl.textContent  = "--";
+      if (elevEl)  elevEl.textContent  = "--";
+      if (poibEl)  poibEl.textContent  = "--";
+      if (rawEl)   rawEl.textContent   = "";
       return;
     }
 
-    // We do NOT have the original File here (static site), so we send the photo as a Blob
-    const photoDataUrl = getPhotoDataUrl();
-    if (!photoDataUrl){
-      status("No photo found. Go back and upload a target photo.");
+    const score = (typeof result.score !== "undefined") ? String(result.score) : "--";
+
+    const wClicks = result?.clicks?.windage ?? "--";
+    const eClicks = result?.clicks?.elevation ?? "--";
+    const wDir    = result?.directions?.windage ?? "";
+    const eDir    = result?.directions?.elevation ?? "";
+
+    const wind = `${wClicks} ${wDir}`.trim() || "--";
+    const elev = `${eClicks} ${eDir}`.trim() || "--";
+
+    const poib = (result?.poib && typeof result.poib === "object")
+      ? `x ${result.poib.x ?? "--"}, y ${result.poib.y ?? "--"}`
+      : (result?.poib ?? "--");
+
+    if (scoreEl) scoreEl.textContent = score;
+    if (windEl)  windEl.textContent  = wind;
+    if (elevEl)  elevEl.textContent  = elev;
+    if (poibEl)  poibEl.textContent  = String(poib);
+
+    if (rawEl) rawEl.textContent = JSON.stringify(result, null, 2);
+  }
+
+  async function callBackendAnalyze(payload){
+    // Uses existing helper if present, otherwise fetch().
+    // This keeps compatibility with whatever api.js you already have.
+    if (typeof window.apiPostJson === "function"){
+      return await window.apiPostJson("/analyze", payload);
+    }
+
+    const base = window.API_BASE || window.SCZN3_API_BASE || sessionStorage.getItem("sczn3_api_base") || "";
+    const url = base ? `${base.replace(/\/$/,"")}/analyze` : "./analyze";
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { data = { ok:false, error:{ code:"BAD_JSON", message:text } }; }
+
+    if (!res.ok){
+      const err = data || { ok:false, error:{ code:"HTTP_"+res.status, message:"Backend error" } };
+      err._httpStatus = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  async function analyzeIfReady(){
+    setVendorBuyLink();
+
+    const taps = getTaps();
+
+    // ===== FENDER: DO NOT CALL BACKEND =====
+    if (!hasValidTaps(taps)){
+      status("Tap the bull first, then tap at least one hole. Then press Results again.");
+      // Also render last known results if present (so the screen never feels “broken”)
+      const last = safeJsonParse(sessionStorage.getItem(SS_LAST) || "");
+      renderResultCard(last && typeof last === "object" ? last : null);
       return;
     }
 
     status("Analyzing…");
 
+    const payload = {
+      distanceYards: getDistance(),
+      tapsJson: taps
+    };
+
     try{
-      const file = await dataUrlToFile(photoDataUrl, "target.jpg");
+      const result = await callBackendAnalyze(payload);
 
-      const out = await window.SEC_API.analyzeTarget({
-        file,
-        distanceYards: getDistance(),
-        tapsJson
-      });
+      // Store as “last result” for Receipt + Saved flows (receipt.js expects this)
+      sessionStorage.setItem(SS_LAST, JSON.stringify(result));
 
-      // Save last result for Receipt / Saved flows
-      sessionStorage.setItem(LAST_KEY, JSON.stringify(out.data || {}));
-
-      // Render
-      renderResult(out.data || {});
-      status("Results ready.");
-    } catch (err){
-      const msg = (err && err.message) ? err.message : String(err || "Analyze failed.");
-      status(msg);
-      if (rawEl) rawEl.textContent = msg;
+      status("Done.");
+      renderResultCard(result);
+    } catch (e){
+      // Calm message, no scary dump
+      status("Couldn’t analyze that one. Confirm bull + holes and try again.");
+      const last = safeJsonParse(sessionStorage.getItem(SS_LAST) || "");
+      renderResultCard(last && typeof last === "object" ? last : null);
     }
   }
 
-  async function dataUrlToFile(dataUrl, filename){
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    return new File([blob], filename, { type: blob.type || "image/jpeg" });
+  // Buttons
+  function bindNav(){
+    const backBtn    = $("backBtn");
+    const savedBtn   = $("savedBtn");
+    const receiptBtn = $("receiptBtn");
+
+    if (backBtn){
+      const goBack = () => go("./index.html");
+      backBtn.addEventListener("click", goBack);
+      backBtn.addEventListener("touchstart", goBack, { passive:true });
+    }
+
+    if (savedBtn){
+      const goSaved = () => go("./saved.html");
+      savedBtn.addEventListener("click", goSaved);
+      savedBtn.addEventListener("touchstart", goSaved, { passive:true });
+    }
+
+    if (receiptBtn){
+      const goReceipt = () => go("./receipt.html");
+      receiptBtn.addEventListener("click", goReceipt);
+      receiptBtn.addEventListener("touchstart", goReceipt, { passive:true });
+    }
   }
 
-  // INIT
   (function init(){
-    // If you want: show distance immediately if element exists
-    if (distEl) distEl.textContent = `${getDistance()} yds`;
-
-    // Kick analysis on load
-    analyze();
+    bindNav();
+    analyzeIfReady();
   })();
-
-  // Nav buttons
-  if (backBtn) backBtn.addEventListener("click", () => window.location.href = `./index.html?v=${Date.now()}`);
-  if (savedBtn) savedBtn.addEventListener("click", () => window.location.href = `./saved.html?v=${Date.now()}`);
-  if (receiptBtn) receiptBtn.addEventListener("click", () => window.location.href = `./receipt.html?v=${Date.now()}`);
 })();
