@@ -1,94 +1,25 @@
-/* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
+/* ===== Tap-n-Score iOS tap hardening ===== */
 
-:root{
-  --bg:#000;
-  --card:#0b0b0b;
-  --card2:#111;
-  --text:#fff;
-  --muted:rgba(255,255,255,.70);
-  --line:rgba(255,255,255,.12);
-  --btn:rgba(255,255,255,.10);
-  --btn2:rgba(255,255,255,.14);
-}
-
-html,body{
-  margin:0;
-  padding:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:-apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-}
-
-.subtle{ color: var(--muted); }
-
-input, button{
-  font-family: inherit;
-}
-
-input{
-  background:rgba(255,255,255,.06);
-  border:1px solid var(--line);
-  border-radius:14px;
-  color:var(--text);
-  padding:12px 14px;
-  outline:none;
-}
-
-.btnPrimary, .btnSecondary{
-  border-radius:999px;
-  padding:14px 18px;
-  border:1px solid var(--line);
-  background:var(--btn);
-  color:var(--text);
-  font-weight:700;
-  letter-spacing:.02em;
-}
-
-.btnSecondary{
-  background:var(--btn2);
-  font-weight:700;
-}
-
-.btnPrimary:active, .btnSecondary:active{
-  transform: translateY(1px);
-}
-
-.targetBox{
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  border:1px solid var(--line);
-  border-radius:22px;
-  padding:14px;
-}
-
-/* CRITICAL: wrapper must capture taps */
 #targetImageWrap{
-  position:relative;
-  width:100%;
-  border-radius:18px;
-  overflow:hidden;
-  background:#050505;
-  border:1px solid rgba(255,255,255,.10);
-  touch-action:none;           /* prevents iOS scroll/zoom from stealing taps */
-  -webkit-user-select:none;
-  user-select:none;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  touch-action: none;        /* critical for iOS tap */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-/* Image must NOT eat taps; wrapper gets them */
 #targetImage{
-  display:block;
-  width:100%;
-  height:auto;
-  pointer-events:none;         /* taps go to wrapper */
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;      /* taps go to wrapper */
 }
 
-/* Tap markers */
+#emptyHint{
+  pointer-events: none;      /* hint never blocks taps */
+}
+
 .tapDot{
-  position:absolute;
-  width:14px;
-  height:14px;
-  border-radius:50%;
-  background: rgba(255,165,0,.90);
-  transform: translate(-50%, -50%);
-  pointer-events:none;
-  box-shadow: 0 0 6px rgba(0,0,0,.6);
+  pointer-events: none;
 }
