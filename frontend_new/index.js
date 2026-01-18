@@ -1,17 +1,20 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
-// Adds: FIT mode (all corners visible), Zoom toggle (pan/scroll), progressive quietness + vendor CTA.
+// Changes:
+//  - Remove zoom/fit button entirely (less distraction)
+//  - Allow natural pinch zoom by NOT calling preventDefault() on taps
+//  - Instruction line shows only after photo loads, hides once tapping begins
+//  - Green boxed "See results" appears quietly after tapping begins
+//  - Vendor CTA appears after tapping begins IF vendor link exists
 
 const photoInput   = document.getElementById("photoInput");
 const targetWrap   = document.getElementById("targetWrap");
-const targetCanvas = document.getElementById("targetCanvas");
 const targetImage  = document.getElementById("targetImage");
 const dotsLayer    = document.getElementById("dotsLayer");
 const targetInstr  = document.getElementById("targetInstr");
 
 const tapsCountEl   = document.getElementById("tapsCount");
 const clearTapsBtn  = document.getElementById("clearTapsBtn");
-const zoomBtn       = document.getElementById("zoomBtn");
 const seeResultsBtn = document.getElementById("seeResultsBtn");
 const distanceInput = document.getElementById("distanceInput");
 const vendorInput   = document.getElementById("vendorInput");
@@ -20,12 +23,12 @@ const seeResultsHint = document.getElementById("seeResultsHint");
 const vendorCta      = document.getElementById("vendorCta");
 const vendorBuyBtn   = document.getElementById("vendorBuyBtn");
 
-function setTapsCount(n){
-  if (tapsCountEl) tapsCountEl.textContent = String(n);
-}
-
 function hasPhoto(){
   return !!(targetImage && targetImage.src);
+}
+
+function setTapsCount(n){
+  if (tapsCountEl) tapsCountEl.textContent = String(n);
 }
 
 function setInstrVisible(on){
@@ -35,7 +38,7 @@ function setInstrVisible(on){
 
 function setSeeResultsHint(on){
   if (!seeResultsHint) return;
-  seeResultsHint.style.display = on ? "block" : "none";
+  seeResultsHint.style.display = on ? "inline-flex" : "none";
 }
 
 function setVendorCtaVisible(on){
@@ -53,7 +56,7 @@ function syncVendorLink(){
 }
 
 /** --- Tap state --- **/
-let bullTap = null;     // {x,y} normalized 0..1 (relative to DISPLAYED image rect)
+let bullTap = null;     // {x,y} normalized 0..1
 let taps = [];          // bullet holes only (normalized)
 
 function clearDots(){
@@ -62,9 +65,7 @@ function clearDots(){
 }
 
 function addDotAt(px, py, kind){
-  if (!dotsLayer || !targetCanvas) return;
-
-  // px/py are in IMAGE pixels relative to img rect; convert to canvas coords by using img rect
+  if (!dotsLayer) return;
   const dot = document.createElement("div");
   dot.className = "tapDot";
   dot.dataset.kind = kind || "hole";
@@ -89,13 +90,15 @@ function clearAll(){
   setVendorCtaVisible(false);
 }
 
-/** --- Ensure dotsLayer matches image rect --- **/
+/** --- Overlay sizing to image --- **/
 function sizeDotsToImage(){
   if (!dotsLayer || !targetImage) return;
+
   const r = targetImage.getBoundingClientRect();
-  // dotsLayer is absolutely positioned inside targetCanvas, so we size it to the image display size:
   dotsLayer.style.width = `${r.width}px`;
   dotsLayer.style.height = `${r.height}px`;
+
+  // center the overlay to match centered image
   dotsLayer.style.left = `50%`;
   dotsLayer.style.top = `0`;
   dotsLayer.style.transform = `translateX(-50%)`;
@@ -130,7 +133,7 @@ if (photoInput){
       clearAll();
       setInstrVisible(true);
 
-      // wait for render then size overlay to match image
+      // wait for render then size overlay
       setTimeout(sizeDotsToImage, 50);
     };
     reader.onerror = () => {
@@ -143,30 +146,16 @@ if (photoInput){
   });
 }
 
-// hidden until a photo exists
+// start hidden
 setInstrVisible(false);
 setSeeResultsHint(false);
 setVendorCtaVisible(false);
 
-/** --- Zoom toggle --- **/
-function toggleZoom(){
-  if (!targetWrap) return;
-  const on = targetWrap.classList.toggle("zoomMode");
-  if (zoomBtn) zoomBtn.textContent = on ? "Fit" : "Zoom";
-  // Recalc overlay size after the image changes scale
-  setTimeout(sizeDotsToImage, 50);
-}
-
-if (zoomBtn){
-  zoomBtn.addEventListener("click", toggleZoom);
-}
-
-/** --- Tap capture (relative to displayed IMAGE rect) --- **/
+/** --- Tap capture (relative to displayed image rect) --- **/
 function onTap(clientX, clientY){
   if (!hasPhoto() || !targetImage) return;
 
   const imgRect = targetImage.getBoundingClientRect();
-
   const x = clientX - imgRect.left;
   const y = clientY - imgRect.top;
 
@@ -175,10 +164,12 @@ function onTap(clientX, clientY){
   const nx = imgRect.width ? (x / imgRect.width) : 0;
   const ny = imgRect.height ? (y / imgRect.height) : 0;
 
-  // progressive quietness: once tapping begins, hide instruction + show vendor CTA if link exists
+  // progressive quietness: once tapping begins, hide instruction + show green hint
   if (bullTap === null && taps.length === 0){
     setInstrVisible(false);
     setSeeResultsHint(true);
+
+    // vendor CTA appears if link exists
     if (syncVendorLink()) setVendorCtaVisible(true);
   }
 
@@ -193,10 +184,8 @@ function onTap(clientX, clientY){
 }
 
 if (targetWrap){
-  // Pointer events work for touch + mouse
+  // ✅ No preventDefault here = allows natural pinch zoom on iOS
   targetWrap.addEventListener("pointerdown", (e) => {
-    // in zoom mode user may want to pan/scroll; still allow taps
-    e.preventDefault();
     onTap(e.clientX, e.clientY);
   });
 }
@@ -206,11 +195,10 @@ if (clearTapsBtn){
   clearTapsBtn.addEventListener("click", () => clearAll());
 }
 
-/** --- Vendor link changes (update CTA target) --- **/
+/** --- Vendor link changes --- **/
 if (vendorInput){
   vendorInput.addEventListener("input", () => {
     const ok = syncVendorLink();
-    // only show CTA if tapping already started
     const tappingStarted = (bullTap !== null) || (taps.length > 0);
     setVendorCtaVisible(ok && tappingStarted);
   });
@@ -219,29 +207,14 @@ if (vendorInput){
 /** --- Results --- **/
 async function doResults(){
   try{
-    if (!hasPhoto()) {
-      alert("Upload a target photo first.");
-      return;
-    }
-    if (!bullTap) {
-      alert("Tap the Bullseye / Aim Point first (Tap 1).");
-      return;
-    }
-    if (taps.length < 1) {
-      alert("Tap at least 1 bullet hole after the Bullseye.");
-      return;
-    }
+    if (!hasPhoto()) { alert("Upload a target photo first."); return; }
+    if (!bullTap)    { alert("Tap the Bullseye / Aim Point first (Tap 1)."); return; }
+    if (taps.length < 1){ alert("Tap at least 1 bullet hole after the Bullseye."); return; }
 
     const distanceYds = Number(distanceInput?.value || 100);
     const vendorLink  = String(vendorInput?.value || "").trim();
 
-    const payload = {
-      distanceYds,
-      vendorLink,
-      bullTap,
-      taps,
-      imageDataUrl: null
-    };
+    const payload = { distanceYds, vendorLink, bullTap, taps, imageDataUrl: null };
 
     if (typeof window.tapscore !== "function") {
       throw new Error("Analyze function missing (api.js not loaded).");
@@ -255,8 +228,7 @@ async function doResults(){
     if (box) box.style.display = "block";
 
   } catch(err){
-    const msg = (err && err.message) ? err.message : "Network/server error. Try again.";
-    alert(msg);
+    alert(err?.message || "Network/server error. Try again.");
   }
 }
 
@@ -264,5 +236,5 @@ if (seeResultsBtn){
   seeResultsBtn.addEventListener("click", doResults);
 }
 
-// keep overlay aligned on orientation change / resize
+// keep overlay aligned on rotation/resize
 window.addEventListener("resize", () => setTimeout(sizeDotsToImage, 50));
