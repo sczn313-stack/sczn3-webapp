@@ -6,10 +6,10 @@
   --text:#fff;
   --muted:rgba(255,255,255,.70);
 
-  /* hero accent (keep your “outstanding” look) */
-  --hero1:#1a1a1a;
-  --hero2:#2a2a2a;
+  /* hero accent */
   --heroBorder:rgba(255,255,255,.14);
+  --accentA: rgba(30, 90, 255, .22);
+  --accentB: rgba(255, 30, 80, .16);
 
   /* red/white/blue */
   --red:#ff3b30;
@@ -40,6 +40,7 @@ html,body{
 .strong{font-weight:800}
 .mono{white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:14px}
 
+/* Brand */
 .brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:10px}
 .brand{
   font-weight:900;
@@ -69,40 +70,54 @@ html,body{
   display:block;
   width:100%;
   border-radius:26px;
-  padding:18px 18px;
-  background:linear-gradient(180deg,var(--hero2),var(--hero1));
+  padding:0;
   border:1px solid var(--heroBorder);
-  box-shadow:0 10px 30px rgba(0,0,0,.45);
+  background:
+    radial-gradient(1200px 200px at 10% 0%, var(--accentA), transparent 60%),
+    radial-gradient(900px 220px at 90% 20%, var(--accentB), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+  box-shadow:0 14px 34px rgba(0,0,0,.62);
   cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
 }
-.uploadHeroInner{display:flex; flex-direction:column; align-items:center; justify-content:center}
+.uploadHeroInner{
+  padding:18px 18px;
+  min-height:84px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+}
 .uploadHeroTitle{
   font-weight:900;
-  font-size:34px;
+  font-size:clamp(22px, 5.4vw, 32px);
   line-height:1.05;
   color:#fff;
 }
 .uploadHeroSub{
-  margin-top:6px;
   font-size:14px;
-  color:rgba(255,255,255,.70);
+  color:rgba(255,255,255,.60);
+  font-weight:700;
 }
 
-/* Controls row: FIX overflow */
+/* Controls row (fix overflow) */
 .controlsRow{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap:12px;
-  flex-wrap:wrap;              /* ✅ allows wrap if tight */
+  flex-wrap:wrap;
 }
 
 .distanceBox{
   display:flex;
   align-items:center;
   gap:10px;
-  min-width:240px;
+  flex-wrap:wrap;
 }
+
 .distanceBox input{
   width:120px;
   padding:10px 12px;
@@ -114,13 +129,25 @@ html,body{
   outline:none;
 }
 
+.seeResultsHint{
+  width:100%;
+  font-size:14px;
+  font-weight:800;
+  color:rgba(255,255,255,.55);
+  letter-spacing:.02em;
+  margin-top:2px;
+}
+
 .tapsBlock{
   display:flex;
   align-items:center;
   gap:10px;
   margin-left:auto;
+  flex-wrap:wrap;
+  justify-content:flex-end;
 }
-.tapsLine{font-size:18px}
+
+.tapsLine{font-size:18px; white-space:nowrap}
 
 .btn{
   border-radius:18px;
@@ -130,17 +157,16 @@ html,body{
   color:#fff;
   font-weight:800;
   font-size:16px;
+  -webkit-tap-highlight-color:transparent;
 }
 .btn:active{transform:translateY(1px)}
 .btnPrimary{
   background:rgba(255,255,255,.10);
   border:1px solid rgba(255,255,255,.16);
 }
-.btnSecondary{
-  background:rgba(255,255,255,.05);
-}
+.btnSecondary{ background:rgba(255,255,255,.05); }
 .btnTight{
-  padding:10px 12px;           /* ✅ tighter so it won’t run off */
+  padding:10px 12px;
   border-radius:16px;
   white-space:nowrap;
 }
@@ -154,6 +180,35 @@ html,body{
   padding:14px;
 }
 
+/* Vendor sticky slot */
+.vendorCta{
+  margin-top:12px;
+}
+.vendorBuyBtn{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+  text-decoration:none;
+  border-radius:18px;
+  padding:14px 14px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+}
+.vendorIcon{font-size:18px}
+.vendorText{
+  flex:1;
+  font-weight:900;
+  letter-spacing:.2px;
+  color:rgba(255,255,255,.92);
+}
+.vendorArrow{
+  font-size:22px;
+  opacity:.65;
+}
+
+/* Inputs */
 .input{
   width:100%;
   padding:14px 14px;
@@ -165,24 +220,40 @@ html,body{
   outline:none;
 }
 
-/* Target area */
+/* Target container (FIT mode shows all corners) */
 .targetWrap{
   position:relative;
   width:100%;
   border-radius:18px;
-  overflow:hidden;
+  overflow:hidden;           /* Fit mode */
   background:#000;
   border:1px solid rgba(255,255,255,.10);
-  min-height:220px;
+  padding:10px;
 }
+
+/* Canvas sizes to the image */
+.targetCanvas{
+  position:relative;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  width:100%;
+}
+
+/* The image itself: FIT = show entire target */
 .targetImg{
   display:block;
-  width:100%;
+  max-width:100%;
+  max-height:60vh;           /* ✅ ensures all corners visible on mobile */
+  width:auto;
   height:auto;
+  border-radius:14px;
 }
+
+/* Overlay */
 .dotsLayer{
   position:absolute;
-  left:0; top:0; right:0; bottom:0;
+  inset:0;
   pointer-events:none;
 }
 
@@ -194,8 +265,25 @@ html,body{
   border:2px solid rgba(0,0,0,.55);
   box-shadow:0 2px 8px rgba(0,0,0,.35);
 }
-.tapDot[data-kind="bull"]{ background:rgba(10,132,255,.95); }   /* blue */
-.tapDot[data-kind="hole"]{ background:rgba(255,204,0,.95); }    /* yellow */
+.tapDot[data-kind="bull"]{ background:rgba(10,132,255,.95); }
+.tapDot[data-kind="hole"]{ background:rgba(255,204,0,.95); }
+
+/* Zoom mode */
+.targetWrap.zoomMode{
+  overflow:auto;             /* ✅ pan/scroll for accuracy */
+  -webkit-overflow-scrolling:touch;
+}
+
+.targetWrap.zoomMode .targetCanvas{
+  justify-content:flex-start;
+  align-items:flex-start;
+}
+
+.targetWrap.zoomMode .targetImg{
+  max-height:none;
+  width:160%;                /* ✅ “zoomed” */
+  height:auto;
+}
 
 .footer{
   margin-top:22px;
@@ -205,8 +293,6 @@ html,body{
 
 /* Small-screen tweaks */
 @media (max-width:420px){
-  .uploadHeroTitle{font-size:28px}
-  .distanceBox{min-width:200px}
   .distanceBox input{width:105px}
   .tapsLine{font-size:16px}
   .btnTight{padding:9px 10px}
