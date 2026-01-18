@@ -7,8 +7,52 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
   <section class="screen">
-    <div id="out"></div>
+    <div class="topBar">
+      <button id="backBtn" class="secondaryBtn" type="button">Back</button>
+      <div class="topTitle">Results</div>
+      <button id="savedBtn" class="secondaryBtn" type="button">Saved</button>
+    </div>
+
+    <div id="miniStatus" class="miniStatus">Results ready.</div>
+
+    <div class="card">
+      <div class="cardTitle">Tap-n-Score™</div>
+
+      <div class="resultsGrid">
+        <div class="metric">
+          <div class="k">Score</div>
+          <div id="scoreVal" class="v">—</div>
+        </div>
+
+        <div class="metric">
+          <div class="k">Windage</div>
+          <div id="windVal" class="v">—</div>
+        </div>
+
+        <div class="metric">
+          <div class="k">Elevation</div>
+          <div id="elevVal" class="v">—</div>
+        </div>
+
+        <div class="metric">
+          <div class="k">Distance</div>
+          <div id="distVal" class="v">—</div>
+        </div>
+      </div>
+
+      <div class="hint">Get After-Shot Intelligence™ from your confirmed hits.</div>
+
+      <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
+        Buy more targets
+      </a>
+    </div>
+
+    <div class="actionsSticky">
+      <button id="buildReceiptBtn" class="primaryBtn" type="button">Save / Build Receipt</button>
+      <button id="newBtn" class="secondaryBtn" type="button">Start New</button>
+    </div>
   </section>
 
   <script type="module" src="output.js"></script>
