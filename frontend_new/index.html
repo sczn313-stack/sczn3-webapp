@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118zHERO7">
+  <link rel="stylesheet" href="./styles.css?v=20260118zHERO8">
 </head>
 
 <body>
@@ -49,9 +49,15 @@
       </div>
     </section>
 
-    <!-- Vendor sticky slot (hidden until tapping begins + vendor link present) -->
-    <section id="vendorCta" class="vendorCta" style="display:none;">
-      <a id="vendorBuyBtn" class="vendorBuyBtn" href="#" target="_blank" rel="noopener">
+    <!-- ✅ Micro-slot ABOVE the target:
+         - shows Pinch hint after photo loads (before first tap)
+         - switches to Vendor CTA after tapping begins (if vendor link exists) -->
+    <section id="microSlot" class="microSlot" style="display:none;">
+      <div id="pinchHint" class="pinchHint" style="display:none;">
+        Pinch to zoom (for precision taps)
+      </div>
+
+      <a id="vendorBuyBtn" class="vendorBuyBtn" href="#" target="_blank" rel="noopener" style="display:none;">
         <span class="vendorIcon">🛒</span>
         <span class="vendorText">Buy more targets like this</span>
         <span class="vendorArrow">›</span>
@@ -76,8 +82,6 @@
     <div class="subtle mt14 mb6">Vendor link (optional)</div>
     <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
 
-    <!-- ✅ Removed the big bottom See Results button -->
-
     <section id="resultsBox" class="card mt18" style="display:none;">
       <div class="subtle strong mb8">Results</div>
       <pre id="resultsPre" class="mono"></pre>
@@ -92,7 +96,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118zHERO7"></script>
-  <script src="./index.js?v=20260118zHERO7"></script>
+  <script src="./api.js?v=20260118zHERO8"></script>
+  <script src="./index.js?v=20260118zHERO8"></script>
 </body>
 </html>
