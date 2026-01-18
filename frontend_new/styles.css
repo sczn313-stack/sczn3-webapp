@@ -1,20 +1,178 @@
-/* Tap dots */
-#targetImageWrap { position: relative; }
-#targetImage { display:block; width:100%; height:auto; border-radius:12px; }
+:root{
+  --bg:#000;
+  --fg:#fff;
+  --muted:rgba(255,255,255,.70);
+  --card:rgba(255,255,255,.06);
+  --cardBorder:rgba(255,255,255,.10);
+  --btn:rgba(255,255,255,.10);
+  --btn2:rgba(255,255,255,.06);
+  --btnBorder:rgba(255,255,255,.18);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+
+.page{
+  max-width:920px;
+  margin:0 auto;
+  padding:20px 16px 28px;
+}
+
+.brand{
+  letter-spacing:.10em;
+  font-weight:700;
+  font-size:14px;
+  opacity:.85;
+  margin-bottom:14px;
+}
+
+.h1{
+  margin:0 0 8px;
+  font-size:56px;
+  line-height:1.02;
+  font-weight:900;
+}
+
+.subtle{color:var(--muted)}
+.strong{font-weight:700}
+.mono{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:13px;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+.mb6{margin-bottom:6px}
+.mb8{margin-bottom:8px}
+.mt10{margin-top:10px}
+.mt12{margin-top:12px}
+.mt18{margin-top:18px}
+
+.row{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.rowBetween{
+  justify-content:space-between;
+}
+
+.btn{
+  border:1px solid var(--btnBorder);
+  background:var(--btn);
+  color:var(--fg);
+  padding:12px 16px;
+  border-radius:999px;
+  font-weight:700;
+  font-size:16px;
+  line-height:1;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:44px;
+}
+
+.btnPrimary{
+  background:rgba(255,255,255,.14);
+}
+.btnSecondary{
+  background:var(--btn2);
+}
+
+.w100{width:100%}
+
+.input{
+  width:100%;
+  border:1px solid var(--btnBorder);
+  background:rgba(255,255,255,.04);
+  color:var(--fg);
+  padding:12px 14px;
+  border-radius:14px;
+  font-size:16px;
+  outline:none;
+}
+
+.distanceBox{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+#distanceInput{
+  width:90px;
+  border:1px solid var(--btnBorder);
+  background:rgba(255,255,255,.04);
+  color:var(--fg);
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:16px;
+  outline:none;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--cardBorder);
+  border-radius:18px;
+  padding:14px;
+}
+
+.tapsLine{font-size:15px}
+
+.targetWrap{
+  position:relative;
+  width:100%;
+  border-radius:16px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.03);
+}
+
+.targetImg{
+  display:block;
+  width:100%;
+  height:auto;
+}
+
+.dotsLayer{
+  position:absolute;
+  inset:0;
+  pointer-events:none; /* dots should never steal taps */
+}
 
 .tapDot{
   position:absolute;
   width:14px;
   height:14px;
-  border-radius:50%;
-  transform: translate(-50%, -50%);
-  border: 2px solid rgba(255,255,255,.9);
-  background: rgba(0, 170, 255, .75); /* holes default */
-  box-shadow: 0 0 0 2px rgba(0,0,0,.35);
-  pointer-events:none;
+  border-radius:999px;
+  transform:translate(-50%,-50%);
+  border:2px solid rgba(255,255,255,.95);
+  box-shadow:0 0 0 2px rgba(0,0,0,.55);
+  background:rgba(255,255,255,.18);
 }
 
-/* Bull tap looks different */
 .tapDot[data-kind="bull"]{
-  background: rgba(255, 200, 0, .85);
+  width:16px;
+  height:16px;
+  border-width:3px;
+  background:rgba(255,255,255,.28);
+}
+
+.footer{
+  margin-top:18px;
+  text-align:center;
+  opacity:.75;
+  padding-bottom:6px;
+}
+
+/* iOS-safe hidden file input (NOT display:none) */
+.fileInputHidden{
+  position:absolute;
+  left:-9999px;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
 }
