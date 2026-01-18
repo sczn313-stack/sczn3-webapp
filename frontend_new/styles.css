@@ -1,86 +1,38 @@
-/* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
+/* styles.css — STEP C (FULL COPY/PASTE BLOCK)
+   Paste this at the VERY BOTTOM of styles.css so it overrides anything above.
+   Purpose: make dots always visible + guarantee the tap surface is real on iOS.
+*/
 
-/* Hard dark base even if Safari does anything weird */
-html, body {
-  margin: 0;
-  padding: 0;
-  background: #000;
-  color: #fff;
-  font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+/* The tap surface must exist (height) and must be the positioning context */
+#targetImageWrap{
+  position: relative !important;
+  width: 100% !important;
+  min-height: 240px !important;     /* ensures a tap surface even before image paints */
+  touch-action: none !important;     /* critical for iOS pointer events */
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  overflow: visible !important;      /* prevents dots being clipped */
 }
 
-.page {
-  padding: 16px;
-  max-width: 720px;
-  margin: 0 auto;
+/* The image should NOT intercept taps (wrapper receives events) */
+#targetImage{
+  width: 100% !important;
+  height: auto !important;
+  display: block !important;
+  pointer-events: none !important;
+  -webkit-user-drag: none !important;
 }
 
-.subtle {
-  opacity: 0.75;
-}
-
-.btnPrimary, .btnSecondary, button {
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.08);
-  color: #fff;
-  border-radius: 999px;
-  padding: 14px 18px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.btnPrimary {
-  background: rgba(255,255,255,0.10);
-}
-
-.btnSecondary {
-  background: rgba(255,255,255,0.06);
-}
-
-input[type="number"],
-input[type="url"] {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color: #fff;
-  border-radius: 14px;
-  padding: 12px 14px;
-  font-size: 16px;
-}
-
-/* Target container */
-.targetBox {
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.04);
-  border-radius: 18px;
-  padding: 14px;
-}
-
-/* TAP AREA (wrapper receives taps) */
-#targetImageWrap {
-  position: relative;
-  width: 100%;
-  border-radius: 14px;
-  overflow: hidden;
-  background: rgba(255,255,255,0.03);
-  touch-action: none; /* important for iOS */
-}
-
-#targetImage {
-  width: 100%;
-  display: block;
-  pointer-events: none; /* taps go to wrapper */
-}
-
-/* Tap dot marker */
-.tapDot {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 165, 0, 0.90);
-  box-shadow: 0 0 6px rgba(0,0,0,0.55);
-  pointer-events: none;
+/* The dot must sit above everything and be big enough to see */
+.tapDot{
+  position: absolute !important;
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  background: rgba(255, 165, 0, 0.95) !important;
+  border: 2px solid rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.65) !important;
+  pointer-events: none !important;
+  z-index: 9999 !important;
 }
