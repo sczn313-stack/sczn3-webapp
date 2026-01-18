@@ -1,220 +1,195 @@
-// frontend_new/index.js  (FULL CUT/PASTE REPLACEMENT — PINCH-ZOOM ENABLED)
-// Goal:
-// - Allow 2-finger pinch/zoom for accuracy
-// - Keep 1-finger taps working + showing dots
-// - Dots stay aligned even when zoomed (we store taps as normalized 0..1 coords)
+// sczn3-webapp/frontend_new/index.js (FULL FILE REPLACEMENT)
+// iOS-safe taps: wrapper receives taps, dots render, taps saved for analyze.
 
 (() => {
-  const photoInput     = document.getElementById("photoInput");
-  const img            = document.getElementById("targetImage");
-  const wrap           = document.getElementById("targetImageWrap");
-  const tapsCountEl    = document.getElementById("tapsCount");
-  const clearBtn       = document.getElementById("clearTapsBtn");
-  const statusLine     = document.getElementById("statusLine");
-  const emptyHint      = document.getElementById("emptyHint");
+  const RESULT_KEY = "tapnscore_result";
+  const PHOTO_KEY  = "sczn3_targetPhoto_dataUrl";
 
-  const distanceInput  = document.getElementById("distanceInput");
-  const vendorInput    = document.getElementById("vendorInput");
-  const seeResultsBtn  = document.getElementById("seeResultsBtn");
+  const input      = document.getElementById("photoInput");
+  const img        = document.getElementById("targetImage");
+  const wrap       = document.getElementById("targetImageWrap");
+  const hint       = document.getElementById("emptyHint");
+  const tapsCount  = document.getElementById("tapsCount");
+  const clearBtn   = document.getElementById("clearTapsBtn");
+  const seeBtn     = document.getElementById("seeResultsBtn");
+  const distInput  = document.getElementById("distanceInput");
+  const vendorIn   = document.getElementById("vendorInput");
 
-  // ---- Storage keys ----
-  const SS_PHOTO = "sczn3_targetPhoto_dataUrl";
-  const SS_TAPS  = "sczn3_taps_v1"; // [{x,y}] normalized 0..1
+  let taps = []; // {x,y} in pixels relative to displayed image
 
-  // ---- State ----
-  let taps = [];
-
-  function setStatus(msg) {
-    if (statusLine) statusLine.textContent = String(msg || "");
+  function setStatus(msg){
+    const el = document.getElementById("statusLine");
+    if (el) el.textContent = msg;
   }
 
-  function updateCount() {
-    if (tapsCountEl) tapsCountEl.textContent = String(taps.length);
+  function escNum(v){
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   }
 
-  function safeJsonParse(s){
-    try { return JSON.parse(String(s || "")); } catch { return null; }
+  function updateCount(){
+    if (tapsCount) tapsCount.textContent = String(taps.length);
   }
 
-  function persist() {
-    try { sessionStorage.setItem(SS_TAPS, JSON.stringify(taps)); } catch {}
-  }
-
-  function restore() {
-    try {
-      const raw = sessionStorage.getItem(SS_TAPS) || "[]";
-      const arr = safeJsonParse(raw);
-      if (Array.isArray(arr)) taps = arr.filter(p => typeof p?.x === "number" && typeof p?.y === "number");
-    } catch {}
-  }
-
-  function clearDots() {
+  function clearDots(){
     if (!wrap) return;
-    wrap.querySelectorAll(".tapDot").forEach((d) => d.remove());
+    wrap.querySelectorAll(".tapDot").forEach(d => d.remove());
   }
 
-  function addDot(nx, ny) {
+  function clearAll(){
+    taps = [];
+    clearDots();
+    updateCount();
+    setStatus("Cleared. Tap ADD PHOTO.");
+  }
+
+  function addDot(x, y){
     if (!wrap) return;
-    const r = wrap.getBoundingClientRect();
     const dot = document.createElement("div");
     dot.className = "tapDot";
-    dot.style.left = `${nx * r.width}px`;
-    dot.style.top  = `${ny * r.height}px`;
+    dot.style.left = `${x}px`;
+    dot.style.top  = `${y}px`;
     wrap.appendChild(dot);
   }
 
-  function redrawDots() {
-    if (!wrap || !img || !img.src) return;
-    clearDots();
-    taps.forEach(p => addDot(p.x, p.y));
-  }
-
-  function clearAllTaps() {
-    taps = [];
-    persist();
-    updateCount();
-    clearDots();
-    setStatus("Taps cleared.");
-  }
-
-  // Convert client -> normalized 0..1 relative to wrapper
-  function clientToNorm(clientX, clientY) {
+  function getXYFromClient(clientX, clientY){
     if (!wrap) return null;
-    const r = wrap.getBoundingClientRect();
-    const x = clientX - r.left;
-    const y = clientY - r.top;
-    if (x < 0 || y < 0 || x > r.width || y > r.height) return null;
-    return { nx: x / r.width, ny: y / r.height };
+    const rect = wrap.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+    return { x, y, w: rect.width, h: rect.height };
   }
 
-  function registerTap(clientX, clientY) {
+  function handleTap(clientX, clientY){
     if (!img || !img.src) {
       setStatus("Add a photo first.");
       return;
     }
-    const m = clientToNorm(clientX, clientY);
-    if (!m) return;
 
-    taps.push({ x: m.nx, y: m.ny });
-    persist();
+    const pt = getXYFromClient(clientX, clientY);
+    if (!pt) return;
+
+    taps.push({ x: pt.x, y: pt.y });
+    addDot(pt.x, pt.y);
     updateCount();
-    addDot(m.nx, m.ny);
-    setStatus(`Tap registered (${taps.length}).`);
+    setStatus("Photo loaded. Tap bullet holes.");
   }
 
-  // ---- Photo ----
-  function showPreview(dataUrl) {
-    if (!img) return;
-    img.src = dataUrl;
-    if (emptyHint) emptyHint.textContent = "Photo loaded. Pinch-zoom for precision, then tap holes.";
-    setTimeout(() => {
-      redrawDots();
-      setStatus("Photo loaded. Pinch-zoom for precision, then tap holes.");
-    }, 0);
-  }
-
-  function handlePhotoChange() {
-    const f = photoInput?.files?.[0];
-    if (!f) { setStatus("No photo selected."); return; }
-    if (!f.type || !f.type.startsWith("image/")) { setStatus("That file is not an image."); return; }
-
-    const r = new FileReader();
-    r.onload = () => {
-      const dataUrl = String(r.result || "");
-      try { sessionStorage.setItem(SS_PHOTO, dataUrl); } catch {}
-      showPreview(dataUrl);
-      clearAllTaps(); // new photo = new taps
-      setStatus("Photo loaded. Pinch-zoom, then tap holes.");
-    };
-    r.onerror = () => setStatus("Could not read that photo.");
-    r.readAsDataURL(f);
-  }
-
-  // ---- Pinch-zoom friendly tap logic ----
-  // KEY IDEA:
-  // - Allow default browser pinch-zoom (2 fingers) by NOT blanket-preventDefault on multi-touch.
-  // - For 1-finger taps, we preventDefault to stop scroll and register tap.
-  function onTouchStart(e) {
-    if (!e || !e.touches) return;
-
-    // 2+ fingers = let Safari pinch-zoom / pan do its thing
-    if (e.touches.length >= 2) return;
-
-    // 1 finger = treat as tap
-    const t = e.touches[0];
-    if (!t) return;
-
-    e.preventDefault(); // stop scroll hijacking single taps
-    registerTap(t.clientX, t.clientY);
-  }
-
-  function onPointerDown(e) {
-    // If it's a touch pointer with multi-touch pinch, Safari may not send pointer events for both.
-    // This handler is best for desktop + some iOS cases.
-    // Avoid blocking gestures: only handle primary pointer.
-    try {
-      if (e && typeof e.isPrimary === "boolean" && !e.isPrimary) return;
-      // If user is in a pinch gesture, pointerType may be "touch" but Safari won't mark isPrimary reliably.
-      // We'll still allow tap registration.
-      e.preventDefault();
-    } catch {}
-    registerTap(e.clientX, e.clientY);
-  }
-
-  function bindTapSurface() {
+  function bindTaps(){
     if (!wrap) return;
 
-    // IMPORTANT: allow pinch zoom => DO NOT set touch-action:none
-    // We'll rely on JS to only preventDefault for 1-finger taps.
-    wrap.style.touchAction = "pinch-zoom"; // allows pinch in supporting browsers
-    wrap.style.webkitUserSelect = "none";
-    wrap.style.userSelect = "none";
+    // make absolutely sure wrapper is tappable
+    wrap.style.pointerEvents = "auto";
+    wrap.style.touchAction = "none";
 
-    // Touch (iOS)
-    wrap.addEventListener("touchstart", onTouchStart, { passive: false });
+    const onTouch = (e) => {
+      // CRITICAL: without preventDefault, iOS can treat as scroll / text selection
+      e.preventDefault();
+      const t = e.touches && e.touches[0];
+      if (!t) return;
+      handleTap(t.clientX, t.clientY);
+    };
 
-    // Pointer (desktop + some mobile)
-    wrap.addEventListener("pointerdown", onPointerDown, { passive: false });
+    const onClick = (e) => {
+      handleTap(e.clientX, e.clientY);
+    };
 
-    // Redraw dots if layout changes
-    window.addEventListener("resize", () => setTimeout(redrawDots, 0));
-    window.addEventListener("orientationchange", () => setTimeout(redrawDots, 200));
+    wrap.addEventListener("touchstart", onTouch, { passive: false });
+    wrap.addEventListener("click", onClick);
   }
 
-  // ---- See results ----
-  function onSeeResults() {
-    if (!taps.length) {
-      setStatus("Tap at least 1 hole first.");
+  function loadPhoto(file){
+    if (!file){
+      setStatus("No photo selected.");
       return;
     }
-    setStatus("Analyzing…");
-    persist();
+    if (!file.type || !file.type.startsWith("image/")){
+      setStatus("That file is not an image.");
+      return;
+    }
 
-    if (typeof window.sczn3Analyze === "function") {
-      window.sczn3Analyze({
-        distanceYds: Number(distanceInput?.value || 100),
-        vendorLink: String(vendorInput?.value || ""),
-        taps
-      });
-    } else {
-      setStatus("Analyze function not loaded.");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      if (img) img.src = dataUrl;
+      if (hint) hint.textContent = "Photo loaded. Tap bullet holes (Tap-n-Score).";
+      setStatus("Photo loaded. Tap bullet holes.");
+      try { sessionStorage.setItem(PHOTO_KEY, dataUrl); } catch {}
+      clearAll();                 // reset taps when new photo loads
+      setStatus("Photo loaded. Tap bullet holes.");
+    };
+    reader.onerror = () => setStatus("Could not read that photo.");
+    reader.readAsDataURL(file);
+  }
+
+  async function analyze(){
+    // Frontend should not crash; show calm message if missing taps
+    if (!taps.length){
+      setStatus("Tap at least 1 hole, then press See results.");
+      return;
+    }
+
+    const distanceYards = escNum(distInput && distInput.value);
+    const vendorUrl = vendorIn ? String(vendorIn.value || "").trim() : "";
+
+    // IMPORTANT: You must have api.js providing window.sczn3Analyze (or similar).
+    // We'll call a conservative function name that you can wire in api.js.
+    if (typeof window.sczn3Analyze !== "function"){
+      alert("Analyze function missing (api.js not loaded).");
+      return;
+    }
+
+    // Normalize taps for backend: include bull/holes if your backend expects it.
+    // We'll send taps + distance + vendor; api.js can transform.
+    const payload = {
+      distanceYards,
+      vendorUrl,
+      taps: taps.slice()
+    };
+
+    // iOS “Analyzing…” overlay is fine, but never leave user stranded.
+    setStatus("Analyzing…");
+
+    try{
+      const result = await window.sczn3Analyze(payload);
+      sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
+      window.location.href = `./output.html?v=${Date.now()}`;
+    } catch (err){
+      console.error(err);
+      setStatus("Network/server error. Try again.");
+      alert("Network/server error. Try again.");
     }
   }
 
-  // ---- Init ----
-  restore();
-  updateCount();
-  bindTapSurface();
+  // === init ===
+  bindTaps();
 
-  // restore photo if present
-  try {
-    const saved = sessionStorage.getItem(SS_PHOTO);
-    if (saved) showPreview(saved);
+  if (input){
+    input.addEventListener("change", () => {
+      const f = input.files && input.files[0];
+      loadPhoto(f);
+    });
+  }
+
+  if (clearBtn){
+    clearBtn.addEventListener("click", clearAll);
+  }
+
+  if (seeBtn){
+    seeBtn.addEventListener("click", analyze);
+    seeBtn.addEventListener("touchstart", (e) => { e.preventDefault(); analyze(); }, { passive: false });
+  }
+
+  // Try restore photo (optional)
+  try{
+    const saved = sessionStorage.getItem(PHOTO_KEY);
+    if (saved && img){
+      img.src = saved;
+      if (hint) hint.textContent = "Photo loaded. Tap bullet holes (Tap-n-Score).";
+      setStatus("Photo loaded. Tap bullet holes.");
+    }
   } catch {}
 
-  if (photoInput) photoInput.addEventListener("change", handlePhotoChange);
-  if (clearBtn) clearBtn.addEventListener("click", clearAllTaps);
-  if (seeResultsBtn) seeResultsBtn.addEventListener("click", onSeeResults);
-
-  setStatus("Ready. Tap ADD PHOTO.");
+  updateCount();
 })();
