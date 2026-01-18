@@ -1,70 +1,60 @@
-<!-- sczn3-webapp/frontend_new/index.html (FULL REPLACEMENT) -->
+<!-- sczn3-webapp/frontend_new/index.html (FULL FILE REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes" />
-  <title>Tap-n-Score™ — Upload</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=1, maximum-scale=5" />
+  <title>Tap-n-Score — Upload</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="kicker">TAP-N-SCORE™</div>
-      <div class="title">Upload</div>
+  <div class="resultsWrap">
+    <div class="resultsTop">
+      <div class="resultsKicker">Tap-n-Score™</div>
+      <div class="resultsTitle">Upload</div>
+      <div id="miniStatus" class="resultsSub">Ready. Tap UPLOAD.</div>
+    </div>
 
-      <div id="miniStatus" class="status">Ready. Tap UPLOAD.</div>
+    <div class="topRow">
+      <button id="uploadBtn" class="btnPrimary" type="button">Upload</button>
 
-      <div class="row">
-        <button id="uploadBtn" class="btnPrimary" type="button">Upload</button>
-
-        <div class="pill">
-          <div class="pillLabel">Distance</div>
-          <input id="distanceYards" class="pillInput" type="number" inputmode="numeric" min="1" step="1" value="100" />
-          <div class="pillUnit">yds</div>
-        </div>
-      </div>
-
-      <div class="vendorRow">
-        <a id="buyMoreBtn" class="btnSecondary fullWidth" href="#" style="display:none;">Buy more targets</a>
-      </div>
-
-      <div id="tapStage" style="display:none;">
-        <div class="tapHud">
-          <div id="tapCountText" class="tapCount">Bull: not set • Holes: 0</div>
-          <div class="tapHudBtns">
-            <button id="setBullBtn" class="btnSecondary" type="button">Set bull</button>
-            <button id="clearTapsBtn" class="btnSecondary" type="button">Clear</button>
-          </div>
-        </div>
-
-        <div id="thumbWrap" class="thumbWrap">
-          <img id="thumb" class="thumb" alt="Target photo" />
-          <svg id="tapLayer" class="tapLayer" xmlns="http://www.w3.org/2000/svg"></svg>
-        </div>
-
-        <button id="pressToSee" class="btnPrimary fullWidth disabled" type="button">Press to see results</button>
+      <div class="distWrap">
+        <div class="distLabel">Distance</div>
+        <input id="distanceInput" class="distInput" type="number" inputmode="numeric" min="1" step="1" value="100" />
+        <div class="distUnit">yds</div>
       </div>
     </div>
 
-    <!-- iOS-friendly picker sheet -->
-    <div id="pickOverlay" class="overlay" style="display:none;">
-      <div class="sheet">
-        <div class="sheetTitle">Add target photo</div>
-
-        <button id="pickChoose" class="sheetBtn" type="button">Choose from Library</button>
-        <button id="pickCamera" class="sheetBtn" type="button">Use Camera</button>
-        <button id="pickCancel" class="sheetBtn sheetCancel" type="button">Cancel</button>
-      </div>
+    <div class="vendorRow">
+      <input id="vendorUrlInput" class="fieldInput" type="url" placeholder="Vendor (optional buy link)" />
     </div>
 
-    <!-- Hidden inputs -->
-    <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
-    <input id="targetPhotoCamera" type="file" accept="image/*" capture="environment" style="display:none;" />
+    <div id="tapHelp" class="tapHelp">
+      <div class="tapHelpTitle">Step 1</div>
+      <div class="tapHelpText">Tap the bull (center) once.</div>
+    </div>
+
+    <div class="tapStage">
+      <div class="tapStageTop">
+        <div id="tapCount" class="tapCount">Taps: 0</div>
+        <button id="clearBtn" class="btnSecondary" type="button">Clear taps</button>
+      </div>
+
+      <div id="imgWrap" class="imgWrap">
+        <img id="targetImg" class="targetImg" alt="Target" />
+        <canvas id="tapCanvas" class="tapCanvas"></canvas>
+      </div>
+
+      <button id="resultsBtn" class="btnPrimary" type="button">Press to see results</button>
+    </div>
+
+    <div class="resultsBottom">
+      <div class="subtle">Pinch to zoom for accurate taps.</div>
+    </div>
   </div>
 
-  <script src="./api.js"></script>
-  <script src="./index.js"></script>
+  <input id="fileInput" type="file" accept="image/*" style="display:none" />
+
+  <script src="./index.js?v=3"></script>
 </body>
 </html>
