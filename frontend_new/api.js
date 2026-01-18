@@ -2,7 +2,7 @@
 // Frontend API helper for Tap-n-Score / SEC
 //
 // Uses full backend URL because Render Static Site is a different origin.
-// Optional override (recommended):
+// Optional override:
 //   sessionStorage.setItem("sczn3_backend_base","https://sczn3-backend-new1.onrender.com")
 
 window.SEC_API = {
@@ -13,18 +13,18 @@ window.SEC_API = {
 
     if (!file) throw new Error("No file provided.");
 
-    // 1) Create thumbnail locally
+    // Create thumbnail locally (fast + reliable)
     const thumbDataUrl = await fileToDataUrl(file);
 
-    // 2) Send to backend
+    // Build form
     const fd = new FormData();
     fd.append("image", file, file.name || "target.jpg");
     fd.append("distanceYards", String(distanceYards || 100));
 
-    // IMPORTANT: backend expects tapsJson OR dx/dy override.
-    // We send tapsJson as JSON string: { bull:{x,y}, holes:[{x,y}...] }
-    if (tapsJson && typeof tapsJson === "object") {
-      fd.append("tapsJson", JSON.stringify(tapsJson));
+    // IMPORTANT: send tapsJson if provided
+    if (tapsJson) {
+      const payload = typeof tapsJson === "string" ? tapsJson : JSON.stringify(tapsJson);
+      fd.append("tapsJson", payload);
     }
 
     const res = await fetch(`${backendBase}/api/analyze`, {
