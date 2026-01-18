@@ -1,95 +1,182 @@
 // frontend_new/index.js
-// Bull-first workflow:
-// Tap #1 = bull (aim point), Tap #2+ = bullet holes.
-// IMPORTANT: Disable taps during 2-finger pinch.
+// One hero upload button + bull-first workflow + green See Results (only trigger)
+// Multi-touch (pinch) will NOT create taps.
 
-const photoInput     = document.getElementById("photoInput");
-const targetImage    = document.getElementById("targetImage");
-const imageWrap      = document.getElementById("targetImageWrap");
-const tapsCountEl    = document.getElementById("tapsCount");
-const clearTapsBtn   = document.getElementById("clearTapsBtn");
-const distanceInput  = document.getElementById("distanceInput");
-const vendorInput    = document.getElementById("vendorInput");
+const uploadHeroBtn = document.getElementById("uploadHeroBtn");
+const photoInput    = document.getElementById("photoInput");
+const uploadSub     = document.getElementById("uploadSub");
 
-const anchorLine     = document.getElementById("anchorLine");
-const seeResultsWrap = document.getElementById("seeResultsWrap");
-const seeResultsHint = document.getElementById("seeResultsHint");
+const targetImage   = document.getElementById("targetImage");
+const targetCanvas  = document.getElementById("targetCanvas");
+const dotsLayer     = document.getElementById("dotsLayer");
 
-const microSlot      = document.getElementById("microSlot");
-const pinchHintEl    = document.getElementById("pinchHint");
-const vendorCta      = document.getElementById("vendorCta");
+const tapRuleLine   = document.getElementById("tapRuleLine");
+const emptyHint     = document.getElementById("emptyHint");
 
-const resultsBox     = document.getElementById("resultsBox");
-const resultsText    = document.getElementById("resultsText");
+const tapsCountEl   = document.getElementById("tapsCount");
+const clearTapsBtn  = document.getElementById("clearTapsBtn");
+
+const distanceInput = document.getElementById("distanceInput");
+const vendorInput   = document.getElementById("vendorInput");
+
+const microSlot     = document.getElementById("microSlot");
+const pinchHint     = document.getElementById("pinchHint");
+const vendorCta     = document.getElementById("vendorCta");
+
+const seeResultsRow = document.getElementById("seeResultsRow");
+const seeResultsBtn = document.getElementById("seeResultsHint");
+
+const resultsBox    = document.getElementById("resultsBox");
+const resultsText   = document.getElementById("resultsText");
+const backBtn       = document.getElementById("backBtn");
 
 function setTapsCount(n){
   if (tapsCountEl) tapsCountEl.textContent = String(n);
 }
 
-/** --- Tap state --- **/
-let bullTap = null;   // {x,y} normalized
-let taps = [];        // holes only
-let pinchActive = false;
+function isValidUrl(s){
+  try{
+    const u = new URL(String(s || "").trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  }catch{ return false; }
+}
 
-/** show/hide UI pieces based on state */
-function updateUI(){
-  const hasPhoto = !!(targetImage && targetImage.src);
-
-  // Target area visibility
-  if (imageWrap) imageWrap.style.display = hasPhoto ? "block" : "none";
-
-  // Anchor line: only after photo
-  if (anchorLine){
-    if (hasPhoto){
-      anchorLine.style.display = "block";
-      // remove word "Target" per your request:
-      anchorLine.textContent = "Tap bull’s-eye / aim point 1st — then tap bullet holes.";
-    } else {
-      anchorLine.style.display = "none";
-      anchorLine.textContent = "";
-    }
+function showMicroSlot(){
+  if (microSlot) microSlot.style.display = "flex";
+}
+function hideMicroSlot(){
+  if (microSlot) microSlot.style.display = "none";
+  if (pinchHint) pinchHint.style.display = "none";
+  if (vendorCta) vendorCta.style.display = "none";
+}
+function showPinchHint(){
+  showMicroSlot();
+  if (pinchHint) pinchHint.style.display = "block";
+  if (vendorCta) vendorCta.style.display = "none";
+}
+function hidePinchHint(){
+  if (pinchHint) pinchHint.style.display = "none";
+  // Keep microslot if vendor CTA should show
+}
+function updateVendorCtaVisibility(){
+  const link = String(vendorInput?.value || "").trim();
+  if (!seeResultsRow || seeResultsRow.style.display === "none") {
+    if (vendorCta) vendorCta.style.display = "none";
+    return;
   }
+  if (isValidUrl(link)) {
+    showMicroSlot();
+    if (pinchHint) pinchHint.style.display = "none";
+    vendorCta.href = link;
+    vendorCta.style.display = "flex";
+  } else {
+    if (vendorCta) vendorCta.style.display = "none";
+  }
+}
 
-  // Green See Results: only after photo AND at least 1 hole AND bull exists
-  const canSeeResults = hasPhoto && bullTap && taps.length >= 1;
-  if (seeResultsWrap) seeResultsWrap.style.display = canSeeResults ? "block" : "none";
+function showTapRuleLine(){
+  if (tapRuleLine) tapRuleLine.style.display = "block";
+}
+function hideTapRuleLine(){
+  if (tapRuleLine) tapRuleLine.style.display = "none";
+}
 
-  // Micro-slot appears only once tapping begins (hasPhoto + at least bullTap)
-  const showMicro = hasPhoto && !!bullTap;
-  if (microSlot) microSlot.style.display = showMicro ? "flex" : "none";
+function showSeeResults(){
+  if (seeResultsRow) seeResultsRow.style.display = "block";
+  updateVendorCtaVisibility();
+}
+function hideSeeResults(){
+  if (seeResultsRow) seeResultsRow.style.display = "none";
+  updateVendorCtaVisibility();
 }
 
 function clearDots(){
-  document.querySelectorAll(".tapDot").forEach(d => d.remove());
+  if (!dotsLayer) return;
+  dotsLayer.querySelectorAll(".tapDot").forEach(d => d.remove());
 }
 
-function addDotAt(px, py, kind){
-  if (!imageWrap) return;
+function addDot(nx, ny, kind){
+  if (!dotsLayer) return;
   const dot = document.createElement("div");
   dot.className = "tapDot";
   dot.dataset.kind = kind || "hole";
-  dot.style.left = `${px}px`;
-  dot.style.top = `${py}px`;
-  imageWrap.appendChild(dot);
+  dot.style.left = `${nx * 100}%`;
+  dot.style.top  = `${ny * 100}%`;
+  dotsLayer.appendChild(dot);
 }
 
-function clearAll(){
+function showPreview(dataUrl){
+  if (!targetImage) return;
+  targetImage.src = dataUrl;
+  targetImage.style.display = "block";
+  if (emptyHint) emptyHint.style.display = "none";
+}
+
+function clearPreview(){
+  if (targetImage) {
+    targetImage.src = "";
+    targetImage.style.display = "none";
+  }
+  if (emptyHint) emptyHint.style.display = "block";
+}
+
+/** --- Tap state --- **/
+let bullTap = null; // {x,y} normalized to image box
+let taps = [];      // holes only
+
+// For pinch/multi-touch guard
+const activePointers = new Map(); // pointerId -> {x,y}
+let multiTouchActive = false;
+
+// For tap-vs-drag filtering
+let downInfo = null; // {pointerId, x, y, time}
+const TAP_MOVE_PX = 10;
+
+function resetTapState(){
   bullTap = null;
   taps = [];
-  pinchActive = false;
-  clearDots();
   setTapsCount(0);
-
-  // hide results + vendor CTA
-  if (resultsBox) resultsBox.style.display = "none";
-  if (resultsText) resultsText.textContent = "";
-  if (vendorCta) vendorCta.style.display = "none";
-  if (pinchHintEl) pinchHintEl.style.display = "none";
-
-  updateUI();
+  clearDots();
+  hideSeeResults();
+  hideMicroSlot();
+  // Tap rule line should remain visible if photo loaded; we control separately.
 }
 
-/** --- Photo load --- **/
+function afterPhotoLoaded(){
+  resetTapState();
+  showTapRuleLine();
+  showPinchHint();         // show once, then hide after first tap
+  hideSeeResults();
+  updateVendorCtaVisibility();
+}
+
+function isPhotoLoaded(){
+  return !!(targetImage && targetImage.src);
+}
+
+function updateReadyUI(){
+  // Show green see results only when bull is set and at least 1 hole
+  if (bullTap && taps.length >= 1) showSeeResults();
+  else hideSeeResults();
+
+  // Vendor CTA depends on See Results + valid link
+  updateVendorCtaVisibility();
+}
+
+/** --- Upload wiring --- **/
+function openPicker(){
+  // Must be called inside a user gesture (button click)
+  if (!photoInput) return;
+  photoInput.value = ""; // allow re-select same file
+  photoInput.click();
+}
+
+if (uploadHeroBtn){
+  uploadHeroBtn.addEventListener("click", () => {
+    openPicker();
+  });
+}
+
 if (photoInput){
   photoInput.addEventListener("change", () => {
     const file = photoInput.files && photoInput.files[0];
@@ -103,145 +190,191 @@ if (photoInput){
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = String(reader.result || "");
-      if (targetImage) targetImage.src = dataUrl;
+      showPreview(dataUrl);
 
       try { sessionStorage.setItem("sczn3_targetPhoto_dataUrl", dataUrl); } catch {}
-
-      clearAll();      // resets taps + results
-      updateUI();      // shows anchor + target
+      afterPhotoLoaded();
     };
+    reader.onerror = () => alert("Could not read that photo.");
     reader.readAsDataURL(file);
   });
 }
 
-/** --- Pinch detection (2-finger = disable tap capture) --- **/
-function setPinchActive(val){
-  pinchActive = !!val;
-}
-
-// Touch events are the most reliable signal for “two fingers”
-if (imageWrap){
-  imageWrap.addEventListener("touchstart", (e) => {
-    if (e.touches && e.touches.length >= 2) setPinchActive(true);
-  }, { passive: true });
-
-  imageWrap.addEventListener("touchend", (e) => {
-    // if fewer than 2 touches remain, pinch ends
-    if (!e.touches || e.touches.length < 2) setPinchActive(false);
-  }, { passive: true });
-
-  imageWrap.addEventListener("touchcancel", () => setPinchActive(false), { passive: true });
-}
-
-/** --- Tap capture (pointer) --- **/
-function onTap(clientX, clientY){
-  if (pinchActive) return; // ✅ block taps while 2 fingers are on screen
-  if (!imageWrap || !targetImage || !targetImage.src) return;
-
-  const rect = imageWrap.getBoundingClientRect();
+/** --- Tap capture (single-finger only) --- **/
+function getImageNormalizedXY(clientX, clientY){
+  if (!targetImage) return null;
+  const rect = targetImage.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
+  if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+  return {
+    nx: rect.width ? x / rect.width : 0,
+    ny: rect.height ? y / rect.height : 0,
+  };
+}
 
-  if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+function onSingleTap(nx, ny){
+  if (!isPhotoLoaded()) return;
 
-  const nx = rect.width ? (x / rect.width) : 0;
-  const ny = rect.height ? (y / rect.height) : 0;
-
+  // First tap = bull, rest = holes
   if (!bullTap){
     bullTap = { x: nx, y: ny };
-    addDotAt(x, y, "bull");
-
-    // Show pinch hint briefly after first tap, then go away (clean UI)
-    if (microSlot) microSlot.style.display = "flex";
-    if (pinchHintEl){
-      pinchHintEl.style.display = "block";
-      window.setTimeout(() => {
-        // only hide if vendor CTA hasn't replaced the slot visually
-        if (pinchHintEl) pinchHintEl.style.display = "none";
-      }, 2200);
-    }
+    addDot(nx, ny, "bull");
+    // You wanted the pinch hint to disappear after first tap:
+    hidePinchHint();
   } else {
     taps.push({ x: nx, y: ny });
     setTapsCount(taps.length);
-    addDotAt(x, y, "hole");
+    addDot(nx, ny, "hole");
   }
 
-  updateUI();
+  updateReadyUI();
 }
 
-// Pointer handler for mouse + touch
-if (imageWrap){
-  imageWrap.style.position = "relative";
-  imageWrap.addEventListener("pointerdown", (e) => {
-    // If iOS pinch is happening, touch handlers set pinchActive true.
-    // This prevents those accidental taps.
-    e.preventDefault();
-    onTap(e.clientX, e.clientY);
-  });
+// Pointer events: do NOT preventDefault (keeps pinch zoom native)
+if (targetCanvas){
+  targetCanvas.addEventListener("pointerdown", (e) => {
+    if (!isPhotoLoaded()) return;
+
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // If 2+ touches active, we are pinching/zooming -> block tap creation
+    if (activePointers.size >= 2) {
+      multiTouchActive = true;
+      downInfo = null;
+      return;
+    }
+
+    // Only consider primary touch for tap
+    downInfo = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, time: Date.now() };
+  }, { passive: true });
+
+  targetCanvas.addEventListener("pointermove", (e) => {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.size >= 2) {
+      multiTouchActive = true;
+      downInfo = null;
+      return;
+    }
+  }, { passive: true });
+
+  targetCanvas.addEventListener("pointerup", (e) => {
+    // Update pointer set first
+    activePointers.delete(e.pointerId);
+
+    // If we were multi-touching, do NOT create taps
+    if (multiTouchActive) {
+      if (activePointers.size === 0) multiTouchActive = false;
+      downInfo = null;
+      return;
+    }
+
+    if (!downInfo || downInfo.pointerId !== e.pointerId) return;
+
+    const dx = Math.abs(e.clientX - downInfo.x);
+    const dy = Math.abs(e.clientY - downInfo.y);
+    if (dx > TAP_MOVE_PX || dy > TAP_MOVE_PX) {
+      downInfo = null;
+      return;
+    }
+
+    const pt = getImageNormalizedXY(e.clientX, e.clientY);
+    if (!pt) { downInfo = null; return; }
+
+    onSingleTap(pt.nx, pt.ny);
+    downInfo = null;
+  }, { passive: true });
+
+  targetCanvas.addEventListener("pointercancel", (e) => {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size === 0) multiTouchActive = false;
+    downInfo = null;
+  }, { passive: true });
 }
 
 /** --- Clear taps --- **/
 if (clearTapsBtn){
-  clearTapsBtn.addEventListener("click", () => clearAll());
+  clearTapsBtn.addEventListener("click", () => {
+    resetTapState();
+    // Keep tap rule line visible if photo is loaded
+    if (isPhotoLoaded()) showTapRuleLine();
+    // Show pinch hint again because we’re restarting
+    if (isPhotoLoaded()) showPinchHint();
+  });
 }
 
-/** --- Results (triggered by green box) --- **/
+/** --- Vendor input updates CTA visibility --- **/
+if (vendorInput){
+  vendorInput.addEventListener("input", () => updateVendorCtaVisibility());
+}
+
+/** --- Results (triggered ONLY by the green button) --- **/
 async function doResults(){
+  if (!isPhotoLoaded()) return;
+
+  if (!bullTap) {
+    alert("Tap the bull’s-eye (aim point) first.");
+    return;
+  }
+  if (taps.length < 1) {
+    alert("Tap at least 1 bullet hole.");
+    return;
+  }
+
+  const distanceYds = Number(distanceInput?.value || 100);
+  const vendorLink = String(vendorInput?.value || "").trim();
+
+  const payload = {
+    distanceYds,
+    vendorLink,
+    bullTap,
+    taps,
+    imageDataUrl: null
+  };
+
+  if (typeof window.tapscore !== "function") {
+    alert("Analyze function missing (api.js not loaded).");
+    return;
+  }
+
   try{
-    if (!targetImage || !targetImage.src) return;
-    if (!bullTap) return;
-    if (taps.length < 1) return;
-
-    const distanceYds = Number(distanceInput?.value || 100);
-    const vendorLink = String(vendorInput?.value || "").trim();
-
-    const payload = {
-      distanceYds,
-      vendorLink,
-      bullTap,
-      taps,
-      imageDataUrl: null
-    };
-
-    if (typeof window.tapscore !== "function") {
-      throw new Error("Analyze function missing (api.js not loaded).");
-    }
-
     const out = await window.tapscore(payload);
 
-    // show results (raw for now)
     if (resultsText) resultsText.textContent = JSON.stringify(out, null, 2);
     if (resultsBox) resultsBox.style.display = "block";
 
-    // Vendor CTA appears after results (your “progressive quietness” behavior)
-    if (vendorLink){
-      if (microSlot) microSlot.style.display = "flex";
-      if (vendorCta){
-        vendorCta.href = vendorLink;
-        vendorCta.style.display = "flex";
-      }
-    }
-  } catch(err){
+    // When results are shown, vendor CTA should still be in the microSlot (above)
+    updateVendorCtaVisibility();
+  }catch(err){
     const msg = (err && err.message) ? err.message : "Network/server error. Try again.";
     alert(msg);
   }
 }
 
-function wireSeeResults(){
-  if (!seeResultsHint) return;
+if (seeResultsBtn){
+  seeResultsBtn.addEventListener("click", doResults);
+}
 
-  // click
-  seeResultsHint.addEventListener("click", doResults);
-
-  // keyboard accessibility
-  seeResultsHint.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      doResults();
-    }
+if (backBtn){
+  backBtn.addEventListener("click", () => {
+    if (resultsBox) resultsBox.style.display = "none";
   });
 }
-wireSeeResults();
 
-/** init */
-updateUI();
+/** --- Initial state --- **/
+clearPreview();
+hideTapRuleLine();
+hideSeeResults();
+hideMicroSlot();
+setTapsCount(0);
+
+// Optional: restore last photo on refresh
+try{
+  const saved = sessionStorage.getItem("sczn3_targetPhoto_dataUrl");
+  if (saved) {
+    showPreview(saved);
+    afterPhotoLoaded();
+  }
+}catch{}
