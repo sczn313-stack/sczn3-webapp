@@ -7,10 +7,9 @@
   --border:rgba(255,255,255,.12);
   --shadow:0 10px 28px rgba(0,0,0,.55);
 
-  /* Accent (subtle “coated” look) */
+  /* Hero coating */
   --accentA: rgba(30, 90, 255, .22);
   --accentB: rgba(255, 30, 80, .16);
-  --accentStroke: rgba(120, 185, 255, .38);
 }
 
 *{box-sizing:border-box}
@@ -34,7 +33,7 @@ a{color:inherit}
 }
 
 .status{
-  min-height: 26px;           /* prevents page jump */
+  min-height: 26px;
   margin: 10px 0 10px;
   color: var(--muted);
   font-size: 18px;
@@ -93,19 +92,20 @@ input[type="number"]{
 .btnPrimary{ background: rgba(255,255,255,.14); }
 .btnSecondary{ background: rgba(255,255,255,.08); }
 
-/* HERO UPLOAD BOX */
-.fileBtn{ position: relative; overflow: hidden; }
-.fileInput{
-  position:absolute;
-  inset:0;
-  opacity:0;
-  width:100%;
-  height:100%;
-  cursor:pointer;
+/* Real file input:
+   hidden but NOT display:none, so iOS Safari will open picker. */
+.fileInputReal{
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }
 
-/* This is the “color coated” look */
+/* HERO UPLOAD BOX (label) */
 .uploadHero{
+  display:block;
   width: 100%;
   border-radius: 22px;
   padding: 0;
@@ -116,6 +116,9 @@ input[type="number"]{
     linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
   box-shadow: 0 14px 34px rgba(0,0,0,.62);
   position: relative;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .uploadHero::before{
@@ -144,6 +147,7 @@ input[type="number"]{
   letter-spacing: .2px;
   font-size: clamp(22px, 5.4vw, 32px);
   line-height: 1.05;
+  color: rgba(255,255,255,.98);
 }
 
 .uploadHeroSub{
