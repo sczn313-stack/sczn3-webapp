@@ -1,56 +1,33 @@
-// sczn3-webapp/frontend_new/api.js (FULL FILE REPLACEMENT)
-// One job: call backend /analyze and return JSON.
-// Provides: window.sczn3Analyze(payload)
+// frontend_new/api.js
+const API_BASE = "https://sczn3-backend-new1.onrender.com";
 
-(() => {
-  // IMPORTANT: set this to your backend base URL
-  const BASE = "https://sczn3-backend-new1.onrender.com";
+function timeoutFetch(url, opts = {}, ms = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
 
-  async function postJson(path, body){
-    const url = `${BASE}${path}`;
-    const res = await fetch(url, {
+export async function pingBackend() {
+  const r = await timeoutFetch(`${API_BASE}/health`, { method: "GET" }, 8000);
+  if (!r.ok) throw new Error(`health not ok: ${r.status}`);
+  return r.json();
+}
+
+export async function analyzeTapScore(payload) {
+  // payload should be SMALL: taps + distance only
+  const r = await timeoutFetch(
+    `${API_BASE}/tapscore`,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {})
-    });
+      body: JSON.stringify(payload),
+    },
+    12000
+  );
 
-    // Try parse JSON even on errors
-    let data = null;
-    try { data = await res.json(); } catch {}
-
-    if (!res.ok){
-      const msg = (data && (data.message || data.error)) ? (data.message || data.error) : `HTTP ${res.status}`;
-      const err = new Error(msg);
-      err.status = res.status;
-      err.data = data;
-      throw err;
-    }
-
-    return data;
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`tapscore ${r.status}: ${txt}`);
   }
-
-  // Your backend earlier complained: "Need either (dx & dy) inches override OR tapsJson with bull+holes."
-  // So we build a tapsJson that includes bull + holes.
-  // For now: bull is center of the displayed image; holes are taps.
-  // If you already compute bull elsewhere, replace this logic.
-  window.sczn3Analyze = async function(payload){
-    const taps = Array.isArray(payload?.taps) ? payload.taps : [];
-    const distanceYards = payload?.distanceYards;
-    const vendorUrl = payload?.vendorUrl || "";
-
-    // Build tapsJson expected by backend
-    // bull at (0,0) is not right; we set bull to center in pixel coords
-    // Backend should interpret as pixels and compute offsets; if backend expects inches, convert there.
-    // NOTE: If your backend expects normalized coords, adjust here.
-    const tapsJson = {
-      bull: { x: 0, y: 0 },  // placeholder; backend can overwrite if it has bull detection
-      holes: taps.map(t => ({ x: t.x, y: t.y }))
-    };
-
-    return postJson("/analyze", {
-      distanceYards,
-      vendorUrl,
-      tapsJson
-    });
-  };
-})();
+  return r.json();
+}
