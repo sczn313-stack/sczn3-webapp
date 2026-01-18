@@ -1,11 +1,9 @@
 // frontend_new/index.js
 // Bull-first workflow: Tap #1 = bull (aim point), Tap #2+ = bullet holes.
-// Changes:
-//  - Remove zoom/fit button entirely (less distraction)
-//  - Allow natural pinch zoom by NOT calling preventDefault() on taps
-//  - Instruction line shows only after photo loads, hides once tapping begins
-//  - Green boxed "See results" appears quietly after tapping begins
-//  - Vendor CTA appears after tapping begins IF vendor link exists
+// Updates:
+//  - Green boxed "See results" is the ONLY results trigger (bottom button removed)
+//  - Prevent accidental taps during pinch-zoom: ignore taps when 2+ fingers are down
+//  - Also ignore non-primary pointer events
 
 const photoInput   = document.getElementById("photoInput");
 const targetWrap   = document.getElementById("targetWrap");
@@ -15,11 +13,10 @@ const targetInstr  = document.getElementById("targetInstr");
 
 const tapsCountEl   = document.getElementById("tapsCount");
 const clearTapsBtn  = document.getElementById("clearTapsBtn");
-const seeResultsBtn = document.getElementById("seeResultsBtn");
 const distanceInput = document.getElementById("distanceInput");
 const vendorInput   = document.getElementById("vendorInput");
 
-const seeResultsHint = document.getElementById("seeResultsHint");
+const seeResultsHint = document.getElementById("seeResultsHint"); // now a BUTTON
 const vendorCta      = document.getElementById("vendorCta");
 const vendorBuyBtn   = document.getElementById("vendorBuyBtn");
 
@@ -59,6 +56,9 @@ function syncVendorLink(){
 let bullTap = null;     // {x,y} normalized 0..1
 let taps = [];          // bullet holes only (normalized)
 
+/** --- Multi-touch gate (prevents pinch creating taps) --- **/
+let activeTouchCount = 0;
+
 function clearDots(){
   if (!dotsLayer) return;
   dotsLayer.innerHTML = "";
@@ -80,12 +80,12 @@ function clearAll(){
   clearDots();
   setTapsCount(0);
 
-  // reset progressive UI
   if (hasPhoto()){
     setInstrVisible(true);
   } else {
     setInstrVisible(false);
   }
+
   setSeeResultsHint(false);
   setVendorCtaVisible(false);
 }
@@ -98,7 +98,6 @@ function sizeDotsToImage(){
   dotsLayer.style.width = `${r.width}px`;
   dotsLayer.style.height = `${r.height}px`;
 
-  // center the overlay to match centered image
   dotsLayer.style.left = `50%`;
   dotsLayer.style.top = `0`;
   dotsLayer.style.transform = `translateX(-50%)`;
@@ -133,8 +132,7 @@ if (photoInput){
       clearAll();
       setInstrVisible(true);
 
-      // wait for render then size overlay
-      setTimeout(sizeDotsToImage, 50);
+      setTimeout(sizeDotsToImage, 60);
     };
     reader.onerror = () => {
       alert("Could not read that photo.");
@@ -164,12 +162,10 @@ function onTap(clientX, clientY){
   const nx = imgRect.width ? (x / imgRect.width) : 0;
   const ny = imgRect.height ? (y / imgRect.height) : 0;
 
-  // progressive quietness: once tapping begins, hide instruction + show green hint
+  // progressive quietness: once tapping begins, hide instruction + show green results button
   if (bullTap === null && taps.length === 0){
     setInstrVisible(false);
     setSeeResultsHint(true);
-
-    // vendor CTA appears if link exists
     if (syncVendorLink()) setVendorCtaVisible(true);
   }
 
@@ -183,9 +179,33 @@ function onTap(clientX, clientY){
   }
 }
 
+/** --- Touch tracking (multi-touch gate) --- **/
+function updateTouchCount(e){
+  try{
+    activeTouchCount = (e && e.touches) ? e.touches.length : 0;
+  } catch {
+    activeTouchCount = 0;
+  }
+}
+
 if (targetWrap){
-  // ✅ No preventDefault here = allows natural pinch zoom on iOS
+  // Track touch counts so pinch doesn't create taps
+  targetWrap.addEventListener("touchstart", updateTouchCount, { passive: true });
+  targetWrap.addEventListener("touchmove",  updateTouchCount, { passive: true });
+  targetWrap.addEventListener("touchend",   updateTouchCount, { passive: true });
+  targetWrap.addEventListener("touchcancel",updateTouchCount, { passive: true });
+
+  // Pointerdown for tap (works for mouse + touch), but skip when pinching
   targetWrap.addEventListener("pointerdown", (e) => {
+    // ✅ If 2+ fingers are down, do NOT tap.
+    if (activeTouchCount >= 2) return;
+
+    // ✅ Only accept the primary pointer
+    if (e && e.isPrimary === false) return;
+
+    // ✅ Ignore right-click / non-left mouse
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
     onTap(e.clientX, e.clientY);
   });
 }
@@ -232,9 +252,10 @@ async function doResults(){
   }
 }
 
-if (seeResultsBtn){
-  seeResultsBtn.addEventListener("click", doResults);
+if (seeResultsHint){
+  seeResultsHint.addEventListener("click", doResults);
+  seeResultsHint.addEventListener("touchstart", () => {}, { passive: true });
 }
 
 // keep overlay aligned on rotation/resize
-window.addEventListener("resize", () => setTimeout(sizeDotsToImage, 50));
+window.addEventListener("resize", () => setTimeout(sizeDotsToImage, 60));
