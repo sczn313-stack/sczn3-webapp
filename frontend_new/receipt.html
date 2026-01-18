@@ -1,1 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Tap-n-Score — Receipt Builder</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
 
+  <section class="screen">
+    <div class="topBar">
+      <button id="backBtn" class="secondaryBtn" type="button">Back</button>
+      <div class="topTitle">Receipt Builder</div>
+      <button id="startNewBtn" class="secondaryBtn" type="button">New</button>
+    </div>
+
+    <div id="miniStatus" class="miniStatus">Add your setup details, then save.</div>
+
+    <div class="card">
+      <div class="cardTitle">Setup</div>
+
+      <div class="formGrid">
+        <div class="formRow">
+          <label for="scopeInput">Scope</label>
+          <input id="scopeInput" type="text" placeholder="e.g., Vortex Razor 1-6" />
+        </div>
+
+        <div class="formRow">
+          <label for="ammoInput">Ammo</label>
+          <input id="ammoInput" type="text" placeholder="e.g., 77gr OTM" />
+        </div>
+
+        <div class="formRow">
+          <label for="gunInput">Gun</label>
+          <input id="gunInput" type="text" placeholder="e.g., 16&quot; AR-15" />
+        </div>
+
+        <div class="formRow">
+          <label for="yardsInput">Distance (yds)</label>
+          <input id="yardsInput" inputmode="numeric" type="number" min="1" step="1" placeholder="100" />
+        </div>
+
+        <div class="formRow">
+          <label for="notesInput">Notes</label>
+          <textarea id="notesInput" rows="3" placeholder="Optional notes…"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="cardTitle">Receipt Preview</div>
+
+      <div id="receiptPreview" class="receiptPreview">
+        <!-- populated by receipt.js -->
+      </div>
+
+      <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
+        Buy more targets
+      </a>
+    </div>
+
+    <div class="actionsSticky">
+      <button id="saveSessionBtn" class="primaryBtn" type="button">Save Session</button>
+      <button id="exportBtn" class="secondaryBtn" type="button">Export Receipt</button>
+    </div>
+  </section>
+
+  <script type="module" src="receipt.js"></script>
+</body>
+</html>
