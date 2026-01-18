@@ -8,60 +8,43 @@
 </head>
 <body>
 
-  <!-- LANDING (NO CTA, NO LINKS) -->
-  <section id="landing" class="screen screen-center">
-    <div class="stack">
-      <div class="h1">Tap-n-Score™</div>
-
-      <div class="gap"></div>
-
-      <div class="h2">One tap.</div>
-      <div class="h2">One score.</div>
-      <div class="h2">Real results.</div>
-
-      <div class="gap"></div>
-
-      <div class="sig">After-Shot Intelligence™</div>
-      <div class="tiny">(tap anywhere)</div>
-    </div>
-  </section>
-
-  <!-- MAIN (UPLOAD + TAP) -->
-  <section id="main" class="screen" style="display:none;">
+  <section class="screen">
 
     <div class="topBar">
       <button id="uploadBtn" class="primaryBtn" type="button">Upload</button>
 
-      <div class="distanceWrap">
-        <label for="distanceYards">Distance</label>
-        <input id="distanceYards" inputmode="numeric" type="number" min="1" step="1" placeholder="100" />
-        <span class="unit">yds</span>
+      <div class="distancePill">
+        <span class="muted">Distance</span>
+        <input id="distanceYards" class="distanceInput" type="number" inputmode="numeric" min="1" step="1" value="100" />
+        <span class="muted">yds</span>
       </div>
     </div>
 
-    <div id="miniStatus" class="miniStatus">Ready.</div>
+    <div id="miniStatus" class="miniStatus">Ready. Tap UPLOAD.</div>
 
-    <!-- ONE input only (iOS shows Library + Camera options natively) -->
-    <input id="targetPhotoInput" type="file" accept="image/*" style="display:none;" />
-
+    <!-- Tap stage (hidden until photo is loaded) -->
     <div id="tapStage" style="display:none;">
-      <div class="tapHeader">
-        <div id="tapCountText" class="tapCount">Taps: 0</div>
-        <div class="tapHeaderBtns">
-          <button id="zoomBtn" class="secondaryBtn" type="button">Zoom</button>
+      <div class="card">
+        <div class="cardTitle">Tap-n-Score™</div>
+        <div class="hint">Tap bull first, then tap each hole.</div>
+
+        <div id="thumbWrap" class="thumbWrap">
+          <img id="thumb" class="thumbImg" alt="Target photo" />
+          <svg id="tapLayer" class="tapLayer" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+
+        <div class="actionsTop">
+          <div id="tapCountText" class="miniStatus" style="margin:0;">Taps: 0</div>
           <button id="clearTapsBtn" class="secondaryBtn" type="button">Clear taps</button>
         </div>
       </div>
 
-      <div class="thumbWrap">
-        <img id="thumb" alt="Target" />
-        <svg id="tapLayer" class="tapLayer" viewBox="0 0 100 100"></svg>
-      </div>
-
-      <div class="hint">Tap bull first, then tap holes.</div>
-
       <button id="pressToSee" class="primaryBtn disabled" type="button">Press to see results</button>
+    </div>
 
+    <!-- Vendor buy link -->
+    <div class="card">
+      <div class="cardTitle">Vendor</div>
       <a id="buyMoreBtn" class="linkBtn" href="#" target="_blank" rel="noopener" style="display:none;">
         Buy more targets
       </a>
@@ -69,50 +52,21 @@
 
   </section>
 
-  <!-- ZOOM OVERLAY (PINCH SAFE) -->
-  <div id="zoomOverlay" class="zoomOverlay" style="display:none;">
-    <div class="zoomTop">
-      <div class="zoomTitle">Zoom + Tap</div>
-      <div class="zoomBtns">
-        <button id="zoomClearBtn" class="secondaryBtn" type="button">Clear</button>
-        <button id="zoomDoneBtn" class="primaryBtn" type="button">Done</button>
-      </div>
-    </div>
+  <!-- Hidden inputs (NOT labels, NOT wrapped) -->
+  <input id="targetPhotoLibrary" type="file" accept="image/*" style="display:none;" />
+  <input id="targetPhotoCamera"  type="file" accept="image/*" capture="environment" style="display:none;" />
 
-    <div id="zoomScroller" class="zoomScroller">
-      <div class="zoomCanvas">
-        <img id="zoomImg" alt="Zoom Target" />
-        <svg id="zoomTapLayer" class="zoomTapLayer" viewBox="0 0 100 100"></svg>
-      </div>
-    </div>
+  <!-- Custom picker overlay -->
+  <div id="pickOverlay" class="pickOverlay" style="display:none;">
+    <div class="pickSheet">
+      <div class="pickTitle">Add target photo</div>
 
-    <div class="zoomHint">Pinch to zoom, then tap bull first, then holes.</div>
+      <button id="pickChoose" class="sheetBtn" type="button">Choose from Library</button>
+      <button id="pickCamera" class="sheetBtn" type="button">Use Camera</button>
+      <button id="pickCancel" class="sheetBtn cancel" type="button">Cancel</button>
+    </div>
   </div>
 
-  <script type="module" src="api.js"></script>
   <script type="module" src="index.js"></script>
-
-  <!-- SAFE AUTO FLOW: REVEAL MAIN + AUTO OPEN UPLOAD (NO SECOND MENU) -->
-  <script>
-    (function(){
-      const landing = document.getElementById("landing");
-      const main = document.getElementById("main");
-      const uploadBtn = document.getElementById("uploadBtn");
-
-      function go(){
-        if (!landing || !main) return;
-        landing.style.display = "none";
-        main.style.display = "block";
-        setTimeout(() => { if (uploadBtn) uploadBtn.click(); }, 60);
-      }
-
-      landing.addEventListener("click", go);
-      landing.addEventListener("touchstart", function(e){
-        e.preventDefault();
-        go();
-      }, { passive:false });
-    })();
-  </script>
-
 </body>
 </html>
