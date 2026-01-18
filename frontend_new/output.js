@@ -1,44 +1,44 @@
 // sczn3-webapp/frontend_new/output.js (FULL FILE REPLACEMENT)
-// Calm guardrails + correct payload for backend (/api/analyze).
-// Never calls backend unless tapsJson includes bull + holes.
+// Calm results screen: do NOT call backend unless tapsJson has holes.
+// Also routes to Receipt only when last_result exists.
 
 (function () {
   const DIST_KEY   = "sczn3_distance_yards";
-  const PHOTO_KEY  = "sczn3_targetPhoto_dataUrl";
   const TAPS_KEY   = "sczn3_taps_json";
   const LAST_KEY   = "sczn3_last_result_json";
   const VENDOR_BUY = "sczn3_vendor_buy_url";
 
-  const backendBase =
-    sessionStorage.getItem("sczn3_backend_base") ||
-    "https://sczn3-backend-new1.onrender.com";
-
   function $(id){ return document.getElementById(id); }
-  function safeJsonParse(s){ try { return JSON.parse(String(s||"")); } catch { return null; } }
 
   const backBtn   = $("backBtn");
   const savedBtn  = $("savedBtn");
   const receiptBtn= $("receiptBtn");
 
-  const inlineMsg = $("inlineMsg");
-  const detailsBox= $("detailsBox");
+  const titleEl   = $("resultsTitle");
+  const msgEl     = $("resultsMsg");
+  const rawEl     = $("rawBox");
 
-  const buyMoreBtn= $("buyMoreBtn");
+  const scoreEl   = $("scoreVal");
+  const windEl    = $("windVal");
+  const elevEl    = $("elevVal");
+  const distEl    = $("distVal");
+  const poibEl    = $("poibVal");
 
-  function setMsg(msg){
-    if (inlineMsg) inlineMsg.textContent = String(msg || "");
+  const buyBtn    = $("buyMoreBtn");
+
+  function safeJsonParse(s){
+    try { return JSON.parse(String(s||"")); } catch { return null; }
   }
 
-  function setDetails(html){
-    if (detailsBox) detailsBox.innerHTML = html || "";
+  function setText(el, v){
+    if (!el) return;
+    el.textContent = String(v ?? "");
   }
 
-  function setVendorBuyLink(){
-    const url = sessionStorage.getItem(VENDOR_BUY);
-    if (buyMoreBtn && url){
-      buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "inline-block";
-    }
+  function fmt2(n){
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "--";
+    return x.toFixed(2);
   }
 
   function getDistance(){
@@ -46,137 +46,139 @@
     return Number.isFinite(n) && n > 0 ? n : 100;
   }
 
-  function getTapsPayload(){
-    const obj = safeJsonParse(sessionStorage.getItem(TAPS_KEY) || "");
-    if (!obj || typeof obj !== "object") return null;
-    return obj;
+  function getTaps(){
+    const obj = safeJsonParse(sessionStorage.getItem(TAPS_KEY));
+    const holes = obj && Array.isArray(obj.holes) ? obj.holes : [];
+    const bull  = obj && obj.bull ? obj.bull : null;
+    return { obj, holes, bull };
   }
 
-  function validatePayload(p){
-    // Must have bull + holes (at least 1)
-    const bullOk =
-      p && p.bull &&
-      Number.isFinite(Number(p.bull.x)) &&
-      Number.isFinite(Number(p.bull.y));
-
-    const holesOk =
-      p && Array.isArray(p.holes) && p.holes.length >= 1 &&
-      p.holes.every(h => Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)));
-
-    return bullOk && holesOk;
+  function setVendorBuy(){
+    const url = sessionStorage.getItem(VENDOR_BUY);
+    if (buyBtn && url){
+      buyBtn.href = url;
+      buyBtn.style.display = "inline-flex";
+    }
   }
 
-  function esc(s){
-    return String(s || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  async function callBackendAnalyze(payload){
+    // NOTE: adjust endpoint if yours differs
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
   }
 
-  function renderCalmMissingState(){
-    setMsg("Nothing to score yet.");
-    setDetails(`
-      <div class="card">
-        <div class="kicker">Tap-n-Score™</div>
-        <div class="title">Waiting on taps</div>
-        <div class="sub">Go back, tap at least 1 bullet hole, then press Results.</div>
-      </div>
-    `);
+  function renderCalmNeedTaps(){
+    setText(titleEl, "Tap-n-Score™");
+    setText(msgEl, "No taps detected yet. Go back and tap at least 1 bullet hole, then press Results again.");
+
+    setText(scoreEl, "--");
+    setText(windEl,  "--");
+    setText(elevEl,  "--");
+    setText(distEl,  `${getDistance()} yds`);
+    setText(poibEl,  "--");
+
+    if (rawEl) rawEl.textContent = "";
   }
 
-  function renderBackendError(statusCode, text){
-    setMsg("Couldn’t score that photo.");
-    setDetails(`
-      <div class="card">
-        <div class="kicker">Tap-n-Score™</div>
-        <div class="title">Try again</div>
-        <div class="sub">Go back and confirm your taps.</div>
-        <div class="tinyMuted">Backend returned ${esc(statusCode)}.</div>
-        ${text ? `<pre class="tinyCode">${esc(text)}</pre>` : ``}
-      </div>
-    `);
+  function renderResult(r){
+    // expected shape:
+    // r.score
+    // r.clicks.windage / r.clicks.elevation
+    // r.directions.windage / r.directions.elevation
+    // r.poib (optional)
+    const score = (typeof r.score !== "undefined") ? String(r.score) : "--";
+
+    const cw = r?.clicks?.windage;
+    const ce = r?.clicks?.elevation;
+    const dw = r?.directions?.windage || "";
+    const de = r?.directions?.elevation || "";
+
+    setText(scoreEl, score);
+    setText(windEl, `${fmt2(cw)} ${dw}`.trim());
+    setText(elevEl, `${fmt2(ce)} ${de}`.trim());
+    setText(distEl, `${getDistance()} yds`);
+
+    // outward: POIB label
+    const poib = r?.poib ?? r?.centroid ?? null;
+    if (poib && typeof poib === "object"){
+      const px = (poib.x ?? poib.dx ?? null);
+      const py = (poib.y ?? poib.dy ?? null);
+      setText(poibEl, (px!=null && py!=null) ? `${fmt2(px)}, ${fmt2(py)}` : "--");
+    } else {
+      setText(poibEl, "--");
+    }
+
+    setText(msgEl, "Measured results from confirmed taps.");
+    if (rawEl) rawEl.textContent = JSON.stringify(r, null, 2);
+
+    try { sessionStorage.setItem(LAST_KEY, JSON.stringify(r)); } catch {}
   }
 
-  function renderResults(data){
-    // Minimal safe render (you can expand later)
-    const score = (data && (data.score ?? data.smartScore ?? data.smart_score));
-    const clicks = data && (data.clicks || data.scopeClicks || data.scope_clicks) || {};
-    const dirs   = data && (data.directions || data.dirs) || {};
-    const poib   = (data && (data.poib ?? data.POIB)) ?? null;
+  async function main(){
+    setVendorBuy();
 
-    const wind = clicks.windage ?? clicks.wind ?? "--";
-    const elev = clicks.elevation ?? clicks.elev ?? "--";
-    const wdir = dirs.windage ?? "";
-    const edir = dirs.elevation ?? "";
+    const { obj, holes } = getTaps();
 
-    setMsg("Scored.");
-    setDetails(`
-      <div class="card">
-        <div class="kicker">Results</div>
-        <div class="title">Tap-n-Score™</div>
-
-        <div class="row"><span class="k">Score</span><span class="v">${esc(score ?? "--")}</span></div>
-        <div class="row"><span class="k">Windage</span><span class="v">${esc(String(wind))} ${esc(String(wdir))}</span></div>
-        <div class="row"><span class="k">Elevation</span><span class="v">${esc(String(elev))} ${esc(String(edir))}</span></div>
-        <div class="row"><span class="k">Distance</span><span class="v">${esc(getDistance())} yds</span></div>
-        <div class="row"><span class="k">POIB</span><span class="v">${esc(poib ?? "--")}</span></div>
-      </div>
-    `);
-  }
-
-  async function run(){
-    setVendorBuyLink();
-
-    const payload = getTapsPayload();
-    if (!validatePayload(payload)){
-      // Guardrail: DO NOT call backend
-      renderCalmMissingState();
+    // HARD GUARD: do not call backend unless holes exist
+    if (!holes || holes.length < 1){
+      renderCalmNeedTaps();
       return;
     }
 
-    setMsg("Scoring…");
-
-    // Build request body expected by backend
-    // We send tapsJson (bull + holes) and distanceYards.
-    const body = {
-      mode: "tapnscore",
+    // If your backend expects bull+holes, we already have it in taps payload
+    const payload = {
       distanceYards: getDistance(),
-      tapsJson: payload
+      tapsJson: obj
     };
 
-    let res;
-    try{
-      res = await fetch(`${backendBase}/api/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-    } catch (e){
-      renderBackendError("NETWORK", String(e && e.message ? e.message : e));
+    setText(msgEl, "Analyzing…");
+
+    const out = await callBackendAnalyze(payload);
+
+    if (!out.ok){
+      // calm error (no scary screen)
+      setText(msgEl, `Analyze not ready (${out.status}). Go back and confirm taps, then retry.`);
+      if (rawEl) rawEl.textContent = JSON.stringify(out.data || {}, null, 2);
+
+      setText(scoreEl, "--");
+      setText(windEl,  "--");
+      setText(elevEl,  "--");
+      setText(distEl,  `${getDistance()} yds`);
+      setText(poibEl,  "--");
       return;
     }
 
-    if (!res.ok){
-      const txt = await res.text().catch(() => "");
-      renderBackendError(res.status, txt);
-      return;
-    }
-
-    const data = await res.json().catch(() => null);
-
-    // Save for Receipt page
-    try { sessionStorage.setItem(LAST_KEY, JSON.stringify(data || {})); } catch {}
-
-    renderResults(data);
+    renderResult(out.data || {});
   }
 
   // Nav
   if (backBtn){
-    backBtn.addEventListener("click", () => window.location.href = `./index.html?v=${Date.now()}`);
+    const go = () => (window.location.href = `./index.html?v=${Date.now()}`);
+    backBtn.addEventListener("click", go);
+    backBtn.addEventListener("pointerdown", go);
   }
   if (savedBtn){
-    savedBtn.addEventListener("click", () => window.location.href = `./saved.html?v=${Date.now()}`);
+    const go = () => (window.location.href = `./saved.html?v=${Date.now()}`);
+    savedBtn.addEventListener("click", go);
+    savedBtn.addEventListener("pointerdown", go);
   }
   if (receiptBtn){
-    receiptBtn.addEventListener("click", () => window.location.href = `./receipt.html?v=${Date.now()}`);
+    const go = () => {
+      const last = safeJsonParse(sessionStorage.getItem(LAST_KEY));
+      if (!last){
+        alert("No result to receipt yet. Run Analyze first.");
+        return;
+      }
+      window.location.href = `./receipt.html?v=${Date.now()}`;
+    };
+    receiptBtn.addEventListener("click", go);
+    receiptBtn.addEventListener("pointerdown", go);
   }
 
-  run();
+  main();
 })();
