@@ -1,9 +1,10 @@
 // sczn3-webapp/frontend_new/output.js  (FULL REPLACEMENT)
-// Results screen (no scroll) + route to Receipt Builder BEFORE saving.
+// Results screen with TOP action row (no micro-scroll).
+// Routes to Receipt Builder BEFORE saving.
 
 (function () {
-  const DIST_KEY  = "sczn3_distance_yards";
-  const LAST_KEY  = "sczn3_last_result_json";
+  const DIST_KEY   = "sczn3_distance_yards";
+  const LAST_KEY   = "sczn3_last_result_json";
   const VENDOR_BUY = "sczn3_vendor_buy_url";
 
   function $(id){ return document.getElementById(id); }
@@ -22,8 +23,7 @@
   const buyMoreBtn = $("buyMoreBtn");
 
   function status(msg){
-    if (!miniStatus) return;
-    miniStatus.textContent = String(msg || "");
+    if (miniStatus) miniStatus.textContent = String(msg || "");
   }
 
   function safeJsonParse(s){
@@ -78,32 +78,21 @@
     status(last.tip || "Results ready.");
   }
 
-  // ===== INIT =====
   render();
 
-  // ===== NAV =====
   if (backBtn){
-    backBtn.addEventListener("click", () => {
-      window.location.href = "./index.html";
-    });
+    backBtn.addEventListener("click", () => window.location.href = "./index.html");
   }
 
   if (savedBtn){
-    savedBtn.addEventListener("click", () => {
-      window.location.href = "./saved.html";
-    });
+    savedBtn.addEventListener("click", () => window.location.href = "./saved.html");
   }
 
   if (newBtn){
-    newBtn.addEventListener("click", () => {
-      window.location.href = "./index.html";
-    });
+    newBtn.addEventListener("click", () => window.location.href = "./index.html");
   }
 
-  // Route to receipt builder (pre-save)
   if (buildReceiptBtn){
-    buildReceiptBtn.addEventListener("click", () => {
-      window.location.href = "./receipt.html";
-    });
+    buildReceiptBtn.addEventListener("click", () => window.location.href = "./receipt.html");
   }
 })();
