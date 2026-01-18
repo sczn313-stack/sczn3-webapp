@@ -1,5 +1,11 @@
 // sczn3-webapp/frontend_new/index.js (FULL FILE REPLACEMENT)
-// Upload page + Tap-N-Score capture (pinch-to-zoom friendly; no redundant custom picker)
+// Upload page + Tap N Score capture (iOS-safe menu: Library vs Camera)
+//
+// Stores:
+//  sczn3_targetPhoto_dataUrl
+//  sczn3_targetPhoto_fileName
+//  sczn3_distance_yards
+//  sczn3_tap_points_json   <-- array of {x,y} in NATURAL image pixels
 
 (function () {
   const PHOTO_KEY = "sczn3_targetPhoto_dataUrl";
@@ -10,23 +16,33 @@
 
   function $(id){ return document.getElementById(id); }
 
-  const uploadBtn     = $("uploadBtn");
-  const fileInput     = $("targetPhoto");
+  // ===== DOM =====
+  const uploadBtn          = $("uploadBtn");
 
-  const tapStage      = $("tapStage");
-  const tapCountText  = $("tapCountText");
+  const fileLibrary        = $("targetPhotoLibrary");
+  const fileCamera         = $("targetPhotoCamera");
 
-  const thumb         = $("thumb");
-  const tapLayer      = $("tapLayer");
-  const clearTapsBtn  = $("clearTapsBtn");
+  const pickOverlay        = $("pickOverlay");
+  const pickChoose         = $("pickChoose");
+  const pickCamera         = $("pickCamera");
+  const pickCancel         = $("pickCancel");
 
-  const distanceInput = $("distanceYards");
-  const pressToSee    = $("pressToSee");
-  const miniStatus    = $("miniStatus");
-  const buyMoreBtn    = $("buyMoreBtn");
+  const tapStage           = $("tapStage");
+  const tapCountText       = $("tapCountText");
+
+  const thumb              = $("thumb");
+  const thumbWrap          = $("thumbWrap");
+  const tapLayer           = $("tapLayer");
+  const clearTapsBtn       = $("clearTapsBtn");
+
+  const distanceInput      = $("distanceYards");
+  const pressToSee         = $("pressToSee");
+  const miniStatus         = $("miniStatus");
+  const buyMoreBtn         = $("buyMoreBtn");
 
   function status(msg){
-    if (miniStatus) miniStatus.textContent = String(msg || "");
+    if (!miniStatus) return;
+    miniStatus.textContent = String(msg || "");
   }
 
   function setPressEnabled(enabled){
@@ -79,9 +95,8 @@
     const nw = thumb.naturalWidth || 1;
     const nh = thumb.naturalHeight || 1;
 
-    const t = (e.touches && e.touches[0]) ? e.touches[0] : null;
-    const clientX = t ? t.clientX : e.clientX;
-    const clientY = t ? t.clientY : e.clientY;
+    const clientX = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
+    const clientY = (e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY);
 
     const x = ((clientX - rect.left) / rect.width) * nw;
     const y = ((clientY - rect.top) / rect.height) * nh;
@@ -125,29 +140,35 @@
     if (!thumb) return;
 
     if (tapStage) tapStage.style.display = "block";
-
     thumb.src = dataUrl;
 
     thumb.onload = () => {
       redrawTapLayer();
-      status("Photo loaded. Pinch to zoom, then tap the holes.");
+      status("Photo loaded. Tap the holes (Tap-n-Score).");
     };
 
     thumb.onerror = () => {
-      status("ERROR: thumb image failed to load.");
+      status("ERROR: photo failed to load.");
     };
   }
 
-  function setVendorBuyLink(){
-    const url = sessionStorage.getItem(VENDOR_BUY);
-    if (buyMoreBtn && url){
-      buyMoreBtn.href = url;
-      buyMoreBtn.style.display = "block";
-    }
+  function openSheet(){
+    if (!pickOverlay) return;
+    pickOverlay.style.display = "flex";
   }
 
-  async function handlePickedFile(){
-    const file = fileInput && fileInput.files && fileInput.files[0];
+  function closeSheet(){
+    if (!pickOverlay) return;
+    pickOverlay.style.display = "none";
+  }
+
+  function resetInput(input){
+    if (!input) return;
+    input.value = ""; // iOS: select same photo again requires clearing
+  }
+
+  async function handlePickedFileFrom(inputEl){
+    const file = inputEl && inputEl.files && inputEl.files[0];
 
     if (!file){
       status("No file selected.");
@@ -158,7 +179,7 @@
 
     if (!file.type || !file.type.startsWith("image/")){
       alert("Please choose an image file.");
-      fileInput.value = "";
+      resetInput(inputEl);
       setPressEnabled(false);
       status("ERROR: Not an image.");
       return;
@@ -185,24 +206,36 @@
 
       saveDistance();
       setPressEnabled(true);
-      status("Photo loaded. Pinch to zoom, then tap your holes.");
+      status("Photo loaded. Tap your holes.");
     } catch (err){
       alert("Photo load failed. Please try again.");
       setPressEnabled(false);
       status(`ERROR: ${String(err && err.message ? err.message : err)}`);
-    } finally {
-      // allow re-picking same photo
-      if (fileInput) fileInput.value = "";
+    }
+  }
+
+  // Vendor plug: ONLY show if URL exists
+  function applyVendorPlug(){
+    const buyUrl = sessionStorage.getItem(VENDOR_BUY);
+    if (!buyMoreBtn) return;
+
+    if (buyUrl && String(buyUrl).trim()){
+      buyMoreBtn.href = String(buyUrl).trim();
+      buyMoreBtn.style.display = "inline-flex";
+    } else {
+      buyMoreBtn.style.display = "none";
+      buyMoreBtn.removeAttribute("href");
     }
   }
 
   // ===== INIT =====
   (function init(){
-    setVendorBuyLink();
     status("Ready. Tap UPLOAD.");
 
     const savedDist = sessionStorage.getItem(DIST_KEY);
     if (distanceInput && savedDist) distanceInput.value = savedDist;
+
+    applyVendorPlug();
 
     const savedPhoto = sessionStorage.getItem(PHOTO_KEY);
     if (savedPhoto){
@@ -214,23 +247,59 @@
       if (tapStage) tapStage.style.display = "none";
     }
 
-    setTapCount(loadTaps().length);
+    // ensure taps UI reflects storage on load
+    const taps = loadTaps();
+    setTapCount(taps.length);
+
     saveDistance();
   })();
 
-  // ===== Upload =====
-  if (uploadBtn && fileInput){
+  // ===== OPEN MENU =====
+  if (uploadBtn){
     uploadBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      status("Opening picker...");
-      fileInput.click(); // iOS native menu
+      openSheet();
     });
   }
 
-  if (fileInput){
-    fileInput.addEventListener("change", handlePickedFile);
-    fileInput.addEventListener("input", handlePickedFile);
+  // Close sheet if you tap outside
+  if (pickOverlay){
+    pickOverlay.addEventListener("click", (e) => {
+      if (e.target === pickOverlay) closeSheet();
+    });
   }
+
+  // ===== MENU ACTIONS =====
+  if (pickCancel){
+    pickCancel.addEventListener("click", () => closeSheet());
+  }
+
+  if (pickChoose && fileLibrary){
+    pickChoose.addEventListener("click", () => {
+      closeSheet();
+      resetInput(fileLibrary);
+      status("Opening library/files picker...");
+      fileLibrary.click();
+    });
+  }
+
+  if (pickCamera && fileCamera){
+    pickCamera.addEventListener("click", () => {
+      closeSheet();
+      resetInput(fileCamera);
+      status("Opening camera...");
+      fileCamera.click();
+    });
+  }
+
+  // ===== INPUT EVENTS =====
+  function bindInput(inputEl){
+    if (!inputEl) return;
+    inputEl.addEventListener("change", () => handlePickedFileFrom(inputEl));
+    inputEl.addEventListener("input",  () => handlePickedFileFrom(inputEl));
+  }
+  bindInput(fileLibrary);
+  bindInput(fileCamera);
 
   // ===== Distance save =====
   if (distanceInput){
@@ -238,15 +307,10 @@
     distanceInput.addEventListener("change", saveDistance);
   }
 
-  // ===== Tap capture (pinch-safe) =====
+  // ===== Tap capture =====
   if (tapLayer){
     const onTap = (e) => {
-      // If two fingers: let iOS pinch/zoom do its thing
-      if (e.touches && e.touches.length > 1) return;
-
-      // For single-finger tap, prevent scroll while tapping
-      if (e.touches && e.touches.length === 1) e.preventDefault();
-
+      e.preventDefault();
       if (!thumb || !thumb.naturalWidth) return;
 
       const pt = clientToNatural(e);
