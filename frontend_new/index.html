@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118zHERO4">
+  <link rel="stylesheet" href="./styles.css?v=20260118zHERO5">
 </head>
 
 <body>
@@ -22,7 +22,7 @@
     <!-- REAL file input (outside hero). Hidden but NOT display:none. -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <!-- HERO (label triggers input reliably on iOS Safari) -->
+    <!-- HERO upload box -->
     <label for="photoInput" id="uploadHero" class="uploadHero" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -36,24 +36,41 @@
         <div class="subtle strong">Distance</div>
         <input id="distanceInput" type="number" value="100" min="1" step="1" />
         <div class="subtle strong">yds</div>
+
+        <!-- Progressive quiet helper (hidden until taps begin) -->
+        <div id="seeResultsHint" class="seeResultsHint" style="display:none;">See results ↓</div>
       </div>
 
       <div class="tapsBlock">
         <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
+        <button id="zoomBtn" class="btn btnSecondary btnTight" type="button">Zoom</button>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
       </div>
+    </section>
+
+    <!-- Vendor sticky slot (hidden until tapping begins + vendor link present) -->
+    <section id="vendorCta" class="vendorCta" style="display:none;">
+      <a id="vendorBuyBtn" class="vendorBuyBtn" href="#" target="_blank" rel="noopener">
+        <span class="vendorIcon">🛒</span>
+        <span class="vendorText">Buy more targets like this</span>
+        <span class="vendorArrow">›</span>
+      </a>
     </section>
 
     <!-- Target -->
     <section class="card mt14">
-      <!-- HARD-WIRED line, but hidden until a photo exists -->
+      <!-- Shows only AFTER photo loads; hides once tapping begins -->
       <div id="targetInstr" class="subtle strong mb8" style="display:none;">
         Target — Tap Bullseye or Aim Point 1st, then tap Bullet holes.
       </div>
 
-      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area">
-        <img id="targetImage" class="targetImg" alt="Target preview" />
-        <div id="dotsLayer" class="dotsLayer"></div>
+      <!-- Scroll container for zoom mode -->
+      <div id="targetWrap" class="targetWrap" aria-label="Tap area">
+        <!-- Canvas sized to image (dots overlay stays aligned) -->
+        <div id="targetCanvas" class="targetCanvas">
+          <img id="targetImage" class="targetImg" alt="Target preview" />
+          <div id="dotsLayer" class="dotsLayer"></div>
+        </div>
       </div>
     </section>
 
@@ -76,7 +93,7 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260118zHERO4"></script>
-  <script src="./index.js?v=20260118zHERO4"></script>
+  <script src="./api.js?v=20260118zHERO5"></script>
+  <script src="./index.js?v=20260118zHERO5"></script>
 </body>
 </html>
