@@ -1,117 +1,94 @@
-/* sczn3-webapp/frontend_new/styles.css
-   Full replacement: stable dark base + iOS-safe tap layer + no "white flash"
-*/
+/* sczn3-webapp/frontend_new/styles.css (FULL FILE REPLACEMENT) */
 
-/* ===== HARD BASE (prevents white feel even if some styles fail) ===== */
-html, body {
-  margin: 0;
-  padding: 0;
-  background: #000;
-  color: #fff;
-  font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+:root{
+  --bg:#000;
+  --card:#0b0b0b;
+  --card2:#111;
+  --text:#fff;
+  --muted:rgba(255,255,255,.70);
+  --line:rgba(255,255,255,.12);
+  --btn:rgba(255,255,255,.10);
+  --btn2:rgba(255,255,255,.14);
 }
 
-/* Prevent iOS text size auto-zoom weirdness */
-html { -webkit-text-size-adjust: 100%; }
-
-/* ===== PAGE WRAPS (adjust to your existing layout) ===== */
-.page,
-.resultsWrap,
-.wrap,
-.container {
-  background: #000;
-  color: #fff;
+html,body{
+  margin:0;
+  padding:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* ===== TARGET IMAGE TAP AREA ===== */
-#targetImageWrap {
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  background: rgba(255,255,255,0.03);
-  border-radius: 16px;
-  overflow: hidden;
+.subtle{ color: var(--muted); }
 
-  /* IMPORTANT:
-     - touch-action: manipulation keeps pinch-zoom available but reduces double-tap zoom issues
-     - do NOT set touch-action:none (that blocks pinch) */
-  touch-action: manipulation;
-  -webkit-user-select: none;
-  user-select: none;
+input, button{
+  font-family: inherit;
 }
 
-/* The actual image should NOT steal taps; wrapper receives them */
-#targetImage {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none; /* taps go to wrapper */
-  -webkit-user-drag: none;
+input{
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--line);
+  border-radius:14px;
+  color:var(--text);
+  padding:12px 14px;
+  outline:none;
+}
+
+.btnPrimary, .btnSecondary{
+  border-radius:999px;
+  padding:14px 18px;
+  border:1px solid var(--line);
+  background:var(--btn);
+  color:var(--text);
+  font-weight:700;
+  letter-spacing:.02em;
+}
+
+.btnSecondary{
+  background:var(--btn2);
+  font-weight:700;
+}
+
+.btnPrimary:active, .btnSecondary:active{
+  transform: translateY(1px);
+}
+
+.targetBox{
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:14px;
+}
+
+/* CRITICAL: wrapper must capture taps */
+#targetImageWrap{
+  position:relative;
+  width:100%;
+  border-radius:18px;
+  overflow:hidden;
+  background:#050505;
+  border:1px solid rgba(255,255,255,.10);
+  touch-action:none;           /* prevents iOS scroll/zoom from stealing taps */
+  -webkit-user-select:none;
+  user-select:none;
+}
+
+/* Image must NOT eat taps; wrapper gets them */
+#targetImage{
+  display:block;
+  width:100%;
+  height:auto;
+  pointer-events:none;         /* taps go to wrapper */
 }
 
 /* Tap markers */
-.tapDot {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+.tapDot{
+  position:absolute;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background: rgba(255,165,0,.90);
   transform: translate(-50%, -50%);
-  background: rgba(255, 165, 0, 0.90);
-  box-shadow: 0 0 8px rgba(0,0,0,0.60);
-  pointer-events: none;
-}
-
-/* Optional: make the target label/box look consistent */
-.targetBox,
-#targetBox {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 16px;
-  padding: 12px;
-}
-
-/* ===== BASIC BUTTON LOOK (keeps iOS from looking "unstyled") ===== */
-button, .btnPrimary, .btnSecondary, a.btnPrimary, a.btnSecondary {
-  appearance: none;
-  -webkit-appearance: none;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color: #fff;
-  padding: 12px 16px;
-  font-size: 16px;
-}
-
-.btnPrimary {
-  background: rgba(255,255,255,0.10);
-  border-color: rgba(255,255,255,0.22);
-  font-weight: 600;
-}
-
-button:active, .btnPrimary:active, .btnSecondary:active {
-  transform: scale(0.99);
-}
-
-/* Inputs */
-input, textarea {
-  width: 100%;
-  box-sizing: border-box;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.04);
-  color: #fff;
-  padding: 10px 12px;
-  font-size: 16px;
-}
-
-/* Small helper text */
-.subtle, .tinyMuted {
-  color: rgba(255,255,255,0.60);
-}
-
-/* ===== OPTIONAL: if you have a dark "card" wrapper ===== */
-.card, .panel {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 18px;
+  pointer-events:none;
+  box-shadow: 0 0 6px rgba(0,0,0,.6);
 }
