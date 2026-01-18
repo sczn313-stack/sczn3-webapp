@@ -1,120 +1,14 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="theme-color" content="#000000" />
-  <title>Tap-n-Score™</title>
+<!-- ONE BUTTON (Hero) -->
+<button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
+  <div class="uploadHeroInner">
+    <div class="uploadHeroTitle">Upload target photo</div>
+  </div>
+</button>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118z2">
-</head>
-
-<body>
-  <main class="page">
-
-    <!-- Brand with red/white/blue -->
-    <div class="brandRow">
-      <div class="brand">
-        <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
-      </div>
-    </div>
-
-    <h1 class="h1">Upload</h1>
-
-    <!-- HERO: click anywhere to upload -->
-    <label class="uploadHero" for="photoInput">
-      <div class="uploadHeroInner">
-        <div class="uploadHeroTitle">Upload target photo</div>
-        <div class="uploadHeroSub">Camera</div>
-      </div>
-    </label>
-
-    <!-- REAL input (hidden off-screen; works on iOS) -->
-    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" capture="environment" />
-
-    <!-- Controls row (tight + no run-off) -->
-    <section class="controlsRow mt14">
-      <div class="distanceBox">
-        <div class="subtle strong">Distance</div>
-        <input id="distanceInput" type="number" value="100" min="1" step="1" />
-        <div class="subtle strong">yds</div>
-      </div>
-
-      <div class="tapsBlock">
-        <div class="subtle tapsLine strong">Taps: <span id="tapsCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
-      </div>
-    </section>
-
-    <!-- Micro-slot (progressive quietness) -->
-    <div class="microSlot">
-      <div id="pinchHint" class="pinchHint" style="display:none;">Pinch to zoom</div>
-    </div>
-
-    <div class="microSlot">
-      <!-- Vendor CTA (shows when See results appears) -->
-      <a id="vendorCta" class="vendorBuyBtn" href="#" target="_blank" rel="noopener" style="display:none;">
-        <span class="vendorIcon">🛒</span>
-        <span class="vendorText">Buy more targets like this</span>
-        <span class="vendorArrow">›</span>
-      </a>
-
-      <!-- Green “See results” (ONLY trigger) -->
-      <div id="seeResultsHint" class="seeResultsHint" style="display:none;">See results</div>
-    </div>
-
-    <!-- Target card -->
-    <section class="card mt14">
-      <!-- Anchor line (no word “Target”; hidden until photo exists) -->
-      <div id="tapHintLine" class="subtle strong mb8" style="display:none;">
-        Tap bull’s-eye / aim point first — then tap bullet holes.
-      </div>
-
-      <div id="targetImageWrap" class="targetWrap" aria-label="Tap area" style="display:none;">
-        <div class="targetCanvas">
-          <img id="targetImage" class="targetImg" alt="Target preview" />
-          <div id="dotsLayer" class="dotsLayer"></div>
-        </div>
-      </div>
-    </section>
-
-    <div class="subtle mt18 mb6">Vendor link (optional)</div>
-    <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
-
-    <!-- Results panel -->
-    <section id="resultsBox" class="card mt18" style="display:none;">
-      <div class="subtle strong mb8">Results</div>
-      <div id="resultsText"></div>
-
-      <div class="row mt12">
-        <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
-        <button id="savedBtn" class="btn btnSecondary" type="button">Saved</button>
-        <button id="receiptBtn" class="btn btnSecondary" type="button">Receipt</button>
-      </div>
-    </section>
-
-    <div class="footer subtle">Tap-n-Score™</div>
-  </main>
-
-  <script src="./api.js?v=20260118z2"></script>
-  <script src="./index.js?v=20260118z2"></script>
-
-  <!-- Vendor CTA wiring: points to the optional vendorInput (if present) -->
-  <script>
-    (function(){
-      const vendorInput = document.getElementById("vendorInput");
-      const vendorCta = document.getElementById("vendorCta");
-      function syncVendor(){
-        if (!vendorCta) return;
-        const url = (vendorInput && vendorInput.value || "").trim();
-        vendorCta.href = url || "#";
-        vendorCta.style.opacity = url ? "1" : ".55";
-        vendorCta.style.pointerEvents = url ? "auto" : "none";
-      }
-      if (vendorInput) vendorInput.addEventListener("input", syncVendor);
-      syncVendor();
-    })();
-  </script>
-</body>
-</html>
+<!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
+<input
+  id="photoInput"
+  class="fileInputReal"
+  type="file"
+  accept="image/*"
+/>
