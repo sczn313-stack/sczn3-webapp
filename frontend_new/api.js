@@ -2,11 +2,12 @@
 // Guarantees window.tapscore exists and calls the backend.
 
 (() => {
-  // ✅ Your Render backend:
-  const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
+  // ✅ Render backend (make sure this matches your live backend service URL)
+  const BACKEND_BASE = "https://sczn3-backend-new.onrender.com";
 
   async function tapscore(payload) {
     const url = `${BACKEND_BASE}/tapscore`;
+
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
