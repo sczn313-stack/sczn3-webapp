@@ -7,10 +7,19 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118a" />
+  <!-- HARD BASE -->
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+  </style>
+
+  <!-- your styles.css from prior step -->
+  <link rel="stylesheet" href="./styles.css?v=20260118R1" />
 </head>
+
 <body>
   <div class="page">
+
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
@@ -27,10 +36,10 @@
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" so iOS offers options -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <div class="controlsRow mt14">
+    <div class="controlsRow">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
@@ -43,13 +52,14 @@
       </div>
     </div>
 
-    <!-- Micro-slot: pinch hint / see results / vendor CTA all share this same spot -->
-    <div id="microSlot" class="microSlot">
-      <!-- will be populated by JS -->
-    </div>
+    <!-- Micro-slot: pinch hint (brief), See Results, Vendor CTA -->
+    <div id="microSlot" class="microSlot" aria-live="polite"></div>
 
     <div class="card mt14">
-      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
+      <!-- This line is HARD-WIRED but stays hidden until a photo exists -->
+      <div id="tapHeaderLine" class="subtle strong mb8" style="display:none;">
+        Tap Bullseye or Aim Point 1st • then tap Bullet holes
+      </div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -64,15 +74,16 @@
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <div class="card mt14">
+    <!-- Results (CLEAN TEXT ONLY, NO JSON) -->
+    <div id="resultsCard" class="card mt14" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <pre id="resultsBox" class="mono">{}</pre>
+      <div id="resultsText" class="subtle"></div>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=20260118a"></script>
-  <script src="./index.js?v=20260118a"></script>
+  <script src="./api.js?v=20260118R1"></script>
+  <script src="./index.js?v=20260118R1"></script>
 </body>
 </html>
