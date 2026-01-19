@@ -1,3 +1,4 @@
+/* sczn3-webapp/frontend_new/styles.css (FULL REPLACEMENT) */
 :root{
   --bg:#000;
   --card:#111;
@@ -26,15 +27,12 @@ html,body{
   font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
 
-/* Page */
 .page{
   max-width:980px;
   margin:0 auto;
-  padding:18px 14px 34px;
+  padding:22px 16px 40px;
 }
 
-.mt8{margin-top:8px}
-.mt10{margin-top:10px}
 .mt12{margin-top:12px}
 .mt14{margin-top:14px}
 .mt18{margin-top:18px}
@@ -42,13 +40,8 @@ html,body{
 .mb8{margin-bottom:8px}
 
 .subtle{color:var(--muted); font-size:16px; line-height:1.25}
-.strong{font-weight:900}
-.labelCaps{
-  font-size:12px;
-  letter-spacing:.12em;
-  text-transform:uppercase;
-  opacity:.85;
-}
+.strong{font-weight:800}
+.mono{white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:14px}
 
 /* Brand */
 .brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:10px}
@@ -63,17 +56,6 @@ html,body{
 .brandN{color:#fff}
 .brandScore{color:var(--blue)}
 .brandTm{color:#fff; opacity:.9}
-
-/* Hidden real input (must NOT be display:none) */
-.fileInputReal{
-  position:absolute;
-  left:-9999px;
-  top:auto;
-  width:1px;
-  height:1px;
-  opacity:0;
-  pointer-events:none;
-}
 
 /* HERO upload box */
 .uploadHero{
@@ -92,6 +74,7 @@ html,body{
   user-select:none;
 }
 .uploadHero:active{transform:translateY(1px)}
+
 .uploadHeroInner{
   padding:18px 18px;
   min-height:84px;
@@ -110,109 +93,91 @@ html,body{
 .uploadHeroSub{
   font-size:14px;
   color:rgba(255,255,255,.60);
-  font-weight:800;
+  font-weight:700;
 }
 
-/* Controls row (tight, no run-off) */
+/* ✅ iOS-reliable: input covers the entire hero, invisible but tappable */
+.uploadHeroLabel{
+  position:relative;
+  overflow:hidden;
+}
+.fileInputOverlay{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+  /* Must be tappable */
+  pointer-events:auto;
+  /* iOS Safari sometimes needs this */
+  font-size:16px;
+}
+
+/* Controls row (tight + no run-off) */
 .controlsRow{
   display:flex;
+  align-items:center;
+  justify-content:space-between;
   gap:10px;
-  align-items:stretch;
   flex-wrap:wrap;
-  margin-bottom:10px;
 }
 
-.distanceBox,
-.statBox,
-.tapsBox{
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.05);
-  border-radius:18px;
-  padding:10px 12px;
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-  min-width: 140px;
-}
-
-.distanceInputRow{
+.distanceBox{
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:10px;
+  flex-wrap:nowrap;
 }
 
 .distanceBox input{
-  width:92px;
+  width:108px;
   padding:10px 12px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  border:1px solid var(--border);
   background:rgba(255,255,255,.06);
   color:#fff;
   font-size:18px;
   outline:none;
 }
 
-.unit{font-size:14px; opacity:.9}
-
-.statValue{
-  font-weight:900;
-  font-size:18px;
-  letter-spacing:.02em;
-}
-
-.tapsRow{
+.tapsBlock{
   display:flex;
   align-items:center;
-  justify-content:space-between;
   gap:10px;
+  flex-wrap:nowrap;
+  margin-left:auto;
 }
 
-.tapsCount{
-  font-weight:900;
-  font-size:20px;
-  min-width:22px;
-}
+.tapsLine{font-size:18px; white-space:nowrap}
 
-/* Buttons */
 .btn{
-  border-radius:16px;
-  padding:11px 14px;
+  border-radius:18px;
+  padding:12px 16px;
   border:1px solid var(--border);
   background:rgba(255,255,255,.06);
   color:#fff;
-  font-weight:900;
-  font-size:15px;
+  font-weight:800;
+  font-size:16px;
   -webkit-tap-highlight-color:transparent;
 }
 .btn:active{transform:translateY(1px)}
 .btnSecondary{ background:rgba(255,255,255,.05); }
-.btnTight{ padding:10px 12px; border-radius:14px; white-space:nowrap; }
-
-.btnGreen{
-  border:1px solid var(--greenBorder);
-  background:var(--greenBg);
-  color:rgba(255,255,255,.94);
-  font-weight:950;
-  letter-spacing:.01em;
+.btnTight{
+  padding:10px 12px;
+  border-radius:16px;
+  white-space:nowrap;
 }
 
-/* Cards */
-.card{
-  background:linear-gradient(180deg,var(--card2),var(--card));
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:14px;
-}
-
-/* Micro-slot (Pinch hint / See results / Vendor CTA) */
+/* Micro-slot */
 .microSlot{
   margin-top:12px;
   display:flex;
   align-items:center;
   gap:10px;
-  flex-wrap:wrap;
 }
 
+/* Pinch hint */
 .hintPill{
   width:100%;
   border-radius:18px;
@@ -220,135 +185,19 @@ html,body{
   border:1px solid rgba(255,255,255,.12);
   background:rgba(255,255,255,.05);
   color:rgba(255,255,255,.78);
-  font-weight:900;
+  font-weight:800;
   font-size:14px;
   letter-spacing:.01em;
 }
 
-/* Vendor CTA in same slot as results */
-.vendorCta{
+/* Green See Results button */
+.btnGreen{
   flex:1;
-  min-width: 220px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  text-decoration:none;
   border-radius:18px;
   padding:12px 14px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.06);
-  font-weight:950;
-  letter-spacing:.01em;
-}
-
-/* Input */
-.input{
-  width:100%;
-  padding:14px 14px;
-  border-radius:18px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
-  color:#fff;
-  font-size:16px;
-  outline:none;
-}
-
-/* ========= TARGET: FIT + show corners ========= */
-
-/* Wrap */
-.targetWrap{
-  position:relative;
-  width:100%;
-  border-radius:18px;
-  overflow:hidden;
-  background:#000;
-  border:1px solid rgba(255,255,255,.12);
-  padding:10px;
-}
-
-/* This is the “frame” */
-.targetCanvas{
-  position:relative;
-  width:100%;
-  height: min(66vh, 640px);   /* <- FIT HEIGHT (shows corners on mobile) */
-  border-radius:14px;
-  overflow:auto;             /* <- allows two-finger pan inside when zoomed */
-  background:#000;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y pinch-zoom; /* allow pinch zoom */
-}
-
-/* Image */
-.targetImg{
-  display:block;
-  width:100%;
-  height:100%;
-  object-fit: contain;       /* <- THIS is FIT */
-  border-radius:14px;
-  user-select:none;
-  -webkit-user-drag:none;
-}
-
-/* Overlay layer */
-.dotsLayer{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-}
-
-/* Dots */
-.dot{
-  position:absolute;
-  width:16px; height:16px;
-  border-radius:999px;
-  transform:translate(-50%,-50%);
-  border:2px solid rgba(0,0,0,.55);
-  box-shadow:0 2px 8px rgba(0,0,0,.35);
-}
-.dotBull{ background:rgba(10,132,255,.95); }
-.dotHole{ background:rgba(255,204,0,.95); }
-
-/* Results grid */
-.grid2{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px 12px;
-}
-.kv{
-  border:1px solid rgba(255,255,255,.10);
-  background:rgba(255,255,255,.04);
-  border-radius:16px;
-  padding:10px 12px;
-}
-.kv .k{
-  color:rgba(255,255,255,.70);
+  border:1px solid var(--greenBorder);
+  background:var(--greenBg);
+  color:rgba(255,255,255,.94);
   font-weight:900;
-  font-size:12px;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  margin-bottom:6px;
-}
-.kv .v{
-  font-weight:950;
-  font-size:18px;
-}
-
-/* Footer */
-.footer{
-  margin-top:20px;
-  text-align:center;
-  opacity:.65;
-}
-
-/* Mobile tighten */
-@media (max-width:480px){
-  .page{padding:16px 12px 30px}
-  .distanceBox, .statBox, .tapsBox{min-width: 0; flex: 1 1 45%;}
-  .grid2{grid-template-columns:1fr 1fr;}
-  .targetCanvas{ height: 62vh; }
-}
-
-@media (max-width:360px){
-  .grid2{grid-template-columns:1fr;}
-  .targetCanvas{ height: 58vh; }
-}
+  font-size:15px;
+  letter-spacing:.01em;
