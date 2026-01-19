@@ -1,32 +1,29 @@
-// frontend_new/api.js (FULL REPLACEMENT)
+/* frontend_new/api.js */
 
 (() => {
-  const BACKEND_BASE = "https://sczn3-backend-new.onrender.com";
+  const API_BASE =
+    (window.API_BASE && String(window.API_BASE)) ||
+    (window.location.hostname.includes("onrender.com")
+      ? "https://YOUR-BACKEND-ONRENDER-URL"   // <-- put your backend URL here
+      : "http://localhost:10000");
 
-  async function tapscore(payload) {
-    const url = `${BACKEND_BASE}/tapscore`;
+  async function analyzeTapScore(formData) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const r = await fetch(`${API_BASE}/tapscore`, {
+        method: "POST",
+        body: formData,
+        signal: ctrl.signal
+      });
 
-    const text = await res.text().catch(() => "");
-    if (!res.ok) throw new Error(`tapscore HTTP ${res.status}: ${text || "(no body)"}`);
-    return text ? JSON.parse(text) : {};
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } finally {
+      clearTimeout(t);
+    }
   }
 
-  async function ping() {
-    const url = `${BACKEND_BASE}/ping`;
-    const res = await fetch(url);
-
-    const text = await res.text().catch(() => "");
-    if (!res.ok) throw new Error(`ping HTTP ${res.status}: ${text || "(no body)"}`);
-    return text ? JSON.parse(text) : {};
-  }
-
-  window.BACKEND_BASE = BACKEND_BASE;
-  window.tapscore = tapscore;
-  window.tapscorePing = ping;
+  window.TAP_API = { analyzeTapScore };
 })();
