@@ -1,39 +1,21 @@
-/**
- * backend_new/server.js — Tap-n-Score Backend (FULL REPLACEMENT)
- *
- * Routes:
- *  GET  /            -> service info
- *  GET  /ping        -> ok
- *  GET  /health      -> ok
- *  POST /tapscore    -> bull-first normalized taps -> inches + true MOA clicks
- *
- * Input (JSON):
- * {
- *   distanceYds: number (default 100),
- *   moaPerClick: number (default 0.25),
- *   targetWIn:   number (default 8.5),
- *   targetHIn:   number (default 11),
- *   bullTap: { x: 0..1, y: 0..1 },     // Tap #1
- *   taps:   [{ x:0..1, y:0..1 }, ...]  // Tap #2+ holes
- * }
- *
- * Conventions (INCHES):
- *  dxIn > 0 => RIGHT, dxIn < 0 => LEFT
- *  dyIn > 0 => UP,    dyIn < 0 => DOWN
- *
- * Canonical correction:
- *  correction = bull - POIB   (move impact to bull)
- *  windage/elevation labels come from sign of correction
- */
+// backend_new/server.js (FULL REPLACEMENT)
+// Tap-n-Score backend (stable + minimal)
+//
+// Routes:
+//   GET  /ping
+//   POST /tapscore
+//       body: { distanceYds, bullTap:{x,y}, taps:[{x,y},...], vendorLink? }
+//       x,y are normalized 0..1 coming from frontend
+//
+// Returns (no placeholders):
+//   { ok, distanceYds, tapsCount, bullTap, poib, delta, directions }
 
 const express = require("express");
 const cors = require("cors");
 
-const SERVICE = "sczn3-backend-new1";
-const BUILD = "TAPNSCORE_BACKEND_V1_TRUE_MOA";
-
 const app = express();
 
+// Keep wide-open during build; lock down later.
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
@@ -42,36 +24,27 @@ app.use(cors({
 
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/", (req, res) => res.json({ ok: true, service: SERVICE, build: BUILD }));
-app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping", service: SERVICE, build: BUILD }));
-app.get("/health", (req, res) => res.json({ ok: true, route: "/health", service: SERVICE, build: BUILD }));
+app.get("/", (req, res) => res.json({ ok: true, service: "tapnscore-backend" }));
+app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping" }));
 
-function isNum(n){ return typeof n === "number" && Number.isFinite(n); }
-function clamp01(v){ return Math.max(0, Math.min(1, v)); }
-
-function round2(n){
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round(x * 100) / 100;
+function isNum(n) {
+  return typeof n === "number" && Number.isFinite(n);
 }
-function fmt2(n){ return round2(n).toFixed(2); }
-
-function inchesPerMOA(yards){
-  // True MOA = 1.047" at 100 yds
-  return 1.047 * (Number(yards) / 100);
-}
-function dirFromSign(val, posLabel, negLabel){
-  if (val > 0) return posLabel;
-  if (val < 0) return negLabel;
-  return "";
+function clamp01(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
 }
 
-function scorePlaceholder(dxIn, dyIn){
-  // Simple placeholder: closer to bull => higher score
-  const r = Math.sqrt(dxIn*dxIn + dyIn*dyIn);
-  const base = 650;
-  const penalty = r * 60;
-  return Math.max(0, Math.round(base - penalty));
+// Canonical direction labels from delta = bull - POIB
+// ΔX>0 RIGHT, ΔX<0 LEFT ; ΔY>0 UP, ΔY<0 DOWN
+function dirX(dx) {
+  if (!Number.isFinite(dx) || dx === 0) return "CENTER";
+  return dx > 0 ? "RIGHT" : "LEFT";
+}
+function dirY(dy) {
+  if (!Number.isFinite(dy) || dy === 0) return "CENTER";
+  return dy > 0 ? "UP" : "DOWN";
 }
 
 app.post("/tapscore", (req, res) => {
@@ -79,107 +52,58 @@ app.post("/tapscore", (req, res) => {
     const body = req.body || {};
 
     const distanceYds = Number(body.distanceYds || 100);
-    const moaPerClick = Number(body.moaPerClick || 0.25);
-
-    const targetWIn = Number(body.targetWIn || 8.5);
-    const targetHIn = Number(body.targetHIn || 11);
-
-    if (!Number.isFinite(distanceYds) || distanceYds <= 0) {
-      return res.status(400).json({ ok:false, error:{ code:"BAD_DISTANCE", message:"distanceYds must be > 0" } });
-    }
-    if (!Number.isFinite(moaPerClick) || moaPerClick <= 0) {
-      return res.status(400).json({ ok:false, error:{ code:"BAD_MOA_CLICK", message:"moaPerClick must be > 0" } });
-    }
-    if (!Number.isFinite(targetWIn) || targetWIn <= 0 || !Number.isFinite(targetHIn) || targetHIn <= 0) {
-      return res.status(400).json({ ok:false, error:{ code:"BAD_TARGET_SIZE", message:"targetWIn/targetHIn must be > 0" } });
-    }
-
     const bullTap = body.bullTap;
-    const taps = Array.isArray(body.taps) ? body.taps : [];
+    const tapsIn = Array.isArray(body.taps) ? body.taps : [];
 
     if (!bullTap || !isNum(bullTap.x) || !isNum(bullTap.y)) {
-      return res.status(400).json({ ok:false, error:{ code:"NO_BULL", message:"Missing bullTap {x,y} (Tap #1)." } });
+      return res.status(400).json({ ok: false, error: "Missing bullTap {x,y}." });
     }
-    if (taps.length < 1) {
-      return res.status(400).json({ ok:false, error:{ code:"NO_HOLES", message:"Need at least 1 bullet-hole tap after bull." } });
+    if (tapsIn.length < 1) {
+      return res.status(400).json({ ok: false, error: "Need at least 1 bullet-hole tap." });
     }
 
-    // Clamp normalized inputs
-    const bull = { x: clamp01(Number(bullTap.x)), y: clamp01(Number(bullTap.y)) };
-    const holes = taps
+    // Clamp bull
+    const bull = { x: clamp01(bullTap.x), y: clamp01(bullTap.y) };
+
+    // Clamp holes
+    const pts = tapsIn
       .filter(p => p && isNum(p.x) && isNum(p.y))
-      .map(p => ({ x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) }));
+      .map(p => ({ x: clamp01(p.x), y: clamp01(p.y) }));
 
-    if (holes.length < 1) {
-      return res.status(400).json({ ok:false, error:{ code:"NO_VALID_TAPS", message:"No valid hole taps." } });
+    if (pts.length < 1) {
+      return res.status(400).json({ ok: false, error: "No valid bullet-hole taps." });
     }
 
     // POIB = average of hole taps (normalized)
-    const sum = holes.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x:0, y:0 });
-    const poib = { x: sum.x / holes.length, y: sum.y / holes.length };
+    let sx = 0, sy = 0;
+    for (const p of pts) { sx += p.x; sy += p.y; }
+    const poib = { x: sx / pts.length, y: sy / pts.length };
 
-    // Convert normalized offset to inches (x right+, y up+)
-    // dxIn = (POIB - bull) * width
-    // dyIn = -(POIB - bull) * height   (because normalized y grows DOWN)
-    const dxIn = (poib.x - bull.x) * targetWIn;
-    const dyIn = -((poib.y - bull.y) * targetHIn);
-
-    // Correction inches to dial = bull - POIB (move POIB to bull)
-    const corrDxIn = -dxIn;
-    const corrDyIn = -dyIn;
-
-    const windDir = dirFromSign(corrDxIn, "RIGHT", "LEFT");
-    const elevDir = dirFromSign(corrDyIn, "UP", "DOWN");
-
-    const inchPerMOA = inchesPerMOA(distanceYds);
-
-    const clicksFromInches = (inchesAbs) => {
-      const v = Math.abs(Number(inchesAbs) || 0);
-      const c = v / (inchPerMOA * moaPerClick);
-      return round2(c);
-    };
-
-    const windClicks = clicksFromInches(corrDxIn);
-    const elevClicks = clicksFromInches(corrDyIn);
-
-    const score = scorePlaceholder(dxIn, dyIn);
+    // correction delta = bull - POIB
+    const delta = { x: bull.x - poib.x, y: bull.y - poib.y };
 
     return res.json({
       ok: true,
-      service: SERVICE,
-      build: BUILD,
-
-      distanceYds,
-      moaPerClick,
-      targetWIn,
-      targetHIn,
-
-      tapsCount: holes.length,
-
+      distanceYds: Number.isFinite(distanceYds) && distanceYds > 0 ? distanceYds : 100,
+      tapsCount: pts.length,
       bullTap: bull,
-      poib, // normalized
-
-      // offsets (POIB relative to bull) in inches (diagnostic)
-      offset_in: { dx: round2(dxIn), dy: round2(dyIn) },
-
-      // correction to dial (bull - POIB) in inches
-      correction_in: { dx: round2(corrDxIn), dy: round2(corrDyIn) },
-
-      directions: { windage: windDir, elevation: elevDir },
-      clicks: { windage: fmt2(windClicks), elevation: fmt2(elevClicks) },
-
-      score,
-
-      tip: "Tap #1 bull/aim point, then tap holes. Correction moves POIB to bull. True MOA used."
+      poib,
+      delta,
+      directions: {
+        windage: dirX(delta.x),
+        elevation: dirY(delta.y)
+      }
     });
 
   } catch (e) {
     return res.status(500).json({
-      ok:false,
-      error:{ code:"SERVER_ERROR", message:String(e?.message || e) }
+      ok: false,
+      error: "Server error",
+      detail: String(e && e.message ? e.message : e)
     });
   }
 });
 
+// Render uses PORT
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`${SERVICE} listening on ${PORT} build=${BUILD}`));
+app.listen(PORT, () => console.log(`Tap-n-Score backend listening on ${PORT}`));
