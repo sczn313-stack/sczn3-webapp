@@ -7,48 +7,20 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=21" />
+  <link rel="stylesheet" href="./styles.css?v=20260119a" />
 </head>
+
 <body>
   <div class="page">
 
-    <!-- Brand -->
+    <!-- Brand only (NO "Upload" line under it) -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <!-- Controls ABOVE CTA -->
-    <div class="controlsRow">
-      <div class="distanceBox">
-        <div class="subtle strong labelCaps">Distance</div>
-        <div class="distanceInputRow">
-          <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
-          <div class="subtle strong unit">yds</div>
-        </div>
-      </div>
-
-      <div class="statBox">
-        <div class="subtle strong labelCaps">Windage</div>
-        <div id="windageBox" class="statValue">—</div>
-      </div>
-
-      <div class="statBox">
-        <div class="subtle strong labelCaps">Elevation</div>
-        <div id="elevationBox" class="statValue">—</div>
-      </div>
-
-      <div class="tapsBox">
-        <div class="subtle strong labelCaps">Taps</div>
-        <div class="tapsRow">
-          <div class="tapsCount"><span id="tapCount">0</span></div>
-          <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- CTA -->
+    <!-- HERO upload box (single button) -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -56,16 +28,37 @@
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden) -->
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" so iOS offers Camera + Library + Files -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <!-- Micro-slot: pinch hint / see results / vendor CTA -->
+    <!-- Controls (above microSlot + above target) -->
+    <div class="controlsRow mt14">
+      <div class="distanceBox">
+        <div class="labelCaps">Distance</div>
+        <div class="distanceInputRow">
+          <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
+          <div class="unit">yds</div>
+        </div>
+      </div>
+
+      <div class="tapsBox">
+        <div class="labelCaps">Taps</div>
+        <div class="tapsRow">
+          <div class="tapsCount" id="tapCount">0</div>
+          <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Micro-slot: Pinch hint (after 1st tap) OR See Results + Vendor CTA -->
     <div id="microSlot" class="microSlot"></div>
 
-    <!-- Tap card -->
-    <div class="card mt10">
-      <!-- ✅ Hard-wired instruction line (but only shown when photo is loaded by JS) -->
-      <div class="subtle mb8" id="instructionLine"></div>
+    <!-- Target card -->
+    <div class="card mt14">
+      <!-- This line must NOT show until a target is loaded -->
+      <div id="tapRuleLine" class="subtle strong mb8" style="display:none;">
+        Tap bullseye / aim point 1st • then tap bullet holes
+      </div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -76,29 +69,45 @@
     </div>
 
     <!-- Vendor link input (optional) -->
-    <div class="card mt10">
+    <div class="card mt14">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- ✅ Clean Results Card (NO JSON) -->
-    <div id="resultsCard" class="card mt10" style="display:none;">
+    <!-- Results (NO JSON) -->
+    <div id="resultsCard" class="card mt14" style="display:none;">
       <div class="subtle strong mb8">Results</div>
 
       <div class="grid2">
-        <div class="kv"><div class="k">Distance</div><div id="rDistance" class="v">—</div></div>
-        <div class="kv"><div class="k">Shots tapped</div><div id="rTapsUsed" class="v">—</div></div>
-        <div class="kv"><div class="k">Windage</div><div id="rWindage" class="v">—</div></div>
-        <div class="kv"><div class="k">Elevation</div><div id="rElevation" class="v">—</div></div>
-      </div>
+        <div class="kv">
+          <div class="k">Distance</div>
+          <div class="v" id="rDistance">—</div>
+        </div>
+        <div class="kv">
+          <div class="k">Taps Used</div>
+          <div class="v" id="rTapsUsed">—</div>
+        </div>
 
-      <div id="rNote" class="subtle mt8">—</div>
+        <div class="kv">
+          <div class="k">Windage</div>
+          <div class="v" id="rWindage">—</div>
+        </div>
+        <div class="kv">
+          <div class="k">Elevation</div>
+          <div class="v" id="rElevation">—</div>
+        </div>
+
+        <div class="kv" style="grid-column:1/-1;">
+          <div class="k">Note</div>
+          <div class="v" id="rNote">—</div>
+        </div>
+      </div>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=21"></script>
-  <script src="./index.js?v=21"></script>
+  <script src="./api.js?v=20260119a"></script>
+  <script src="./index.js?v=20260119a"></script>
 </body>
 </html>
