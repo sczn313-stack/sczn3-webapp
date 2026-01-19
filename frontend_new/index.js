@@ -1,4 +1,5 @@
 // frontend_new/index.js (FULL REPLACEMENT)
+// See Results appears only after: bull tap + 2 hole taps (3 total taps)
 
 (() => {
   // Elements
@@ -27,16 +28,23 @@
 
   // State
   let hasImage = false;
-  let bullTap = null;         // {x,y} normalized to image
+  let bullTap = null;         // {x,y} normalized
   let taps = [];              // bullet taps normalized
-  let firstTapDone = false;
 
   // Multi-touch guard (2-finger pinch should never create taps)
   let activeTouches = 0;
   let multiTouchActive = false;
   let suppressClicksUntil = 0;
 
+  // RULE: require bull + N holes before showing See Results
+  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
+
   function nowMs(){ return Date.now(); }
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+  function canShowResults(){
+    return !!bullTap && taps.length >= MIN_HOLES_FOR_RESULTS;
+  }
 
   function setMicroHint() {
     microSlot.innerHTML = "";
@@ -56,6 +64,7 @@
     btn.addEventListener("click", onSeeResults);
 
     microSlot.appendChild(btn);
+    setMicroVendorCtaIfAny();
   }
 
   function setMicroVendorCtaIfAny() {
@@ -70,6 +79,19 @@
     a.textContent = "Buy more targets like this";
 
     microSlot.appendChild(a);
+  }
+
+  function refreshMicroSlot(){
+    // Always show pinch hint until results are eligible
+    if (!hasImage) {
+      microSlot.innerHTML = "";
+      return;
+    }
+    if (canShowResults()) {
+      setMicroSeeResults();
+    } else {
+      setMicroHint();
+    }
   }
 
   function updateTapCount(){
@@ -102,8 +124,6 @@
     for (const p of taps) placeDot(p.x, p.y, "dotHole");
   }
 
-  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
-
   function getNormalizedFromEvent(e){
     const r = targetImg.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
@@ -120,24 +140,32 @@
       instructionLine.textContent = "Tap bull first.";
       return;
     }
-    instructionLine.textContent = "Tap bullet holes. (Pinch to zoom anytime.)";
+
+    const holesNeeded = Math.max(0, MIN_HOLES_FOR_RESULTS - taps.length);
+    if (holesNeeded > 0) {
+      instructionLine.textContent =
+        holesNeeded === 1
+          ? "Tap 1 more bullet hole to see results."
+          : `Tap ${holesNeeded} more bullet holes to see results.`;
+      return;
+    }
+
+    instructionLine.textContent = "Ready — tap See results.";
   }
 
   function resetSession(){
     bullTap = null;
     taps = [];
-    firstTapDone = false;
     resultsCard.style.display = "none";
     updateTapCount();
     setInstruction();
-    setMicroHint();
+    refreshMicroSlot();
     rebuildDots();
   }
 
   // Upload (Safari-safe)
   uploadHeroBtn.addEventListener("click", () => {
-    // Must be direct user gesture for iOS picker
-    photoInput.value = ""; // allows re-select same file
+    photoInput.value = "";
     photoInput.click();
   });
 
@@ -154,9 +182,6 @@
 
     targetImg.onload = () => {
       URL.revokeObjectURL(objectUrl);
-
-      // Make overlay match the rendered image size
-      // Dots layer is absolute; we re-build after load.
       hasImage = true;
       targetWrap.style.display = "block";
       resetSession();
@@ -165,19 +190,17 @@
     targetImg.src = objectUrl;
   });
 
-  // Clear taps
   clearTapsBtn.addEventListener("click", () => {
     resetSession();
   });
 
-  // Touch tracking (two-finger protection)
+  // Touch tracking
   function handleTouchState(e){
     activeTouches = e.touches ? e.touches.length : 0;
     if (activeTouches >= 2) {
       multiTouchActive = true;
     } else if (activeTouches === 0) {
       if (multiTouchActive) {
-        // after a pinch ends, ignore stray click/tap for a moment
         suppressClicksUntil = nowMs() + 250;
       }
       multiTouchActive = false;
@@ -189,17 +212,11 @@
   targetCanvas.addEventListener("touchend", handleTouchState, { passive: true });
   targetCanvas.addEventListener("touchcancel", handleTouchState, { passive: true });
 
-  // Tap handler (single-finger only)
+  // Tap handler
   targetCanvas.addEventListener("click", (e) => {
     if (!hasImage) return;
     if (multiTouchActive) return;
     if (nowMs() < suppressClicksUntil) return;
-
-    // First tap removes the hint and reveals See Results (clean)
-    if (!firstTapDone) {
-      firstTapDone = true;
-      setMicroSeeResults();
-    }
 
     const p = getNormalizedFromEvent(e);
 
@@ -212,14 +229,12 @@
     updateTapCount();
     rebuildDots();
     setInstruction();
+    refreshMicroSlot();
   });
 
-  // Keep dots aligned on resize/orientation changes
   window.addEventListener("resize", () => rebuildDots());
 
-  // See Results
   async function onSeeResults(){
-    // Requirements
     if (!hasImage) {
       instructionLine.textContent = "Add a photo first.";
       return;
@@ -228,51 +243,36 @@
       instructionLine.textContent = "Tap bull first.";
       return;
     }
-    if (taps.length < 1) {
-      instructionLine.textContent = "Tap at least one bullet hole.";
+    if (taps.length < MIN_HOLES_FOR_RESULTS) {
+      setInstruction();
       return;
     }
 
     const distanceYds = Number(distanceYdsEl.value || 100);
-
-    // UI feedback
     instructionLine.textContent = "Computing…";
 
     try {
-      const payload = {
-        distanceYds,
-        bullTap,
-        taps,
-        // imageDataUrl intentionally omitted (fast + clean)
-      };
-
+      const payload = { distanceYds, bullTap, taps };
       const out = await window.tapscore(payload);
 
-      // NO JSON. Translate to shooter-readable.
       resultsCard.style.display = "block";
       rDistance.textContent = `${out.distanceYds} yds`;
       rTapsUsed.textContent = String(out.tapsCount);
 
-      // Placeholder labels until inches/clicks go live
       rWindage.textContent = out.windage && out.windage !== "--" ? out.windage : "Direction computed";
       rElevation.textContent = out.elevation && out.elevation !== "--" ? out.elevation : "Direction computed";
       rScore.textContent = out.score && out.score !== "--" ? out.score : "—";
 
-      // Direction language from delta sign (bull - POIB)
       const dx = out.delta && typeof out.delta.x === "number" ? out.delta.x : 0;
       const dy = out.delta && typeof out.delta.y === "number" ? out.delta.y : 0;
 
       const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
       const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
 
-      rNote.textContent =
-        `Move POIB to bull: ${windDir} + ${elevDir} (verification stage).`;
+      rNote.textContent = `Move POIB to bull: ${windDir} + ${elevDir} (verification stage).`;
 
       instructionLine.textContent = "Done.";
-
-      // Add vendor CTA (if link provided) in microSlot next to See Results
-      setMicroSeeResults();
-      setMicroVendorCtaIfAny();
+      refreshMicroSlot();
     } catch (err) {
       instructionLine.textContent = "Error — try again.";
       resultsCard.style.display = "none";
@@ -280,7 +280,7 @@
   }
 
   // Init
-  setMicroHint();
+  refreshMicroSlot();
   updateTapCount();
   setInstruction();
 })();
