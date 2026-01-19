@@ -1,22 +1,34 @@
-/* frontend_new/styles.css (FULL REPLACEMENT) */
+/* sczn3-webapp/frontend_new/styles.css (FULL REPLACEMENT) */
 
 :root{
   --bg:#000;
-  --card:#0b0b0c;
-  --card2:#0f0f11;
+  --card:#111;
+  --card2:#161616;
+  --border:rgba(255,255,255,.10);
   --text:#fff;
-  --muted:rgba(255,255,255,.65);
-  --muted2:rgba(255,255,255,.45);
-  --line:rgba(255,255,255,.10);
-  --green:#29d36a;
-  --green2:#17b957;
-  --red:#ff4d4d;
+  --muted:rgba(255,255,255,.70);
+
+  /* hero accent */
+  --heroBorder:rgba(255,255,255,.14);
+  --accentA: rgba(30, 90, 255, .22);
+  --accentB: rgba(255, 30, 80, .16);
+
+  /* red/white/blue */
+  --red:#ff3b30;
+  --blue:#0a84ff;
+
+  /* green "See results" */
+  --green:#34c759;
+  --greenBg: rgba(52, 199, 89, .18);
+  --greenBorder: rgba(52, 199, 89, .42);
+
+  /* holes */
+  --hole:#ffcc00;
 }
 
-*{ box-sizing:border-box; }
-html,body{ height:100%; }
-body{
-  margin:0;
+*{box-sizing:border-box}
+html,body{
+  margin:0;padding:0;
   background:var(--bg);
   color:var(--text);
   font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
@@ -25,240 +37,308 @@ body{
 .page{
   max-width:980px;
   margin:0 auto;
-  padding:18px 16px 30px;
+  padding:18px 14px 34px;
 }
 
-.brandRow{ display:flex; justify-content:flex-start; }
-.brand{
-  font-weight:800;
-  letter-spacing:.5px;
-  font-size:18px;
-  padding:6px 0 10px;
-}
-.brandTap{ color:#ff3b30; }
-.brandN{ color:#fff; }
-.brandScore{ color:#0a84ff; }
-.brandTm{ color:#fff; opacity:.9; margin-left:2px; }
+/* spacing helpers */
+.mt12{margin-top:12px}
+.mt14{margin-top:14px}
+.mt18{margin-top:18px}
+.mb6{margin-bottom:6px}
+.mb8{margin-bottom:8px}
 
+.subtle{color:var(--muted); font-size:16px; line-height:1.25}
+.strong{font-weight:900}
+.mono{
+  white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  font-size:14px;
+}
+
+/* Headline */
 .h1{
-  font-size:58px;
-  line-height:1;
-  margin:8px 0 12px;
+  margin: 8px 0 10px;
+  font-size: clamp(34px, 7.6vw, 52px);
+  letter-spacing: -0.02em;
+}
+
+/* Brand */
+.brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:8px}
+.brand{
   font-weight:900;
+  letter-spacing:.6px;
+  font-size:18px;
+  opacity:.95;
+  user-select:none;
+}
+.brandTap{color:var(--red)}
+.brandN{color:#fff}
+.brandScore{color:var(--blue)}
+.brandTm{color:#fff; opacity:.9}
+
+/* Hidden real input (must NOT be display:none) */
+.fileInputReal{
+  position:absolute;
+  left:-9999px;
+  top:auto;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
 }
 
-.subtle{ color:var(--muted); }
-.strong{ font-weight:800; }
-
-.mt14{ margin-top:14px; }
-.mb8{ margin-bottom:8px; }
-
-.card{
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-  border:1px solid var(--line);
-  border-radius:18px;
-  padding:14px;
-}
-
+/* HERO upload box */
 .uploadHero{
+  display:block;
   width:100%;
-  border-radius:22px;
-  border:1px solid rgba(255,255,255,.12);
-  padding:18px 14px;
-  background: radial-gradient(1200px 260px at 20% 30%, rgba(10,132,255,.35), transparent 50%),
-              radial-gradient(1200px 260px at 85% 60%, rgba(255,59,48,.25), transparent 55%),
-              rgba(255,255,255,.05);
-  color:var(--text);
+  border-radius:26px;
+  padding:0;
+  border:1px solid var(--heroBorder);
+  background:
+    radial-gradient(1200px 200px at 10% 0%, var(--accentA), transparent 60%),
+    radial-gradient(900px 220px at 90% 20%, var(--accentB), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+  box-shadow:0 14px 34px rgba(0,0,0,.62);
   cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+}
+.uploadHero:active{transform:translateY(1px)}
+.uploadHeroInner{
+  padding:18px 18px;
+  min-height:84px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+}
+.uploadHeroTitle{
+  font-weight:900;
+  font-size:clamp(22px, 5.4vw, 32px);
+  line-height:1.05;
+  color:#fff;
+}
+.uploadHeroSub{
+  font-size:14px;
+  color:rgba(255,255,255,.62);
+  font-weight:800;
 }
 
-.uploadHeroInner{ text-align:center; }
-.uploadHeroTitle{ font-weight:900; font-size:44px; letter-spacing:.3px; }
-.uploadHeroSub{ margin-top:4px; font-weight:700; color:rgba(255,255,255,.55); }
-
+/* Controls row: NEVER run off-screen */
 .controlsRow{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:10px;
   flex-wrap:wrap;
 }
 
+/* left group */
 .distanceBox{
   display:flex;
   align-items:center;
   gap:10px;
-  background:rgba(255,255,255,.05);
-  border:1px solid var(--line);
-  border-radius:16px;
-  padding:10px 12px;
-  min-width:260px;
+  flex-wrap:nowrap;
 }
-
-#distanceYds{
-  width:110px;
-  height:40px;
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(0,0,0,.35);
+.distanceBox input{
+  width:100px;
+  padding:10px 12px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.06);
   color:#fff;
-  font-size:22px;
-  font-weight:900;
-  text-align:center;
+  font-size:18px;
   outline:none;
 }
 
+/* right group */
 .tapsBlock{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
+  flex-wrap:wrap;           /* ✅ allows Clear taps to wrap under on small screens */
   justify-content:flex-end;
-  flex:1;
-  min-width:240px;
+  margin-left:auto;
 }
-
-.tapsLine{ font-size:18px; }
+.tapsLine{font-size:18px; white-space:nowrap}
 
 .btn{
-  border-radius:999px;
-  padding:10px 14px;
-  border:1px solid rgba(255,255,255,.16);
+  border-radius:18px;
+  padding:12px 16px;
+  border:1px solid var(--border);
   background:rgba(255,255,255,.06);
   color:#fff;
   font-weight:900;
-  cursor:pointer;
+  font-size:16px;
+  -webkit-tap-highlight-color:transparent;
 }
-
-.btnTight{ padding:8px 12px; }
+.btn:active{transform:translateY(1px)}
 .btnSecondary{ background:rgba(255,255,255,.05); }
-
-.microSlot{
-  margin-top:10px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-  justify-content:flex-start;
-  min-height:44px;
+.btnTight{
+  padding:10px 12px;
+  border-radius:16px;
+  white-space:nowrap;
 }
 
-.hintPill{
-  display:inline-flex;
-  align-items:center;
+/* Card */
+.card{
+  background:linear-gradient(180deg,var(--card2),var(--card));
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:14px;
+}
+
+/* Micro-slot: the “quiet, sticky” strip area */
+.microSlot{
+  margin-top:12px;
+  display:flex;
+  flex-direction:column;
   gap:10px;
-  padding:10px 14px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.14);
+}
+
+/* Pinch hint pill */
+.pinchHint{
+  width:100%;
+  border-radius:18px;
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.12);
   background:rgba(255,255,255,.05);
   color:rgba(255,255,255,.78);
   font-weight:900;
+  font-size:14px;
+  letter-spacing:.01em;
 }
 
-.btnGreen{
-  background:rgba(41,211,106,.12);
-  border:1px solid rgba(41,211,106,.35);
-  color:#d7ffe7;
-}
-.btnGreen:active{ transform:translateY(1px); }
-
-.vendorCta{
-  display:inline-flex;
+/* ✅ Green boxed whisper (ACTIVE button) */
+.seeResultsHint{
+  width:100%;
+  display:flex;
   align-items:center;
-  gap:10px;
-  padding:10px 14px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.05);
-  color:#fff;
+  justify-content:center;
+  padding:13px 14px;
+  border-radius:18px;
+  border:1px solid var(--greenBorder);
+  background:var(--greenBg);
+  color:rgba(255,255,255,.96);
   font-weight:900;
-  text-decoration:none;
-}
-
-.targetWrap{
-  overflow:hidden;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.10);
-  background:rgba(0,0,0,.35);
-}
-
-.targetCanvas{
-  position:relative;
-  width:100%;
-  overflow:auto;              /* allows pinch zoom + scroll */
-  -webkit-overflow-scrolling:touch;
-}
-
-.targetImg{
-  width:100%;
-  height:auto;
-  display:block;
-  user-select:none;
-  -webkit-user-drag:none;
-}
-
-.dotsLayer{
-  position:absolute;
-  left:0; top:0;
-  right:0; bottom:0;
-  pointer-events:none;
-}
-
-.dot{
-  position:absolute;
-  width:14px; height:14px;
-  border-radius:999px;
-  transform:translate(-50%,-50%);
-  box-shadow:0 0 0 2px rgba(0,0,0,.55);
-  border:2px solid rgba(255,255,255,.9);
-}
-.dotBull{ background:rgba(10,132,255,.85); }
-.dotHole{ background:rgba(255,59,48,.85); }
-
-.input{
-  width:100%;
-  height:44px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(0,0,0,.35);
-  color:#fff;
   font-size:16px;
-  padding:0 12px;
-  outline:none;
+  letter-spacing:.01em;
+  cursor:pointer;
+  white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
 }
+.seeResultsHint:active{transform:translateY(1px)}
 
-/* Safari/iOS reliable hidden file input (DO NOT use display:none) */
-.fileInputReal{
-  position:fixed;
-  left:-9999px;
-  top:0;
-  width:1px;
-  height:1px;
-  opacity:0.001;
-  pointer-events:none;
-}
-
-.resultsGrid{ display:flex; flex-direction:column; gap:10px; }
-.resultRow{
+/* Vendor CTA (appears after See results) */
+.vendorBuyBtn{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:10px;
+  width:100%;
+  text-decoration:none;
+  border-radius:18px;
+  padding:14px 14px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  -webkit-tap-highlight-color:transparent;
 }
-.resultLabel{ color:rgba(255,255,255,.65); font-weight:900; }
-.resultValue{ font-weight:1000; font-size:18px; }
-.resultNote{
-  color:rgba(255,255,255,.70);
-  font-weight:800;
-  line-height:1.35;
+.vendorBuyBtn:active{transform:translateY(1px)}
+.vendorIcon{font-size:18px}
+.vendorText{
+  flex:1;
+  font-weight:900;
+  letter-spacing:.2px;
+  color:rgba(255,255,255,.92);
 }
-.divider{
-  height:1px;
-  background:rgba(255,255,255,.10);
-  margin:6px 0;
+.vendorArrow{ font-size:22px; opacity:.65; }
+
+/* Inputs */
+.input{
+  width:100%;
+  padding:14px 14px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.06);
+  color:#fff;
+  font-size:16px;
+  outline:none;
 }
 
+/* Target container */
+.targetWrap{
+  position:relative;
+  width:100%;
+  border-radius:18px;
+  overflow:hidden;
+  background:#000;
+  border:1px solid rgba(255,255,255,.10);
+  padding:10px;
+}
+
+/* Move target UP into frame: reduce dead space */
+.targetCanvas{
+  position:relative;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;   /* ✅ start, not center */
+  width:100%;
+  padding-top:2px;
+}
+
+/* Try to show all corners: allow taller viewport usage */
+.targetImg{
+  display:block;
+  max-width:100%;
+  max-height:68vh;          /* ✅ more space for target */
+  width:auto;
+  height:auto;
+  border-radius:14px;
+
+  /* Keep pinch zoom behavior smooth */
+  touch-action:manipulation;
+  -webkit-user-drag:none;
+  user-select:none;
+}
+
+/* Overlay */
+.dotsLayer{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+
+/* Dots: higher contrast */
+.tapDot{
+  position:absolute;
+  width:18px; height:18px;
+  border-radius:999px;
+  transform:translate(-50%,-50%);
+  border:2px solid rgba(0,0,0,.65);
+  box-shadow:0 2px 10px rgba(0,0,0,.42);
+}
+.tapDot[data-kind="bull"]{ background:rgba(10,132,255,.98); }
+.tapDot[data-kind="hole"]{ background:rgba(255,204,0,.98); }
+
 .footer{
-  text-align:center;
   margin-top:18px;
-  opacity:.6;
-  font-weight:900;
+  text-align:center;
+  opacity:.65;
+}
+
+/* Small phones */
+@media (max-width:420px){
+  .page{padding:16px 12px 32px}
+  .distanceBox input{width:92px}
+  .tapsLine{font-size:16px}
+  .btnTight{padding:9px 10px}
+  .seeResultsHint{padding:12px 12px}
+  .targetImg{max-height:72vh}  /* ✅ extra room on small screens */
+}
+
+/* Very small */
+@media (max-width:360px){
+  .tapsBlock{gap:8px}
+  .distanceBox{gap:8px}
 }
