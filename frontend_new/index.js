@@ -1,66 +1,74 @@
 /* ============================================================================
-  Tap-N-Score — FULL index.js (iOS-safe) + 1" calibration + POIB + 2-decimal clicks
-  Workflow (simple + bulletproof):
-    1) Upload photo
-    2) Tap "Calibrate 1 inch" → tap TWO points that are exactly 1.00" apart on the grid
-    3) Tap "Set Bull" → tap the exact bull/aim point center
-    4) Tap your shot holes (3–7 ideal; more is OK)
-    5) Tap "Analyze" → outputs POIB (inches) + MOA + clicks (two decimals) + directions
+  Tap-N-Score — FULL index.js (RE-RENDER PROOF)
+  Fixes:
+    - iOS file picker timing issues (retry-read)
+    - DOM re-render replacing the “Add a photo to begin.” element
+    - Ensures photo area always mounts and shows the image
 
-  Notes:
-    - Uses iOS retry-read to prevent “filename but no file” glitches.
-    - Outlier handling: if >7 shots, keeps the 7 closest to the initial centroid.
-    - Direction truth:
-        impacts RIGHT  -> dial LEFT
-        impacts LEFT   -> dial RIGHT
-        impacts HIGH   -> dial DOWN
-        impacts LOW    -> dial UP
+  Includes:
+    - Photo display + tap dots
+    - 1-inch calibration mode + set-bull mode + analyze output
+    - 2-decimal outputs
+
+  IMPORTANT:
+    This script does NOT assume stable DOM references. It re-finds mount points
+    on every key action.
 ============================================================================ */
 
 (() => {
-  // ---------- helpers ----------
+  // ----------------------------
+  // Proof banner (so we KNOW this file is running)
+  // ----------------------------
+  function showBanner() {
+    const b = document.createElement("div");
+    b.textContent = "INDEX.JS LOADED — vRENDERPROOF-1";
+    b.style.position = "fixed";
+    b.style.left = "10px";
+    b.style.right = "10px";
+    b.style.bottom = "10px";
+    b.style.zIndex = "999999";
+    b.style.padding = "10px 12px";
+    b.style.borderRadius = "10px";
+    b.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    b.style.fontSize = "14px";
+    b.style.background = "rgba(0,140,0,0.85)";
+    b.style.color = "white";
+    b.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+    document.body.appendChild(b);
+  }
+
+  // ----------------------------
+  // Helpers
+  // ----------------------------
   const qs = (sel, root = document) => root.querySelector(sel);
   const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-  const fileInput = qs('input[type="file"]');
-  const clearBtn = qsa("button").find((b) => (b.textContent || "").trim().toLowerCase() === "clear");
-  const distanceInput =
-    qs("#distance") ||
-    qsa("input").find((i) => (i.placeholder || "").toLowerCase().includes("distance"));
+  function findFileInput() {
+    return qs('input[type="file"]');
+  }
 
-  // Find the "Add a photo to begin." pill so we can reuse that space for the image + overlay
-  const statusHost = qsa("div, p, span")
-    .find((el) => (el.textContent || "").trim() === "Add a photo to begin.");
+  function findClearButton() {
+    return qsa("button").find((b) => (b.textContent || "").trim().toLowerCase() === "clear") || null;
+  }
 
-  // If the app has a "Taps:" line already, reuse it; otherwise we’ll inject our own.
-  let tapsLineEl = qsa("div, p, span").find((el) => (el.textContent || "").includes("Taps:"));
+  function findDistanceInput() {
+    return qs("#distance") || qsa("input").find((i) => (i.placeholder || "").toLowerCase().includes("distance")) || null;
+  }
 
-  // ---------- state ----------
-  let selectedFile = null;
-  let objectUrl = null;
+  function findTapsLine() {
+    return qsa("div, p, span").find((el) => (el.textContent || "").includes("Taps:")) || null;
+  }
 
-  // Calibration / bull
-  let pixelsPerInch = null; // computed from 2 taps that are 1" apart
-  let bull = null;          // { xPx, yPx } in DISPLAY pixels
+  function findAddPhotoPill() {
+    // Re-find every time (this is the key fix)
+    return qsa("div, p, span")
+      .find((el) => (el.textContent || "").trim() === "Add a photo to begin.") || null;
+  }
 
-  // Shot taps (DISPLAY pixels)
-  /** @type {{xPx:number,yPx:number}[]} */
-  let shotTaps = [];
-
-  // Modes
-  const MODE = {
-    SHOTS: "shots",
-    CAL_1IN: "cal_1in",
-    SET_BULL: "set_bull",
-  };
-  let mode = MODE.SHOTS;
-
-  // For calibration taps
-  /** @type {{xPx:number,yPx:number}[]} */
-  let calTaps = [];
-
-  // ---------- iOS file retry ----------
+  // ----------------------------
+  // iOS file retry
+  // ----------------------------
   async function getFileWithRetry(inputEl, delaysMs) {
     for (const d of delaysMs) {
       if (d > 0) await new Promise((r) => setTimeout(r, d));
@@ -70,34 +78,64 @@
     return null;
   }
 
-  // ---------- UI build (image + overlay + buttons + results) ----------
-  let wrapper, img, overlay, panel, resultsBox, instruction, tapsCounter;
+  // ----------------------------
+  // State
+  // ----------------------------
+  let selectedFile = null;
+  let objectUrl = null;
+
+  let pixelsPerInch = null;
+  let bull = null; // {xPx,yPx} in DISPLAY pixels
+  let calTaps = []; // [{xPx,yPx}]
+  let shotTaps = []; // [{xPx,yPx}]
+
+  const MODE = { SHOTS: "shots", CAL_1IN: "cal_1in", SET_BULL: "set_bull" };
+  let mode = MODE.SHOTS;
+
+  // ----------------------------
+  // Mounted UI references (can become invalid if DOM re-renders)
+  // So we validate them before using.
+  // ----------------------------
+  let mounted = {
+    host: null,
+    wrapper: null,
+    img: null,
+    overlay: null,
+    instruction: null,
+    panel: null,
+    results: null,
+    tapsCounter: null,
+    btnCal: null,
+    btnBull: null,
+    btnAnalyze: null,
+  };
+
+  function isMountedAlive() {
+    // host can be replaced; wrapper must still be in DOM
+    return !!(mounted.wrapper && document.body.contains(mounted.wrapper));
+  }
 
   function setInstruction(text) {
-    if (instruction) instruction.textContent = text;
+    if (mounted.instruction) mounted.instruction.textContent = text;
   }
 
   function setTapsCount(n) {
-    if (tapsCounter) tapsCounter.textContent = `Taps: ${n}`;
-    if (tapsLineEl) tapsLineEl.textContent = `Taps: ${n}`;
+    const tapsLine = findTapsLine();
+    if (tapsLine) tapsLine.textContent = `Taps: ${n}`;
+    if (mounted.tapsCounter) mounted.tapsCounter.textContent = `Taps: ${n}`;
   }
 
   function clearOverlay() {
-    if (overlay) overlay.innerHTML = "";
+    if (mounted.overlay) mounted.overlay.innerHTML = "";
   }
 
   function addDot(xPx, yPx, kind) {
-    // kind: "shot" | "cal" | "bull"
-    if (!overlay || !img) return;
+    if (!mounted.overlay) return;
 
     const dot = document.createElement("div");
     dot.style.position = "absolute";
-    dot.style.left = `${xPx - 6}px`;
-    dot.style.top = `${yPx - 6}px`;
-    dot.style.width = "12px";
-    dot.style.height = "12px";
-    dot.style.borderRadius = "999px";
     dot.style.pointerEvents = "none";
+    dot.style.borderRadius = "999px";
 
     if (kind === "bull") {
       dot.style.width = "14px";
@@ -107,45 +145,74 @@
       dot.style.background = "rgba(0,255,120,0.95)";
       dot.style.border = "2px solid rgba(0,0,0,0.65)";
     } else if (kind === "cal") {
+      dot.style.width = "12px";
+      dot.style.height = "12px";
+      dot.style.left = `${xPx - 6}px`;
+      dot.style.top = `${yPx - 6}px`;
       dot.style.background = "rgba(80,160,255,0.95)";
       dot.style.border = "2px solid rgba(0,0,0,0.65)";
     } else {
+      dot.style.width = "12px";
+      dot.style.height = "12px";
+      dot.style.left = `${xPx - 6}px`;
+      dot.style.top = `${yPx - 6}px`;
       dot.style.background = "rgba(255,255,255,0.95)";
       dot.style.border = "2px solid rgba(0,0,0,0.65)";
     }
 
-    overlay.appendChild(dot);
+    mounted.overlay.appendChild(dot);
   }
 
-  function redrawAllDots() {
-    if (!img) return;
+  function redrawDots() {
+    if (!mounted.img || mounted.img.style.display === "none") return;
+
     clearOverlay();
-
-    // calibration points
     calTaps.forEach((p) => addDot(p.xPx, p.yPx, "cal"));
-
-    // bull
     if (bull) addDot(bull.xPx, bull.yPx, "bull");
-
-    // shots
     shotTaps.forEach((p) => addDot(p.xPx, p.yPx, "shot"));
   }
 
+  // ----------------------------
+  // Build / rebuild UI
+  // ----------------------------
   function ensureUI() {
-    if (!statusHost) return;
+    // If our mounted UI got wiped, rebuild it
+    if (isMountedAlive()) return;
 
-    // Convert the pill area into our image/tap area
-    statusHost.textContent = "";
-    statusHost.style.position = "relative";
-    statusHost.style.overflow = "hidden";
+    const host = findAddPhotoPill();
 
-    wrapper = document.createElement("div");
+    // If the pill isn't found (rare), mount under the file input area
+    let mountPoint = host;
+    if (!mountPoint) {
+      const fi = findFileInput();
+      if (fi && fi.parentElement) {
+        mountPoint = document.createElement("div");
+        mountPoint.style.marginTop = "12px";
+        fi.parentElement.appendChild(mountPoint);
+      } else {
+        mountPoint = document.createElement("div");
+        document.body.appendChild(mountPoint);
+      }
+    }
+
+    // Clear host and prepare it as container
+    mountPoint.textContent = "";
+    mountPoint.style.position = "relative";
+    mountPoint.style.overflow = "hidden";
+
+    const wrapper = document.createElement("div");
     wrapper.style.position = "relative";
     wrapper.style.width = "100%";
     wrapper.style.minHeight = "260px";
     wrapper.style.borderRadius = "16px";
 
-    img = document.createElement("img");
+    const instruction = document.createElement("div");
+    instruction.style.padding = "14px 16px";
+    instruction.style.opacity = "0.9";
+    instruction.style.fontSize = "18px";
+    instruction.textContent = "Add a photo to begin.";
+
+    const img = document.createElement("img");
     img.alt = "Target preview";
     img.style.display = "none";
     img.style.width = "100%";
@@ -155,7 +222,7 @@
     img.style.webkitUserSelect = "none";
     img.style.touchAction = "manipulation";
 
-    overlay = document.createElement("div");
+    const overlay = document.createElement("div");
     overlay.style.position = "absolute";
     overlay.style.left = "0";
     overlay.style.top = "0";
@@ -163,19 +230,12 @@
     overlay.style.bottom = "0";
     overlay.style.pointerEvents = "none";
 
-    instruction = document.createElement("div");
-    instruction.style.padding = "14px 16px";
-    instruction.style.opacity = "0.9";
-    instruction.style.fontSize = "18px";
-    instruction.textContent = "Add a photo to begin.";
-
     wrapper.appendChild(instruction);
     wrapper.appendChild(img);
     wrapper.appendChild(overlay);
-    statusHost.appendChild(wrapper);
+    mountPoint.appendChild(wrapper);
 
-    // Control panel (injected under the image area)
-    panel = document.createElement("div");
+    const panel = document.createElement("div");
     panel.style.marginTop = "12px";
     panel.style.display = "flex";
     panel.style.gap = "10px";
@@ -198,64 +258,45 @@
     const btnBull = mkBtn("Set Bull");
     const btnAnalyze = mkBtn("Analyze");
 
-    tapsCounter = document.createElement("div");
-    tapsCounter.style.marginLeft = "4px";
+    const tapsCounter = document.createElement("div");
     tapsCounter.style.opacity = "0.9";
     tapsCounter.textContent = "Taps: 0";
-
-    resultsBox = document.createElement("div");
-    resultsBox.style.marginTop = "12px";
-    resultsBox.style.padding = "12px 14px";
-    resultsBox.style.borderRadius = "14px";
-    resultsBox.style.border = "1px solid rgba(255,255,255,0.12)";
-    resultsBox.style.background = "rgba(255,255,255,0.06)";
-    resultsBox.style.whiteSpace = "pre-wrap";
-    resultsBox.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-    resultsBox.style.fontSize = "13px";
-    resultsBox.textContent = "";
 
     panel.appendChild(btnCal);
     panel.appendChild(btnBull);
     panel.appendChild(btnAnalyze);
     panel.appendChild(tapsCounter);
 
-    // Insert panel + results under the statusHost container
-    statusHost.parentElement?.appendChild(panel);
-    statusHost.parentElement?.appendChild(resultsBox);
+    const results = document.createElement("div");
+    results.style.marginTop = "12px";
+    results.style.padding = "12px 14px";
+    results.style.borderRadius = "14px";
+    results.style.border = "1px solid rgba(255,255,255,0.12)";
+    results.style.background = "rgba(255,255,255,0.06)";
+    results.style.whiteSpace = "pre-wrap";
+    results.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    results.style.fontSize = "13px";
+    results.textContent = "";
 
-    // Button wiring
-    btnCal.addEventListener("click", () => {
-      if (!selectedFile) return;
-      mode = MODE.CAL_1IN;
-      calTaps = [];
-      pixelsPerInch = null;
-      resultsBox.textContent = "";
-      redrawAllDots();
-      setInstruction("Calibration: tap TWO grid points exactly 1.00\" apart.");
-    });
+    // Put controls + results immediately after mountPoint (not fragile parentElement stuff)
+    mountPoint.appendChild(panel);
+    mountPoint.appendChild(results);
 
-    btnBull.addEventListener("click", () => {
-      if (!selectedFile) return;
-      mode = MODE.SET_BULL;
-      resultsBox.textContent = "";
-      setInstruction("Bull: tap the exact bull/aim point center.");
-    });
+    // Save references
+    mounted = { host: mountPoint, wrapper, img, overlay, instruction, panel, results, tapsCounter, btnCal, btnBull, btnAnalyze };
 
-    btnAnalyze.addEventListener("click", () => {
-      resultsBox.textContent = analyze();
-    });
-
-    // Tap handler on wrapper (click + touch)
+    // Tap handler
     const onTap = (e) => {
-      if (!img || img.style.display === "none") return;
+      if (!mounted.img || mounted.img.style.display === "none") return;
 
       const isTouch = e.touches && e.touches[0];
       const clientX = isTouch ? e.touches[0].clientX : e.clientX;
       const clientY = isTouch ? e.touches[0].clientY : e.clientY;
 
-      const rect = img.getBoundingClientRect();
+      const rect = mounted.img.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
+
       if (rect.width <= 0 || rect.height <= 0) return;
 
       const xPx = clamp01(x / rect.width) * rect.width;
@@ -263,17 +304,20 @@
 
       if (mode === MODE.CAL_1IN) {
         calTaps.push({ xPx, yPx });
-        redrawAllDots();
+        redrawDots();
+
+        if (calTaps.length === 1) {
+          setInstruction('Calibration: tap the SECOND point (exactly 1.00" away).');
+          return;
+        }
+
         if (calTaps.length === 2) {
           const dx = calTaps[1].xPx - calTaps[0].xPx;
           const dy = calTaps[1].yPx - calTaps[0].yPx;
           const distPx = Math.hypot(dx, dy);
-          pixelsPerInch = distPx / 1.0;
-
+          pixelsPerInch = distPx; // because distance is exactly 1.00"
           mode = MODE.SHOTS;
           setInstruction(`Calibrated: ${pixelsPerInch.toFixed(2)} px/in. Now tap shots (or Set Bull).`);
-        } else {
-          setInstruction("Calibration: tap the SECOND point (1.00\" away).");
         }
         return;
       }
@@ -281,12 +325,11 @@
       if (mode === MODE.SET_BULL) {
         bull = { xPx, yPx };
         mode = MODE.SHOTS;
-        redrawAllDots();
+        redrawDots();
         setInstruction("Bull set. Tap your shot holes.");
         return;
       }
 
-      // shots mode
       shotTaps.push({ xPx, yPx });
       addDot(xPx, yPx, "shot");
       setTapsCount(shotTaps.length);
@@ -295,13 +338,104 @@
     wrapper.addEventListener("click", onTap);
     wrapper.addEventListener("touchstart", onTap, { passive: true });
 
-    // Re-align dots on resize/orientation change
-    const rerender = () => setTimeout(() => redrawAllDots(), 150);
+    // Buttons
+    btnCal.addEventListener("click", () => {
+      if (!selectedFile) return;
+      mode = MODE.CAL_1IN;
+      calTaps = [];
+      pixelsPerInch = null;
+      results.textContent = "";
+      redrawDots();
+      setInstruction('Calibration: tap TWO points exactly 1.00" apart.');
+    });
+
+    btnBull.addEventListener("click", () => {
+      if (!selectedFile) return;
+      mode = MODE.SET_BULL;
+      results.textContent = "";
+      setInstruction("Bull: tap the exact bull/aim point center.");
+    });
+
+    btnAnalyze.addEventListener("click", () => {
+      results.textContent = analyze();
+    });
+
+    // Resize/orientation: just redraw dots
+    const rerender = () => setTimeout(() => redrawDots(), 150);
     window.addEventListener("resize", rerender);
     window.addEventListener("orientationchange", rerender);
   }
 
-  // ---------- file load ----------
+  // ----------------------------
+  // Analyze math
+  // ----------------------------
+  function centroid(points) {
+    let sx = 0, sy = 0;
+    for (const p of points) { sx += p.xPx; sy += p.yPx; }
+    return { xPx: sx / points.length, yPx: sy / points.length };
+  }
+
+  function analyze() {
+    const distanceEl = findDistanceInput();
+    const yards = Number(distanceEl?.value || 100);
+    const yardsSafe = Number.isFinite(yards) && yards > 0 ? yards : 100;
+
+    if (!selectedFile) return "No photo.\n";
+    if (!pixelsPerInch) return "Missing calibration.\nTap “Calibrate 1 inch”, then tap TWO points 1.00\" apart.\n";
+    if (!bull) return "Missing bull.\nTap “Set Bull”, then tap the bull/aim point center.\n";
+    if (shotTaps.length < 3) return "Need at least 3 shot taps.\n";
+
+    // If >7 taps, keep the 7 closest to initial centroid (simple cluster keep)
+    const initial = centroid(shotTaps);
+    const ranked = shotTaps
+      .map((p) => ({ p, d: Math.hypot(p.xPx - initial.xPx, p.yPx - initial.yPx) }))
+      .sort((a, b) => a.d - b.d);
+    const kept = ranked.slice(0, Math.min(7, ranked.length)).map((x) => x.p);
+
+    const poibPx = centroid(kept);
+
+    // Offsets from bull (in display px)
+    const dxPx = poibPx.xPx - bull.xPx; // + right
+    const dyPx = poibPx.yPx - bull.yPx; // + down
+
+    // Convert px → inches using pixelsPerInch
+    const dxIn = dxPx / pixelsPerInch;
+    const dyIn = dyPx / pixelsPerInch;
+
+    // Inches per MOA at distance
+    const inchesPerMOA = 1.047 * (yardsSafe / 100);
+
+    const windMOA = dxIn / inchesPerMOA;
+    const elevMOA = dyIn / inchesPerMOA;
+
+    const moaPerClick = 0.25;
+    const windClicks = windMOA / moaPerClick;
+    const elevClicks = elevMOA / moaPerClick;
+
+    // Dial opposite of impact offset
+    const windDir = dxIn > 0 ? "LEFT" : dxIn < 0 ? "RIGHT" : "OK";
+    const elevDir = dyIn > 0 ? "UP" : dyIn < 0 ? "DOWN" : "OK";
+
+    const abs = (n) => Math.abs(n);
+
+    return (
+      `Calibration: ${pixelsPerInch.toFixed(2)} px/in\n` +
+      `Distance: ${yardsSafe.toFixed(0)} yd\n` +
+      `Shots used: ${kept.length} (of ${shotTaps.length})\n\n` +
+
+      `POIB offset (inches)\n` +
+      `  Wind: ${dxIn.toFixed(2)} in\n` +
+      `  Elev: ${(-dyIn).toFixed(2)} in\n\n` +
+
+      `Correction (dial)\n` +
+      `  Wind: ${abs(windMOA).toFixed(2)} MOA = ${abs(windClicks).toFixed(2)} clicks → ${windDir}\n` +
+      `  Elev: ${abs(elevMOA).toFixed(2)} MOA = ${abs(elevClicks).toFixed(2)} clicks → ${elevDir}\n`
+    );
+  }
+
+  // ----------------------------
+  // File pick handler
+  // ----------------------------
   async function onFilePicked(e) {
     ensureUI();
 
@@ -310,32 +444,33 @@
 
     selectedFile = file;
 
-    // reset everything
-    calTaps = [];
+    // Reset state on new file
     pixelsPerInch = null;
     bull = null;
+    calTaps = [];
     shotTaps = [];
-    setTapsCount(0);
-    if (resultsBox) resultsBox.textContent = "";
     mode = MODE.SHOTS;
+    setTapsCount(0);
+    if (mounted.results) mounted.results.textContent = "";
 
-    // show image
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
 
-    instruction.textContent = "Loaded. Tap “Calibrate 1 inch” first.";
-    img.src = objectUrl;
-    img.style.display = "block";
-    img.onload = () => {
-      redrawAllDots();
-    };
+    // Show image
+    ensureUI(); // in case a re-render happened while picker was open
+    mounted.img.src = objectUrl;
+    mounted.img.style.display = "block";
+    setInstruction('Loaded. Tap “Calibrate 1 inch” first.');
+
+    mounted.img.onload = () => redrawDots();
   }
 
-  // ---------- clear ----------
-  function hardClear() {
+  function onClear() {
+    const fileInput = findFileInput();
+    if (fileInput) fileInput.value = "";
+
     selectedFile = null;
 
-    if (fileInput) fileInput.value = "";
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
@@ -346,73 +481,54 @@
     calTaps = [];
     shotTaps = [];
     mode = MODE.SHOTS;
-
     setTapsCount(0);
-    if (resultsBox) resultsBox.textContent = "";
 
-    if (img) {
-      img.src = "";
-      img.style.display = "none";
+    if (mounted.results) mounted.results.textContent = "";
+    if (mounted.img) {
+      mounted.img.src = "";
+      mounted.img.style.display = "none";
     }
-    if (instruction) instruction.textContent = "Add a photo to begin.";
+    if (mounted.instruction) mounted.instruction.textContent = "Add a photo to begin.";
     clearOverlay();
   }
 
-  // ---------- math (cluster + POIB + clicks) ----------
-  function analyze() {
-    if (!selectedFile) return "No photo.\n";
-    if (!pixelsPerInch) return "Missing calibration.\nTap “Calibrate 1 inch”, then tap TWO points 1.00\" apart.\n";
-    if (!bull) return "Missing bull.\nTap “Set Bull”, then tap the bull/aim point center.\n";
-    if (shotTaps.length < 3) return "Need at least 3 shot taps.\n";
+  // ----------------------------
+  // Boot
+  // ----------------------------
+  function init() {
+    showBanner();
+    ensureUI();
+    setTapsCount(0);
 
-    // Distance (yards)
-    const yards = Number(distanceInput?.value || 100);
-    const yardsSafe = Number.isFinite(yards) && yards > 0 ? yards : 100;
+    const fi = findFileInput();
+    if (fi) {
+      fi.addEventListener("change", onFilePicked);
+      fi.addEventListener("input", onFilePicked);
+    }
 
-    // Outlier handling: if >7 shots, keep 7 closest to initial centroid
-    const maxShots = 7;
-    const minShots = 3;
+    const cb = findClearButton();
+    if (cb) cb.addEventListener("click", onClear);
+  }
 
-    const initial = centroid(shotTaps);
-    const ranked = shotTaps
-      .map((p) => ({ p, d: Math.hypot(p.xPx - initial.xPx, p.yPx - initial.yPx) }))
-      .sort((a, b) => a.d - b.d);
-
-    const kept = ranked.slice(0, Math.min(maxShots, ranked.length)).map((x) => x.p);
-    if (kept.length < minShots) return "Not enough shots after filtering.\n";
-
-    const poibPx = centroid(kept);
-
-    // Offset from bull in inches (DISPLAY pixels / pixelsPerInch)
-    const dxPx = poibPx.xPx - bull.xPx; // + right
-    const dyPx = poibPx.yPx - bull.yPx; // + down (screen)
-
-    const dxIn = dxPx / pixelsPerInch;
-    const dyIn = dyPx / pixelsPerInch;
-
-    // Convert inches to MOA
-    // 1 MOA = 1.047" at 100 yards => at D yards, 1 MOA = 1.047 * (D/100)
-    const inchesPerMOA = 1.047 * (yardsSafe / 100);
-    const windMOA = dxIn / inchesPerMOA;
-    const elevMOA = dyIn / inchesPerMOA;
-
-    // Click value (default 1/4 MOA)
-    const moaPerClick = 0.25;
-
-    const windClicks = windMOA / moaPerClick;
-    const elevClicks = elevMOA / moaPerClick;
-
-    // Direction truth: dial opposite of impact offset
-    const windDir = dxIn > 0 ? "LEFT" : dxIn < 0 ? "RIGHT" : "OK";
-    const elevDir = dyIn > 0 ? "UP" : dyIn < 0 ? "DOWN" : "OK";
-
-    // Magnitudes (two decimals always)
-    const abs = (n) => Math.abs(n);
-
-    const keptNote = kept.length !== shotTaps.length
-      ? `Filtered: kept ${kept.length} of ${shotTaps.length} (closest cluster)\n`
-      : "";
-
-    return (
-      keptNote +
-      `Calibration: ${pixelsPerInch.toFixed(2)}
+  try {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  } catch (err) {
+    // If anything blows up, show it on screen
+    const pre = document.createElement("pre");
+    pre.textContent = `index.js crash:\n${String(err?.stack || err)}`;
+    pre.style.position = "fixed";
+    pre.style.left = "10px";
+    pre.style.right = "10px";
+    pre.style.top = "10px";
+    pre.style.zIndex = "999999";
+    pre.style.padding = "10px";
+    pre.style.background = "rgba(200,0,0,0.85)";
+    pre.style.color = "white";
+    pre.style.whiteSpace = "pre-wrap";
+    document.addEventListener("DOMContentLoaded", () => document.body.appendChild(pre));
+  }
+})();
