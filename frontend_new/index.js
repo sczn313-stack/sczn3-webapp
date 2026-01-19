@@ -1,5 +1,5 @@
 // frontend_new/index.js (FULL REPLACEMENT)
-// Safari-proof upload: FileReader first, objectURL fallback
+// iPad Safari-safe image loading (objectURL + FileReader fallback)
 // See Results appears only after: bull tap + 2 hole taps (3 total taps)
 
 (() => {
@@ -18,43 +18,33 @@
   const dotsLayer = document.getElementById("dotsLayer");
 
   const vendorLinkEl = document.getElementById("vendorLink");
-  const resultsBox = document.getElementById("resultsBox");
+
+  const resultsCard = document.getElementById("resultsCard");
+  const rDistance = document.getElementById("rDistance");
+  const rTapsUsed = document.getElementById("rTapsUsed");
+  const rWindage = document.getElementById("rWindage");
+  const rElevation = document.getElementById("rElevation");
+  const rScore = document.getElementById("rScore");
+  const rNote = document.getElementById("rNote");
 
   // State
   let hasImage = false;
-  let bullTap = null; // {x,y} normalized
-  let taps = [];      // bullet taps normalized
+  let bullTap = null;         // {x,y} normalized
+  let taps = [];              // bullet taps normalized
 
-  // Multi-touch guard (2-finger pinch should never create taps)
+  // Multi-touch guard
   let activeTouches = 0;
   let multiTouchActive = false;
   let suppressClicksUntil = 0;
 
-  // Require bull + N holes before showing See Results
-  const MIN_HOLES_FOR_RESULTS = 2;
+  // RULE: require bull + N holes before showing See Results
+  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
 
-  // Track object URLs so we can revoke
-  let lastObjectUrl = null;
+  function nowMs(){ return Date.now(); }
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
-  function nowMs() { return Date.now(); }
-  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
-
-  function canShowResults() {
+  function canShowResults(){
     return !!bullTap && taps.length >= MIN_HOLES_FOR_RESULTS;
-  }
-
-  function clearResultsText() {
-    if (!resultsBox) return;
-    resultsBox.textContent = "{}";
-  }
-
-  function setResultsText(obj) {
-    if (!resultsBox) return;
-    try {
-      resultsBox.textContent = JSON.stringify(obj, null, 2);
-    } catch {
-      resultsBox.textContent = "{}";
-    }
   }
 
   function setMicroHint() {
@@ -73,13 +63,13 @@
     btn.type = "button";
     btn.textContent = "See results";
     btn.addEventListener("click", onSeeResults);
-    microSlot.appendChild(btn);
 
+    microSlot.appendChild(btn);
     setMicroVendorCtaIfAny();
   }
 
   function setMicroVendorCtaIfAny() {
-    const link = (vendorLinkEl?.value || "").trim();
+    const link = (vendorLinkEl.value || "").trim();
     if (!link) return;
 
     const a = document.createElement("a");
@@ -88,10 +78,11 @@
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     a.textContent = "Buy more targets like this";
+
     microSlot.appendChild(a);
   }
 
-  function refreshMicroSlot() {
+  function refreshMicroSlot(){
     if (!hasImage) {
       microSlot.innerHTML = "";
       return;
@@ -100,15 +91,15 @@
     else setMicroHint();
   }
 
-  function updateTapCount() {
+  function updateTapCount(){
     tapCountEl.textContent = String(taps.length + (bullTap ? 1 : 0));
   }
 
-  function clearAllDots() {
+  function clearAllDots(){
     dotsLayer.innerHTML = "";
   }
 
-  function placeDot(normX, normY, cls) {
+  function placeDot(normX, normY, cls){
     const rect = targetImg.getBoundingClientRect();
     const imgW = rect.width;
     const imgH = rect.height;
@@ -123,27 +114,27 @@
     dotsLayer.appendChild(dot);
   }
 
-  function rebuildDots() {
+  function rebuildDots(){
     clearAllDots();
     if (!hasImage) return;
     if (bullTap) placeDot(bullTap.x, bullTap.y, "dotBull");
     for (const p of taps) placeDot(p.x, p.y, "dotHole");
   }
 
-  function getNormalizedFromEvent(e) {
+  function getNormalizedFromEvent(e){
     const r = targetImg.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
     const y = (e.clientY - r.top) / r.height;
     return { x: clamp01(x), y: clamp01(y) };
   }
 
-  function setInstruction(extra = "") {
+  function setInstruction(){
     if (!hasImage) {
       instructionLine.textContent = "Add a photo to begin.";
       return;
     }
     if (!bullTap) {
-      instructionLine.textContent = extra ? `Tap bull first. ${extra}` : "Tap bull first.";
+      instructionLine.textContent = "Tap bull first.";
       return;
     }
 
@@ -151,33 +142,138 @@
     if (holesNeeded > 0) {
       instructionLine.textContent =
         holesNeeded === 1
-          ? (extra ? `Tap 1 more bullet hole to see results. ${extra}` : "Tap 1 more bullet hole to see results.")
-          : (extra ? `Tap ${holesNeeded} more bullet holes to see results. ${extra}` : `Tap ${holesNeeded} more bullet holes to see results.`);
+          ? "Tap 1 more bullet hole to see results."
+          : `Tap ${holesNeeded} more bullet holes to see results.`;
       return;
     }
 
-    instructionLine.textContent = extra ? `Ready — tap See results. ${extra}` : "Ready — tap See results.";
+    instructionLine.textContent = "Ready — tap See results.";
   }
 
-  function resetSession() {
+  function resetSession(){
     bullTap = null;
     taps = [];
+    resultsCard.style.display = "none";
     updateTapCount();
-    clearResultsText();
     setInstruction();
     refreshMicroSlot();
     rebuildDots();
   }
 
-  function revokeLastObjectUrl() {
+  // ---------- iPad Safari SAFE image loading ----------
+  let lastObjectUrl = null;
+
+  function cleanupObjectUrl(){
     if (lastObjectUrl) {
-      try { URL.revokeObjectURL(lastObjectUrl); } catch {}
+      try { URL.revokeObjectURL(lastObjectUrl); } catch (_) {}
       lastObjectUrl = null;
     }
   }
 
+  function showLoadDebug(file){
+    const name = file?.name || "unknown";
+    const type = file?.type || "unknown";
+    const size = file?.size ? `${Math.round(file.size/1024)}KB` : "unknown";
+    instructionLine.textContent = `Loading: ${name} (${type}, ${size})…`;
+  }
+
+  function finishImageLoadOk(){
+    hasImage = true;
+    targetWrap.style.display = "block";
+    resetSession();
+    instructionLine.textContent = "Tap bull first.";
+  }
+
+  function failImageLoad(msg){
+    hasImage = false;
+    cleanupObjectUrl();
+    targetImg.removeAttribute("src");
+    targetWrap.style.display = "none";
+    microSlot.innerHTML = "";
+    tapCountEl.textContent = "0";
+    instructionLine.textContent = msg || "Image failed to load.";
+  }
+
+  function loadViaFileReader(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("FileReader failed"));
+      reader.onload = () => {
+        try {
+          targetImg.onload = () => resolve(true);
+          targetImg.onerror = () => reject(new Error("Image decode failed (FileReader)"));
+          targetImg.src = reader.result;
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadViaObjectUrl(file){
+    return new Promise((resolve, reject) => {
+      try {
+        cleanupObjectUrl();
+        const objectUrl = URL.createObjectURL(file);
+        lastObjectUrl = objectUrl;
+
+        let settled = false;
+
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error("ObjectURL load timeout"));
+        }, 4000);
+
+        targetImg.onload = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          // Keep objectUrl alive while image is displayed; we'll revoke on next load.
+          resolve(true);
+        };
+
+        targetImg.onerror = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error("Image decode failed (ObjectURL)"));
+        };
+
+        targetImg.src = objectUrl;
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  async function loadImageFile(file){
+    showLoadDebug(file);
+
+    // Try objectURL first, then FileReader fallback (iPad Safari sometimes fails objectURL)
+    try {
+      await loadViaObjectUrl(file);
+      finishImageLoadOk();
+      return;
+    } catch (_) {
+      // fall through to FileReader
+    }
+
+    try {
+      await loadViaFileReader(file);
+      cleanupObjectUrl();
+      finishImageLoadOk();
+      return;
+    } catch (e) {
+      failImageLoad("Image failed to load. Try a smaller photo or a screenshot.");
+    }
+  }
+  // ---------------------------------------------------
+
   // Upload
   uploadHeroBtn.addEventListener("click", () => {
+    // Reset input so selecting same image twice still fires change on iOS
     photoInput.value = "";
     photoInput.click();
   });
@@ -186,65 +282,20 @@
     const file = photoInput.files && photoInput.files[0];
     if (!file) return;
 
-    const name = file.name || "photo";
-    const type = file.type || "unknown";
-    const kb = Math.round((file.size || 0) / 1024);
-
-    // Don’t hard-block HEIC; iOS may give blank type sometimes.
-    instructionLine.textContent = "Loading photo…";
-
-    // Ensure we don’t keep old URLs around
-    revokeLastObjectUrl();
-
-    // When the image actually loads:
-    targetImg.onload = () => {
-      hasImage = true;
-      targetWrap.style.display = "block";
-      resetSession();
-      // Show debug info in-line (helps instantly diagnose picker/file issues)
-      setInstruction(`Loaded: ${name} • ${type} • ${kb}KB`);
-    };
-
-    targetImg.onerror = () => {
-      hasImage = false;
-      targetWrap.style.display = "none";
-      setInstruction("Image failed to load. Try a screenshot image.");
-    };
-
-    // SAFARI-PROOF: FileReader first
-    try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        // reader.result is a data URL
-        targetImg.src = String(reader.result || "");
-      };
-      reader.onerror = () => {
-        // fallback to objectURL
-        try {
-          lastObjectUrl = URL.createObjectURL(file);
-          targetImg.src = lastObjectUrl;
-        } catch {
-          setInstruction("Could not open this image. Try a screenshot image.");
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      // fallback to objectURL
-      try {
-        lastObjectUrl = URL.createObjectURL(file);
-        targetImg.src = lastObjectUrl;
-      } catch {
-        setInstruction("Could not open this image. Try a screenshot image.");
-      }
+    if (!file.type || !file.type.startsWith("image/")) {
+      instructionLine.textContent = "Please choose an image file.";
+      return;
     }
+
+    loadImageFile(file);
   });
 
   clearTapsBtn.addEventListener("click", () => {
     resetSession();
   });
 
-  // Touch tracking (pinch guard)
-  function handleTouchState(e) {
+  // Touch tracking
+  function handleTouchState(e){
     activeTouches = e.touches ? e.touches.length : 0;
     if (activeTouches >= 2) {
       multiTouchActive = true;
@@ -278,9 +329,9 @@
 
   window.addEventListener("resize", () => rebuildDots());
 
-  async function onSeeResults() {
-    if (!hasImage) { setInstruction("Add a photo first."); return; }
-    if (!bullTap) { setInstruction("Tap bull first."); return; }
+  async function onSeeResults(){
+    if (!hasImage) { instructionLine.textContent = "Add a photo first."; return; }
+    if (!bullTap) { instructionLine.textContent = "Tap bull first."; return; }
     if (taps.length < MIN_HOLES_FOR_RESULTS) { setInstruction(); return; }
 
     const distanceYds = Number(distanceYdsEl.value || 100);
@@ -288,22 +339,35 @@
 
     try {
       const payload = { distanceYds, bullTap, taps };
-
-      // Calls backend via api.js (window.tapscore)
       const out = await window.tapscore(payload);
 
-      setResultsText(out);
+      resultsCard.style.display = "block";
+      rDistance.textContent = `${out.distanceYds} yds`;
+      rTapsUsed.textContent = String(out.tapsCount);
+
+      rWindage.textContent = out.windage && out.windage !== "--" ? out.windage : "—";
+      rElevation.textContent = out.elevation && out.elevation !== "--" ? out.elevation : "—";
+      rScore.textContent = out.score && out.score !== "--" ? out.score : "—";
+
+      // Move POIB to bull (bull - POIB): dx>0 RIGHT, dx<0 LEFT; dy>0 UP, dy<0 DOWN
+      const dx = out.delta && typeof out.delta.x === "number" ? out.delta.x : 0;
+      const dy = out.delta && typeof out.delta.y === "number" ? out.delta.y : 0;
+
+      const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
+      const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
+
+      rNote.textContent = `Move POIB to bull: ${windDir} + ${elevDir}.`;
+
       instructionLine.textContent = "Done.";
       refreshMicroSlot();
-    } catch (err) {
-      setResultsText({ error: "See results failed", detail: String(err && err.message ? err.message : err) });
+    } catch (_) {
       instructionLine.textContent = "Error — try again.";
+      resultsCard.style.display = "none";
     }
   }
 
   // Init
   refreshMicroSlot();
   updateTapCount();
-  clearResultsText();
   setInstruction();
 })();
