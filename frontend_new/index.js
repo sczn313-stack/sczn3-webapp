@@ -1,11 +1,11 @@
 // frontend_new/index.js (FULL REPLACEMENT)
-// - No JSON display
-// - Directions computed locally from taps (truth-locked)
-// - Elevation fixed (screen Y is down; we flip to "Top = Up")
+// Layout version: stats ABOVE CTA, no "Upload" header text.
+// Rules:
 // - See Results appears only after: bull tap + 2 hole taps (3 total taps)
+// - Direction truth lock: RIGHT=RIGHT, LEFT=LEFT, TOP=UP, BOTTOM=DOWN
+//   (Backend already flips Y into dyUp; frontend also computes safely if needed.)
 
 (() => {
-  // Elements
   const uploadHeroBtn = document.getElementById("uploadHeroBtn");
   const photoInput = document.getElementById("photoInput");
   const distanceYdsEl = document.getElementById("distanceYds");
@@ -20,45 +20,79 @@
   const dotsLayer = document.getElementById("dotsLayer");
 
   const vendorLinkEl = document.getElementById("vendorLink");
-
-  // If HTML has <pre id="resultsBox">, we use it as plain-text output.
   const resultsBox = document.getElementById("resultsBox");
 
-  // State
+  const windageReadout = document.getElementById("windageReadout");
+  const elevationReadout = document.getElementById("elevationReadout");
+
   let hasImage = false;
   let bullTap = null; // {x,y} normalized
   let taps = [];      // bullet taps normalized
 
-  // Multi-touch guard (2-finger pinch should never create taps)
   let activeTouches = 0;
   let multiTouchActive = false;
   let suppressClicksUntil = 0;
 
-  // RULE: require bull + N holes before showing See Results
-  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
+  const MIN_HOLES_FOR_RESULTS = 2;
 
-  function nowMs() { return Date.now(); }
-  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+  function nowMs(){ return Date.now(); }
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
-  function canShowResults() {
+  function canShowResults(){
     return !!bullTap && taps.length >= MIN_HOLES_FOR_RESULTS;
   }
 
-  function updateTapCount() {
+  function setWindElev(w, e){
+    windageReadout.textContent = w || "—";
+    elevationReadout.textContent = e || "—";
+  }
+
+  function setMicroHint(){
+    microSlot.innerHTML = "";
+    const pill = document.createElement("div");
+    pill.className = "hintPill";
+    pill.textContent = "Pinch to zoom";
+    microSlot.appendChild(pill);
+  }
+
+  function setMicroSeeResults(){
+    microSlot.innerHTML = "";
+
+    const btn = document.createElement("button");
+    btn.className = "btn btnGreen";
+    btn.type = "button";
+    btn.textContent = "See results";
+    btn.addEventListener("click", onSeeResults);
+    microSlot.appendChild(btn);
+
+    const link = (vendorLinkEl.value || "").trim();
+    if (link) {
+      const a = document.createElement("a");
+      a.className = "vendorCta";
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = "Buy more targets like this";
+      microSlot.appendChild(a);
+    }
+  }
+
+  function refreshMicroSlot(){
+    if (!hasImage) { microSlot.innerHTML = ""; return; }
+    if (canShowResults()) setMicroSeeResults();
+    else setMicroHint();
+  }
+
+  function updateTapCount(){
     tapCountEl.textContent = String(taps.length + (bullTap ? 1 : 0));
   }
 
-  function clearAllDots() {
-    dotsLayer.innerHTML = "";
-  }
+  function clearDots(){ dotsLayer.innerHTML = ""; }
 
-  function placeDot(normX, normY, cls) {
+  function placeDot(normX, normY, cls){
     const rect = targetImg.getBoundingClientRect();
-    const imgW = rect.width;
-    const imgH = rect.height;
-
-    const xPx = normX * imgW;
-    const yPx = normY * imgH;
+    const xPx = normX * rect.width;
+    const yPx = normY * rect.height;
 
     const dot = document.createElement("div");
     dot.className = `dot ${cls}`;
@@ -67,29 +101,23 @@
     dotsLayer.appendChild(dot);
   }
 
-  function rebuildDots() {
-    clearAllDots();
+  function rebuildDots(){
+    clearDots();
     if (!hasImage) return;
     if (bullTap) placeDot(bullTap.x, bullTap.y, "dotBull");
     for (const p of taps) placeDot(p.x, p.y, "dotHole");
   }
 
-  function getNormalizedFromEvent(e) {
+  function getNormalizedFromEvent(e){
     const r = targetImg.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
     const y = (e.clientY - r.top) / r.height;
     return { x: clamp01(x), y: clamp01(y) };
   }
 
-  function setInstruction() {
-    if (!hasImage) {
-      instructionLine.textContent = "Add a photo to begin.";
-      return;
-    }
-    if (!bullTap) {
-      instructionLine.textContent = "Tap bull first.";
-      return;
-    }
+  function setInstruction(){
+    if (!hasImage) { instructionLine.textContent = "Add a photo to begin."; return; }
+    if (!bullTap) { instructionLine.textContent = "Tap bullseye or aim point first."; return; }
 
     const holesNeeded = Math.max(0, MIN_HOLES_FOR_RESULTS - taps.length);
     if (holesNeeded > 0) {
@@ -99,96 +127,21 @@
           : `Tap ${holesNeeded} more bullet holes to see results.`;
       return;
     }
-
     instructionLine.textContent = "Ready — tap See results.";
   }
 
-  // Micro-slot UI
-  function setMicroHint() {
-    microSlot.innerHTML = "";
-    const pill = document.createElement("div");
-    pill.className = "hintPill";
-    pill.textContent = "Pinch to zoom";
-    microSlot.appendChild(pill);
-  }
-
-  function setMicroVendorCtaIfAny() {
-    const link = (vendorLinkEl.value || "").trim();
-    if (!link) return;
-
-    const a = document.createElement("a");
-    a.className = "vendorCta";
-    a.href = link;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = "Buy more targets like this";
-
-    microSlot.appendChild(a);
-  }
-
-  function setMicroSeeResults() {
-    microSlot.innerHTML = "";
-
-    const btn = document.createElement("button");
-    btn.className = "btn btnGreen";
-    btn.type = "button";
-    btn.textContent = "See results";
-    btn.addEventListener("click", onSeeResults);
-
-    microSlot.appendChild(btn);
-    setMicroVendorCtaIfAny();
-  }
-
-  function refreshMicroSlot() {
-    if (!hasImage) {
-      microSlot.innerHTML = "";
-      return;
-    }
-    if (canShowResults()) setMicroSeeResults();
-    else setMicroHint();
-  }
-
-  // Results formatting (no JSON)
-  function fmt2(n) {
-    if (typeof n !== "number" || !Number.isFinite(n)) return "0.00";
-    return n.toFixed(2);
-  }
-
-  function arrowFor(dir) {
-    if (dir === "LEFT") return "←";
-    if (dir === "RIGHT") return "→";
-    if (dir === "UP") return "↑";
-    if (dir === "DOWN") return "↓";
-    return "•";
-  }
-
-  function setResultsText(lines) {
-    if (!resultsBox) return;
-    resultsBox.textContent = lines.join("\n");
-  }
-
-  function clearResultsText() {
-    if (!resultsBox) return;
-    resultsBox.textContent = "";
-  }
-
-  // Truth-locked POIB from taps (client-side)
-  function computePoib(points) {
-    const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
-    return { x: sum.x / points.length, y: sum.y / points.length };
-  }
-
-  function resetSession() {
+  function resetSession(){
     bullTap = null;
     taps = [];
+    resultsBox.textContent = "{}";
+    setWindElev("—", "—");
     updateTapCount();
     setInstruction();
     refreshMicroSlot();
     rebuildDots();
-    clearResultsText();
   }
 
-  // Upload (Safari-safe)
+  // Upload
   uploadHeroBtn.addEventListener("click", () => {
     photoInput.value = "";
     photoInput.click();
@@ -197,37 +150,28 @@
   photoInput.addEventListener("change", () => {
     const file = photoInput.files && photoInput.files[0];
     if (!file) return;
-
     if (!file.type || !file.type.startsWith("image/")) {
       instructionLine.textContent = "Please choose an image file.";
       return;
     }
 
     const objectUrl = URL.createObjectURL(file);
-
     targetImg.onload = () => {
       URL.revokeObjectURL(objectUrl);
       hasImage = true;
       targetWrap.style.display = "block";
       resetSession();
     };
-
     targetImg.src = objectUrl;
   });
 
-  clearTapsBtn.addEventListener("click", () => {
-    resetSession();
-  });
+  clearTapsBtn.addEventListener("click", () => resetSession());
 
-  // Touch tracking (pinch guard)
-  function handleTouchState(e) {
+  function handleTouchState(e){
     activeTouches = e.touches ? e.touches.length : 0;
-    if (activeTouches >= 2) {
-      multiTouchActive = true;
-    } else if (activeTouches === 0) {
-      if (multiTouchActive) {
-        suppressClicksUntil = nowMs() + 250;
-      }
+    if (activeTouches >= 2) multiTouchActive = true;
+    else if (activeTouches === 0) {
+      if (multiTouchActive) suppressClicksUntil = nowMs() + 250;
       multiTouchActive = false;
     }
   }
@@ -237,7 +181,6 @@
   targetCanvas.addEventListener("touchend", handleTouchState, { passive: true });
   targetCanvas.addEventListener("touchcancel", handleTouchState, { passive: true });
 
-  // Tap handler
   targetCanvas.addEventListener("click", (e) => {
     if (!hasImage) return;
     if (multiTouchActive) return;
@@ -256,71 +199,78 @@
 
   window.addEventListener("resize", () => rebuildDots());
 
-  async function onSeeResults() {
-    if (!hasImage) {
-      instructionLine.textContent = "Add a photo first.";
-      return;
-    }
-    if (!bullTap) {
-      instructionLine.textContent = "Tap bull first.";
-      return;
-    }
-    if (taps.length < MIN_HOLES_FOR_RESULTS) {
-      setInstruction();
-      return;
-    }
+  function dirFromDx(dx){
+    if (dx > 0) return "RIGHT";
+    if (dx < 0) return "LEFT";
+    return "CENTER";
+  }
+
+  // dyUp convention: + = UP, - = DOWN
+  function dirFromDyUp(dyUp){
+    if (dyUp > 0) return "UP";
+    if (dyUp < 0) return "DOWN";
+    return "CENTER";
+  }
+
+  async function onSeeResults(){
+    if (!hasImage) { instructionLine.textContent = "Add a photo first."; return; }
+    if (!bullTap) { instructionLine.textContent = "Tap bullseye first."; return; }
+    if (taps.length < MIN_HOLES_FOR_RESULTS) { setInstruction(); return; }
 
     const distanceYds = Number(distanceYdsEl.value || 100);
     instructionLine.textContent = "Computing…";
 
-    // ✅ TRUTH SOURCE: compute POIB + direction from the taps you just made
-    const poib = computePoib(taps);
-
-    // dx (right positive) is normal
-    const dx = bullTap.x - poib.x;
-
-    // dy MUST BE FLIPPED because screen Y increases downward.
-    // We want "Top = Up" meaning UP is positive.
-    // screenDy = bullY - poibY (positive when bull is lower)
-    // upDy     = -screenDy
-    const screenDy = bullTap.y - poib.y;
-    const dy = -screenDy;
-
-    const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
-    const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
-
-    // Optional: still call backend for pipeline/health
     try {
       const payload = { distanceYds, bullTap, taps };
-      // If backend is down, we still show truth-based directions.
-      if (window.tapscore) await window.tapscore(payload).catch(() => {});
-    } catch (_) {}
+      const out = await window.tapscore(payload);
 
-    const lines = [];
-    lines.push(`Distance: ${distanceYds} yds`);
-    lines.push(`Taps used: ${taps.length}`);
+      // Prefer backend truth (already Y-flipped)
+      let dx = 0;
+      let dyUp = 0;
 
-    if (windDir === "CENTER") lines.push(`Windage: • CENTER`);
-    else lines.push(`Windage: ${arrowFor(windDir)} DIAL ${windDir}`);
+      if (out && out.delta && typeof out.delta.dx === "number") dx = out.delta.dx;
+      if (out && out.delta && typeof out.delta.dyUp === "number") dyUp = out.delta.dyUp;
 
-    if (elevDir === "CENTER") lines.push(`Elevation: • CENTER`);
-    else lines.push(`Elevation: ${arrowFor(elevDir)} DIAL ${elevDir}`);
+      // Fallback if backend ever changes:
+      if (!out || !out.delta) {
+        // POIB average
+        const sum = taps.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x:0, y:0 });
+        const poib = { x: sum.x / taps.length, y: sum.y / taps.length };
+        dx = bullTap.x - poib.x;
 
-    lines.push("");
-    lines.push("Corrections move POI to bull.");
+        // screenDy = bullY - poibY (down positive), dyUp flips it
+        dyUp = -(bullTap.y - poib.y);
+      }
 
-    // (Optional) tiny debug-free numbers to prevent “CENTER lies” without showing JSON
-    // lines.push(`(dx=${fmt2(dx)}, dy=${fmt2(dy)})`);
+      const windDir = dirFromDx(dx);
+      const elevDir = dirFromDyUp(dyUp);
 
-    setResultsText(lines);
+      // Show dial directions (move POIB to bull)
+      setWindElev(
+        windDir === "CENTER" ? "CENTER" : `DIAL ${windDir}`,
+        elevDir === "CENTER" ? "CENTER" : `DIAL ${elevDir}`
+      );
 
-    instructionLine.textContent = "Done.";
-    refreshMicroSlot();
+      // Results box (simple, readable)
+      const lines = [];
+      lines.push(`Distance: ${distanceYds} yds`);
+      lines.push(`Taps used: ${taps.length}`);
+      lines.push(`Windage: ${windDir === "CENTER" ? "• CENTER" : (windDir === "LEFT" ? "← DIAL LEFT" : "→ DIAL RIGHT")}`);
+      lines.push(`Elevation: ${elevDir === "CENTER" ? "• CENTER" : (elevDir === "DOWN" ? "↓ DIAL DOWN" : "↑ DIAL UP")}`);
+      lines.push("");
+      lines.push("Corrections move POI to bull.");
+      resultsBox.textContent = lines.join("\n");
+
+      instructionLine.textContent = "Done.";
+      refreshMicroSlot();
+    } catch (err) {
+      instructionLine.textContent = "Error — try again.";
+    }
   }
 
   // Init
   refreshMicroSlot();
   updateTapCount();
   setInstruction();
-  clearResultsText();
+  setWindElev("—", "—");
 })();
