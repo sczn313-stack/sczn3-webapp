@@ -1,18 +1,19 @@
 /* ============================================================================
-  Tap-N-Score — iOS Safari file picker "doesn't stick" debug-hardened index.js
-  This version proves whether THIS index.js is running by showing a banner
-  and prints file diagnostics on screen immediately when a file is selected.
+  Tap-N-Score — iOS Safari file picker "filename shows but file not loaded" FIX
+  FULL replacement index.js
 
-  If you DO NOT see the red "INDEX.JS LOADED" banner:
-    - You're not loading this file (wrong path/build), OR caching/service worker.
+  What this does:
+  - Proves this file is running (red banner)
+  - Adds a debug panel
+  - Fixes iOS timing bug by retry-reading input.files after the picker closes
 ============================================================================ */
 
 (() => {
   // ----------------------------
-  // PROOF BANNER (if you don't see this, your JS isn't running)
+  // PROOF BANNER
   // ----------------------------
   const banner = document.createElement("div");
-  banner.textContent = "INDEX.JS LOADED (Tap-N-Score) — vDEBUG-1";
+  banner.textContent = "INDEX.JS LOADED (Tap-N-Score) — vDEBUG-2 (iOS retry fix)";
   banner.style.position = "fixed";
   banner.style.left = "10px";
   banner.style.right = "10px";
@@ -28,7 +29,7 @@
   document.addEventListener("DOMContentLoaded", () => document.body.appendChild(banner));
 
   // ----------------------------
-  // Find elements WITHOUT relying on IDs
+  // Helpers
   // ----------------------------
   function qs(sel, root = document) {
     return root.querySelector(sel);
@@ -37,26 +38,13 @@
     return Array.from(root.querySelectorAll(sel));
   }
 
-  // File input: first <input type="file">
   const fileInput = qs('input[type="file"]');
-
-  // Distance input: best effort
-  const distanceInput =
-    qs('input#distance') ||
-    qsa("input").find((i) => (i.placeholder || "").toLowerCase().includes("distance")) ||
-    qsa("input").find((i) => (i.value || "").match(/^\d+$/) && (i.previousElementSibling?.textContent || "").toLowerCase().includes("distance"));
-
-  // Status line: element that contains "Add a photo to begin."
   const statusEl = qsa("div, p, span, h1, h2, h3, h4, h5, h6")
     .find((el) => (el.textContent || "").trim() === "Add a photo to begin.");
-
-  // Taps counter: element containing "Taps:"
+  const clearBtn = qsa("button").find((b) => (b.textContent || "").trim().toLowerCase() === "clear");
   const tapsLineEl = qsa("div, p, span").find((el) => (el.textContent || "").includes("Taps:"));
 
-  // Clear button: button with text "Clear"
-  const clearBtn = qsa("button").find((b) => (b.textContent || "").trim().toLowerCase() === "clear");
-
-  // Create our own preview + debug area (does not depend on your HTML)
+  // Debug UI (we inject it)
   const debugWrap = document.createElement("div");
   debugWrap.style.marginTop = "14px";
   debugWrap.style.padding = "12px";
@@ -85,7 +73,6 @@
   function setDebug(msg) {
     debugText.textContent = msg;
   }
-
   function setStatus(msg) {
     if (statusEl) statusEl.textContent = msg;
   }
@@ -93,13 +80,9 @@
   let selectedFile = null;
   let objectUrl = null;
 
-  // Attach debug UI under the upload area:
-  // Try: place it after file input, else append to body.
   function mountDebugUI() {
     if (fileInput && fileInput.parentElement) {
-      // put after file input block
-      const parent = fileInput.parentElement;
-      parent.appendChild(debugWrap);
+      fileInput.parentElement.appendChild(debugWrap);
       return;
     }
     document.body.appendChild(debugWrap);
@@ -115,21 +98,38 @@
     previewImg.style.display = "none";
   }
 
-  function handleFileEvent(e, eventName) {
-    const file = e?.target?.files?.[0] || null;
+  // ----------------------------
+  // KEY FIX: iOS retry-read of input.files
+  // ----------------------------
+  async function getFileWithRetry(inputEl, delaysMs) {
+    for (const d of delaysMs) {
+      if (d > 0) await new Promise((r) => setTimeout(r, d));
+      const f = inputEl?.files?.[0] || null;
+      if (f) return f;
+    }
+    return null;
+  }
 
-    // Print event diagnostics
+  async function handleFileEvent(e, eventName) {
+    // IMPORTANT: don't trust file availability immediately on iOS
+    const inputEl = e?.target;
+
     let msg = `FILE EVENT: ${eventName}\n`;
     msg += `input exists: ${!!fileInput}\n`;
     msg += `statusEl found: ${!!statusEl}\n`;
-    msg += `files length: ${e?.target?.files?.length ?? "n/a"}\n`;
+    msg += `initial files length: ${inputEl?.files?.length ?? "n/a"}\n`;
+
+    // retry schedule tuned for iOS Safari timing weirdness
+    const file = await getFileWithRetry(inputEl, [0, 50, 250, 800]);
+
+    msg += `after retry files length: ${inputEl?.files?.length ?? "n/a"}\n`;
 
     if (!file) {
-      msg += `\nRESULT: NO FILE OBJECT RECEIVED.\n`;
-      msg += `This usually means:\n`;
-      msg += `- iOS picker glitch, OR\n`;
-      msg += `- input was replaced/re-rendered, OR\n`;
-      msg += `- change event never fired on the real input.\n`;
+      msg += `\nRESULT: NO FILE OBJECT AFTER RETRIES ❌\n`;
+      msg += `Likely causes:\n`;
+      msg += `- iOS picker returned but did not commit selection\n`;
+      msg += `- another script replaced the <input type="file"> after selection\n`;
+      msg += `- page navigated/re-rendered immediately after picker close\n`;
       setDebug(msg);
       setStatus("No photo loaded. Tap Choose File again.");
       clearPreview();
@@ -147,7 +147,7 @@
     setDebug(msg);
     setStatus(`Loaded: ${file.name}`);
 
-    // Preview via object URL (fast / iOS-safe)
+    // Preview (object URL)
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
     previewImg.src = objectUrl;
@@ -157,7 +157,6 @@
   function init() {
     mountDebugUI();
 
-    // Initial debug
     setDebug(
       `INIT\n` +
       `fileInput found: ${!!fileInput}\n` +
@@ -171,14 +170,17 @@
       return;
     }
 
-    // IMPORTANT: listen to BOTH change and input for iOS weirdness
+    // extra: show when picker is opened
+    fileInput.addEventListener("click", () => {
+      setDebug((debugText.textContent || "") + "\nPICKER OPENED (click)\n");
+    });
+
+    // Listen tell iOS every possible way
     fileInput.addEventListener("change", (e) => handleFileEvent(e, "change"));
     fileInput.addEventListener("input", (e) => handleFileEvent(e, "input"));
 
-    // Clear
     if (clearBtn) {
       clearBtn.addEventListener("click", () => {
-        // If you clear file input value, user can re-select same photo
         fileInput.value = "";
         clearPreview();
         setStatus("Add a photo to begin.");
