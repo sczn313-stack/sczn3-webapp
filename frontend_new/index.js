@@ -1,105 +1,42 @@
 /* ============================================================================
-  Tap-N-Score — iOS Safari file picker "filename shows but file not loaded" FIX
-  FULL replacement index.js
+  Tap-N-Score — Working index.js (iOS-safe photo load + tap capture + dots)
+  FULL replacement for frontend_new/index.js
 
-  What this does:
-  - Proves this file is running (red banner)
-  - Adds a debug panel
-  - Fixes iOS timing bug by retry-reading input.files after the picker closes
+  Assumptions based on your UI:
+  - There is exactly one <input type="file"> ("Choose File")
+  - There is a "Taps: 0" line somewhere
+  - There is a Clear button
+  - There is a pill area that says "Add a photo to begin."
 ============================================================================ */
 
 (() => {
   // ----------------------------
-  // PROOF BANNER
-  // ----------------------------
-  const banner = document.createElement("div");
-  banner.textContent = "INDEX.JS LOADED (Tap-N-Score) — vDEBUG-2 (iOS retry fix)";
-  banner.style.position = "fixed";
-  banner.style.left = "10px";
-  banner.style.right = "10px";
-  banner.style.bottom = "10px";
-  banner.style.zIndex = "999999";
-  banner.style.padding = "10px 12px";
-  banner.style.borderRadius = "10px";
-  banner.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
-  banner.style.fontSize = "14px";
-  banner.style.background = "rgba(200,0,0,0.85)";
-  banner.style.color = "white";
-  banner.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
-  document.addEventListener("DOMContentLoaded", () => document.body.appendChild(banner));
-
-  // ----------------------------
   // Helpers
   // ----------------------------
-  function qs(sel, root = document) {
-    return root.querySelector(sel);
-  }
-  function qsa(sel, root = document) {
-    return Array.from(root.querySelectorAll(sel));
-  }
+  const qs = (sel, root = document) => root.querySelector(sel);
+  const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  // Core UI elements (best-effort selectors)
   const fileInput = qs('input[type="file"]');
-  const statusEl = qsa("div, p, span, h1, h2, h3, h4, h5, h6")
-    .find((el) => (el.textContent || "").trim() === "Add a photo to begin.");
   const clearBtn = qsa("button").find((b) => (b.textContent || "").trim().toLowerCase() === "clear");
-  const tapsLineEl = qsa("div, p, span").find((el) => (el.textContent || "").includes("Taps:"));
 
-  // Debug UI (we inject it)
-  const debugWrap = document.createElement("div");
-  debugWrap.style.marginTop = "14px";
-  debugWrap.style.padding = "12px";
-  debugWrap.style.borderRadius = "12px";
-  debugWrap.style.background = "rgba(255,255,255,0.06)";
-  debugWrap.style.border = "1px solid rgba(255,255,255,0.10)";
-  debugWrap.style.backdropFilter = "blur(4px)";
+  // The big pill that says "Add a photo to begin."
+  const statusEl = qsa("div, p, span")
+    .find((el) => (el.textContent || "").trim() === "Add a photo to begin.");
 
-  const debugText = document.createElement("div");
-  debugText.style.whiteSpace = "pre-wrap";
-  debugText.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-  debugText.style.fontSize = "12px";
-  debugText.style.opacity = "0.95";
-  debugText.style.color = "white";
-
-  const previewImg = document.createElement("img");
-  previewImg.style.display = "none";
-  previewImg.style.maxWidth = "100%";
-  previewImg.style.borderRadius = "12px";
-  previewImg.style.marginTop = "10px";
-  previewImg.alt = "Selected preview";
-
-  debugWrap.appendChild(debugText);
-  debugWrap.appendChild(previewImg);
-
-  function setDebug(msg) {
-    debugText.textContent = msg;
-  }
-  function setStatus(msg) {
-    if (statusEl) statusEl.textContent = msg;
-  }
-
-  let selectedFile = null;
-  let objectUrl = null;
-
-  function mountDebugUI() {
-    if (fileInput && fileInput.parentElement) {
-      fileInput.parentElement.appendChild(debugWrap);
-      return;
-    }
-    document.body.appendChild(debugWrap);
-  }
-
-  function clearPreview() {
-    selectedFile = null;
-    if (objectUrl) {
-      URL.revokeObjectURL(objectUrl);
-      objectUrl = null;
-    }
-    previewImg.src = "";
-    previewImg.style.display = "none";
-  }
+  // The line that contains "Taps:"
+  const tapsLineEl = qsa("div, p, span")
+    .find((el) => (el.textContent || "").includes("Taps:"));
 
   // ----------------------------
-  // KEY FIX: iOS retry-read of input.files
+  // State
+  // ----------------------------
+  let selectedFile = null;
+  let objectUrl = null;
+  let taps = []; // { nx, ny } normalized 0..1
+
+  // ----------------------------
+  // iOS-safe file read (retry timing)
   // ----------------------------
   async function getFileWithRetry(inputEl, delaysMs) {
     for (const d of delaysMs) {
@@ -110,83 +47,238 @@
     return null;
   }
 
-  async function handleFileEvent(e, eventName) {
-    // IMPORTANT: don't trust file availability immediately on iOS
+  // ----------------------------
+  // Tap UI (we create our own wrapper inside the status pill area)
+  // ----------------------------
+  let wrapper = null;     // positioned container
+  let img = null;         // preview image
+  let dotsLayer = null;   // absolute overlay for dots
+
+  function ensurePhotoUI() {
+    if (!statusEl) return;
+
+    // If already built, do nothing
+    if (wrapper && img && dotsLayer) return;
+
+    // Convert the "Add a photo..." pill into a photo/tap area
+    statusEl.textContent = "";
+    statusEl.style.position = "relative";
+    statusEl.style.overflow = "hidden";
+
+    wrapper = document.createElement("div");
+    wrapper.style.position = "relative";
+    wrapper.style.width = "100%";
+    wrapper.style.minHeight = "220px"; // gives you a tappable area
+    wrapper.style.borderRadius = "16px";
+
+    img = document.createElement("img");
+    img.alt = "Target preview";
+    img.style.display = "none";
+    img.style.width = "100%";
+    img.style.height = "auto";
+    img.style.borderRadius = "16px";
+    img.style.userSelect = "none";
+    img.style.webkitUserSelect = "none";
+    img.style.touchAction = "manipulation"; // improves iOS tap feel
+
+    dotsLayer = document.createElement("div");
+    dotsLayer.style.position = "absolute";
+    dotsLayer.style.left = "0";
+    dotsLayer.style.top = "0";
+    dotsLayer.style.right = "0";
+    dotsLayer.style.bottom = "0";
+    dotsLayer.style.pointerEvents = "none";
+
+    // Placeholder text when no image
+    const placeholder = document.createElement("div");
+    placeholder.id = "tns_placeholder";
+    placeholder.textContent = "Add a photo to begin.";
+    placeholder.style.opacity = "0.85";
+    placeholder.style.fontSize = "22px";
+    placeholder.style.padding = "18px";
+
+    wrapper.appendChild(placeholder);
+    wrapper.appendChild(img);
+    wrapper.appendChild(dotsLayer);
+    statusEl.appendChild(wrapper);
+
+    // Tap handlers (click + touch)
+    const onTap = (e) => {
+      if (!img || img.style.display === "none") return;
+
+      const isTouch = e.touches && e.touches[0];
+      const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+      const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+
+      const rect = img.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const nx = x / rect.width;
+      const ny = y / rect.height;
+
+      // Clamp
+      const cnx = Math.max(0, Math.min(1, nx));
+      const cny = Math.max(0, Math.min(1, ny));
+
+      taps.push({ nx: cnx, ny: cny });
+      renderDots();
+      updateTapsUI();
+    };
+
+    // Attach to wrapper so user can tap anywhere on the image area
+    wrapper.addEventListener("click", onTap);
+    wrapper.addEventListener("touchstart", onTap, { passive: true });
+  }
+
+  function setPlaceholderVisible(isVisible) {
+    if (!wrapper) return;
+    const ph = qs("#tns_placeholder", wrapper);
+    if (ph) ph.style.display = isVisible ? "block" : "none";
+  }
+
+  function renderDots() {
+    if (!dotsLayer || !img) return;
+    dotsLayer.innerHTML = "";
+
+    // Use current rendered image size for dot placement
+    const rect = img.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
+    taps.forEach((t) => {
+      const dot = document.createElement("div");
+      dot.style.position = "absolute";
+      dot.style.left = `${t.nx * w - 6}px`;
+      dot.style.top = `${t.ny * h - 6}px`;
+      dot.style.width = "12px";
+      dot.style.height = "12px";
+      dot.style.borderRadius = "999px";
+      dot.style.background = "rgba(255,255,255,0.95)";
+      dot.style.border = "2px solid rgba(0,0,0,0.65)";
+      dot.style.boxShadowxShadow = "0 2px 10px rgba(0,0,0,0.25)";
+      dotsLayer.appendChild(dot);
+    });
+  }
+
+  function updateTapsUI() {
+    if (tapsLineEl) {
+      // Preserve anything after Taps: if present (rare); otherwise set cleanly
+      tapsLineEl.textContent = `Taps: ${taps.length}`;
+    }
+  }
+
+  // Re-render dots on resize/orientation change so dot positions stay aligned
+  function attachResizeRerender() {
+    window.addEventListener("resize", () => {
+      if (taps.length) renderDots();
+    });
+    window.addEventListener("orientationchange", () => {
+      setTimeout(() => {
+        if (taps.length) renderDots();
+      }, 200);
+    });
+  }
+
+  // ----------------------------
+  // File load
+  // ----------------------------
+  async function onFilePicked(e) {
+    ensurePhotoUI();
+
     const inputEl = e?.target;
-
-    let msg = `FILE EVENT: ${eventName}\n`;
-    msg += `input exists: ${!!fileInput}\n`;
-    msg += `statusEl found: ${!!statusEl}\n`;
-    msg += `initial files length: ${inputEl?.files?.length ?? "n/a"}\n`;
-
-    // retry schedule tuned for iOS Safari timing weirdness
     const file = await getFileWithRetry(inputEl, [0, 50, 250, 800]);
 
-    msg += `after retry files length: ${inputEl?.files?.length ?? "n/a"}\n`;
-
     if (!file) {
-      msg += `\nRESULT: NO FILE OBJECT AFTER RETRIES ❌\n`;
-      msg += `Likely causes:\n`;
-      msg += `- iOS picker returned but did not commit selection\n`;
-      msg += `- another script replaced the <input type="file"> after selection\n`;
-      msg += `- page navigated/re-rendered immediately after picker close\n`;
-      setDebug(msg);
-      setStatus("No photo loaded. Tap Choose File again.");
-      clearPreview();
+      // keep placeholder
+      selectedFile = null;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+      }
+      if (img) {
+        img.src = "";
+        img.style.display = "none";
+      }
+      setPlaceholderVisible(true);
       return;
     }
 
     selectedFile = file;
 
-    msg += `\nRESULT: FILE RECEIVED ✅\n`;
-    msg += `name: ${file.name}\n`;
-    msg += `type: ${file.type}\n`;
-    msg += `size: ${file.size} bytes\n`;
-    msg += `lastModified: ${file.lastModified}\n`;
+    // Reset taps when a new image is chosen
+    taps = [];
+    updateTapsUI();
+    if (dotsLayer) dotsLayer.innerHTML = "";
 
-    setDebug(msg);
-    setStatus(`Loaded: ${file.name}`);
-
-    // Preview (object URL)
+    // Show image
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(file);
-    previewImg.src = objectUrl;
-    previewImg.style.display = "block";
+
+    setPlaceholderVisible(false);
+
+    if (img) {
+      img.src = objectUrl;
+      img.style.display = "block";
+
+      // Wait for layout before drawing dots (none initially, but keeps things stable)
+      img.onload = () => {
+        renderDots();
+      };
+    }
   }
 
-  function init() {
-    mountDebugUI();
+  // ----------------------------
+  // Clear
+  // ----------------------------
+  function onClear() {
+    taps = [];
+    updateTapsUI();
 
-    setDebug(
-      `INIT\n` +
-      `fileInput found: ${!!fileInput}\n` +
-      `statusEl found: ${!!statusEl}\n` +
-      `clearBtn found: ${!!clearBtn}\n` +
-      `tapsLine found: ${!!tapsLineEl}\n`
-    );
+    if (dotsLayer) dotsLayer.innerHTML = "";
+
+    if (fileInput) fileInput.value = ""; // allow re-select same photo
+
+    selectedFile = null;
+
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    }
+
+    if (img) {
+      img.src = "";
+      img.style.display = "none";
+    }
+
+    if (statusEl) {
+      // restore placeholder if UI exists
+      ensurePhotoUI();
+      setPlaceholderVisible(true);
+    }
+  }
+
+  // ----------------------------
+  // Boot
+  // ----------------------------
+  function init() {
+    // Always build the photo UI so the tap area exists
+    ensurePhotoUI();
+    updateTapsUI();
+    attachResizeRerender();
 
     if (!fileInput) {
-      setStatus("ERROR: No file input found on page.");
+      console.warn("Tap-N-Score: no <input type='file'> found.");
       return;
     }
 
-    // extra: show when picker is opened
-    fileInput.addEventListener("click", () => {
-      setDebug((debugText.textContent || "") + "\nPICKER OPENED (click)\n");
-    });
+    // iOS-safe: listen to both events
+    fileInput.addEventListener("change", onFilePicked);
+    fileInput.addEventListener("input", onFilePicked);
 
-    // Listen tell iOS every possible way
-    fileInput.addEventListener("change", (e) => handleFileEvent(e, "change"));
-    fileInput.addEventListener("input", (e) => handleFileEvent(e, "input"));
-
-    if (clearBtn) {
-      clearBtn.addEventListener("click", () => {
-        fileInput.value = "";
-        clearPreview();
-        setStatus("Add a photo to begin.");
-        setDebug("CLEARED\n");
-      });
-    }
+    if (clearBtn) clearBtn.addEventListener("click", onClear);
   }
 
   if (document.readyState === "loading") {
