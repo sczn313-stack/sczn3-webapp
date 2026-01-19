@@ -1,26 +1,13 @@
-<!-- frontend_new/index.html (FULL REPLACEMENT) -->
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="theme-color" content="#000000" />
-  <title>Tap-n-Score™</title>
-
-  <link rel="stylesheet" href="./styles.css?v=20260118_fix1" />
-</head>
 <body>
   <div class="page">
+    <!-- BRAND ONLY (no extra upload text under it) -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <div class="h1">Upload</div>
-
-    <!-- HERO upload button -->
+    <!-- HERO upload button (single entry point) -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -28,10 +15,11 @@
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" and DO NOT display:none via CSS -->
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <div class="controlsRow mt14">
+    <!-- CONTROLS ROW (moved ABOVE CTA slot) -->
+    <div class="controlsRow mt14" id="controlsRow">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
@@ -44,10 +32,8 @@
       </div>
     </div>
 
-    <!-- Micro-slot: hint -> see results -> vendor CTA (same spot) -->
-    <div id="microSlot" class="microSlot"></div>
-
-    <div class="card mt14">
+    <!-- TARGET CARD (moved UP into frame; instruction line stays inside) -->
+    <div class="card mt14" id="targetCard">
       <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
@@ -58,49 +44,24 @@
       </div>
     </div>
 
-    <div class="card mt14">
+    <!-- MICRO-SLOT (now BELOW target; pops “See results” + vendor CTA here) -->
+    <div id="microSlot" class="microSlot"></div>
+
+    <!-- Vendor link (optional) -->
+    <div class="card mt14" id="vendorCard">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <div class="card mt14" id="resultsCard" style="display:none;">
+    <!-- Results -->
+    <div class="card mt14" id="resultsCard">
       <div class="subtle strong mb8">Results</div>
-
-      <!-- NO JSON. Shooter-readable output only -->
-      <div class="resultsGrid">
-        <div class="resultRow">
-          <div class="resultLabel">Distance</div>
-          <div class="resultValue" id="rDistance">—</div>
-        </div>
-        <div class="resultRow">
-          <div class="resultLabel">Taps used</div>
-          <div class="resultValue" id="rTapsUsed">—</div>
-        </div>
-        <div class="resultRow">
-          <div class="resultLabel">Windage</div>
-          <div class="resultValue" id="rWindage">—</div>
-        </div>
-        <div class="resultRow">
-          <div class="resultLabel">Elevation</div>
-          <div class="resultValue" id="rElevation">—</div>
-        </div>
-        <div class="resultRow">
-          <div class="resultLabel">Score</div>
-          <div class="resultValue" id="rScore">—</div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="resultNote" id="rNote">
-          (Clicks/inches coming next. This is the clean direction + verification step.)
-        </div>
-      </div>
+      <pre id="resultsBox" class="mono">{}</pre>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=20260118_fix1"></script>
-  <script src="./index.js?v=20260118_fix1"></script>
+  <script src="./api.js?v=20260118a"></script>
+  <script src="./index.js?v=20260118a"></script>
 </body>
-</html>
