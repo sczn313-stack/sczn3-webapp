@@ -7,18 +7,24 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118b" />
+  <!-- HARD BASE -->
+  <style>
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit}
+  </style>
+
+  <link rel="stylesheet" href="./styles.css?v=20260118r1" />
 </head>
 <body>
   <div class="page">
-    <!-- BRAND (top-left) -->
+    <!-- BRAND -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <!-- HERO upload button -->
+    <!-- HERO upload button (MAIN CTA) -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -29,44 +35,40 @@
     <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <!-- ✅ Controls ABOVE CTA (Distance + Clicks) -->
-    <div class="topStats mt14">
-      <div class="statBox">
-        <div class="statLabel">Distance</div>
-        <div class="statMain">
-          <input id="distanceYds" class="statInput" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
-          <div class="statSuffix">yds</div>
+    <!-- CONTROLS (tight + above microSlot) -->
+    <div class="controlsRow mt14">
+      <div class="distanceBox" aria-label="Distance input">
+        <div class="subtle strong">Distance</div>
+        <input
+          id="distanceYds"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          value="100"
+          aria-label="Distance yards"
+        />
+        <div class="subtle strong">yds</div>
+      </div>
+
+      <div class="tapsBlock" aria-label="Tap controls">
+        <div class="tapsLine">
+          <span class="subtle strong">Taps:</span> <span id="tapCount">0</span>
         </div>
-      </div>
-
-      <div class="statBox">
-        <div class="statLabel">Windage</div>
-        <div id="windClicks" class="statValue">—</div>
-      </div>
-
-      <div class="statBox">
-        <div class="statLabel">Elevation</div>
-        <div id="elevClicks" class="statValue">—</div>
-      </div>
-
-      <div class="statBox statTaps">
-        <div class="statLabel">Taps</div>
-        <div class="statMain">
-          <div id="tapCount" class="statValue">0</div>
-          <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
-        </div>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">
+          Clear
+        </button>
       </div>
     </div>
 
-    <!-- ✅ CTA SLOT (appears only when eligible) -->
+    <!-- Micro-slot: pinch hint / see results / vendor CTA -->
     <div id="microSlot" class="microSlot"></div>
 
-    <!-- Target card -->
-    <div class="card mt12">
-      <!-- NOTE: we are NOT showing instruction text up top anymore -->
-      <div id="targetHeader" class="targetHeader" style="display:none;">
-        Tap bullseye or aim point 1st — then tap bullet holes
-      </div>
+    <!-- TARGET CARD -->
+    <div class="card mt14">
+      <!-- This line is controlled by JS:
+           - hidden message until photo loads
+           - then shows: Tap bull first — then tap bullet holes
+      -->
+      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -74,20 +76,16 @@
           <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
         </div>
       </div>
-
-      <div id="emptyLine" class="subtle mt12">
-        Upload a target photo to begin.
-      </div>
     </div>
 
-    <!-- Vendor link (optional input) -->
-    <div class="card mt12">
+    <!-- VENDOR LINK INPUT (optional) -->
+    <div class="card mt14">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- Results (hidden by default) -->
-    <div id="resultsCard" class="card mt12" style="display:none;">
+    <!-- RESULTS (TEMP: will be redesigned next; user asked "No JSON vibe" — we'll fix next) -->
+    <div class="card mt14">
       <div class="subtle strong mb8">Results</div>
       <pre id="resultsBox" class="mono">{}</pre>
     </div>
@@ -95,7 +93,8 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=20260118b"></script>
-  <script src="./index.js?v=20260118b"></script>
+  <!-- cache bust -->
+  <script src="./api.js?v=20260118r1"></script>
+  <script src="./index.js?v=20260118r1"></script>
 </body>
 </html>
