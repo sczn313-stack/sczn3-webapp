@@ -1,23 +1,35 @@
-// backend_new/server.js (FULL REPLACEMENT)
-// SCZN3 Tap-n-Score backend for Render
-// Routes:
-//   GET  /           health
-//   GET  /ping       health
-//   POST /tapscore   { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
-//
-// Notes:
-// - Coordinates are normalized 0..1 (from the frontend image box)
-// - Canonical correction: delta = bull - POIB
-//   dx > 0 => RIGHT, dx < 0 => LEFT
-//   dy > 0 => UP,    dy < 0 => DOWN  (TOP = UP on the screen)
+/**
+ * backend_new/server.js — Tap-n-Score backend (STABLE)
+ *
+ * Routes:
+ *  - GET  /            (health)
+ *  - GET  /health
+ *  - GET  /ping
+ *  - POST /tapscore    (JSON)  { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
+ *  - POST /api/analyze (JSON)  alias -> /tapscore (keeps older frontend alive)
+ *
+ * Normalized tap coords:
+ *  - x grows RIGHT  (0..1)
+ *  - y grows DOWN   (0..1)
+ *
+ * Canonical correction direction:
+ *  - We return delta = bull - POIB in normalized units.
+ *    dx > 0 => RIGHT, dx < 0 => LEFT
+ *    dy > 0 => DOWN,  dy < 0 => UP        (because y grows down)
+ *
+ * IMPORTANT:
+ *  - This backend does NOT compute inches/MOA/clicks (needs known scale).
+ *  - It returns directions consistently so frontend cannot flip itself.
+ */
 
 const express = require("express");
 const cors = require("cors");
 
+const SERVICE = "sczn3-backend-new1";
+const BUILD = "TAPNSCORE_STABLE_V1";
+
 const app = express();
 
-// ---- CORS (safe + simple) ----
-// If you later want to lock it down, replace origin:"*" with your frontend URL.
 app.use(
   cors({
     origin: "*",
@@ -26,11 +38,12 @@ app.use(
   })
 );
 
-// Ensure preflight always succeeds
-app.options("*", cors());
-
-// JSON body
+// JSON parser
 app.use(express.json({ limit: "2mb" }));
+
+app.get("/", (req, res) => res.json({ ok: true, service: SERVICE, build: BUILD }));
+app.get("/health", (req, res) => res.json({ ok: true, service: SERVICE, build: BUILD }));
+app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping", service: SERVICE, build: BUILD }));
 
 function isNum(n) {
   return typeof n === "number" && Number.isFinite(n);
@@ -38,83 +51,89 @@ function isNum(n) {
 function clamp01(v) {
   return Math.max(0, Math.min(1, v));
 }
-function normPoint(p) {
-  return { x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) };
+
+function computePoib(pts) {
+  const sum = pts.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / pts.length, y: sum.y / pts.length };
 }
 
-// ---- Health ----
-app.get("/", (req, res) => {
-  res.json({ ok: true, service: "sczn3-backend-new", route: "/" });
-});
+// Direction labels using pixel-style normalized coordinates (y down)
+function dirX(dx) {
+  if (dx > 0) return "RIGHT";
+  if (dx < 0) return "LEFT";
+  return "CENTER";
+}
+function dirY(dy) {
+  if (dy > 0) return "DOWN";
+  if (dy < 0) return "UP";
+  return "CENTER";
+}
 
-app.get("/ping", (req, res) => {
-  res.json({ ok: true, service: "sczn3-backend-new", route: "/ping" });
-});
-
-// ---- Core ----
-app.post("/tapscore", (req, res) => {
+function tapscoreHandler(req, res) {
   try {
     const body = req.body || {};
 
-    const distanceYds = Number(body.distanceYds ?? 100);
+    const distanceYds = Number(body.distanceYds || 100);
+
     const bullTap = body.bullTap;
-    const tapsIn = Array.isArray(body.taps) ? body.taps : [];
+    const tapsRaw = Array.isArray(body.taps) ? body.taps : [];
 
     if (!bullTap || !isNum(bullTap.x) || !isNum(bullTap.y)) {
-      return res.status(400).json({ ok: false, error: "Missing bullTap {x,y}." });
-    }
-    if (tapsIn.length < 1) {
-      return res.status(400).json({ ok: false, error: "Need at least 1 bullet-hole tap." });
+      return res.status(400).json({
+        ok: false,
+        error: { code: "NO_BULL", message: "Missing bullTap {x,y}." },
+      });
     }
 
-    const bull = normPoint(bullTap);
-
-    const taps = tapsIn
+    const pts = tapsRaw
       .filter((p) => p && isNum(p.x) && isNum(p.y))
-      .map(normPoint);
+      .map((p) => ({ x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) }));
 
-    if (taps.length < 1) {
-      return res.status(400).json({ ok: false, error: "No valid taps." });
+    if (pts.length < 1) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: "NO_TAPS", message: "Need at least 1 bullet-hole tap." },
+      });
     }
 
-    // POIB = average of hole taps
-    let sx = 0,
-      sy = 0;
-    for (const p of taps) {
-      sx += p.x;
-      sy += p.y;
-    }
-    const poib = { x: sx / taps.length, y: sy / taps.length };
+    const bull = { x: clamp01(Number(bullTap.x)), y: clamp01(Number(bullTap.y)) };
+    const poib = computePoib(pts);
 
-    // Canonical correction: bull - POIB
-    const dx = bull.x - poib.x;
-    const dy = bull.y - poib.y;
+    // Canonical delta in normalized coords (y down)
+    const delta = { x: bull.x - poib.x, y: bull.y - poib.y };
 
-    const windDir = dx > 0 ? "RIGHT" : dx < 0 ? "LEFT" : "CENTER";
-    const elevDir = dy > 0 ? "UP" : dy < 0 ? "DOWN" : "CENTER";
+    // Frontend-friendly direction labels
+    const directions = {
+      windage: dirX(delta.x),
+      elevation: dirY(delta.y),
+    };
 
-    // Return normalized deltas + directions.
-    // (Clicks/inches require a known inch-scale; keep that on the frontend once scale is defined.)
     return res.json({
       ok: true,
+      service: SERVICE,
+      build: BUILD,
       distanceYds,
-      tapsCount: taps.length,
+      tapsCount: pts.length,
       bullTap: bull,
       poib,
-      delta: { x: dx, y: dy }, // bull - POIB
-      directions: { windage: windDir, elevation: elevDir },
+      delta,        // bull - POIB (normalized)
+      directions,   // RIGHT/LEFT and UP/DOWN in y-down coordinate system
+      windage: directions.windage,
+      elevation: directions.elevation,
+      score: "--",
     });
   } catch (e) {
     return res.status(500).json({
       ok: false,
-      error: "Server error",
-      detail: String(e && e.message ? e.message : e),
+      error: { code: "SERVER_ERROR", message: String(e?.message || e) },
     });
   }
-});
+}
 
-// Render uses PORT
+app.post("/tapscore", tapscoreHandler);
+
+// Back-compat alias (if any old frontend is still calling this)
+app.post("/api/analyze", tapscoreHandler);
+
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`sczn3-backend-new listening on ${PORT}`);
-});
+app.listen(PORT, () => console.log(`${SERVICE} on ${PORT} build=${BUILD}`));
