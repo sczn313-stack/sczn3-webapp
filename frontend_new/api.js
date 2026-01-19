@@ -1,48 +1,57 @@
-// frontend_new/api.js
-// Guarantees window.tapscore exists and calls the backend.
-// Also exposes window.tapscorePing for quick connectivity tests.
+// frontend_new/api.js  (FULL REPLACEMENT)
+// Guarantees window.tapscore exists and calls the backend reliably.
+// Also provides window.tapscorePing() and window.tapscoreBase().
 
 (() => {
   const BACKEND_BASE = "https://sczn3-backend-new1.onrender.com";
 
-  async function fetchJson(url, opts = {}) {
-    const res = await fetch(url, { ...opts, cache: "no-store" });
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-
-    let bodyText = "";
-    let bodyJson = null;
-
-    if (ct.includes("application/json")) {
-      try { bodyJson = await res.json(); } catch {}
-    } else {
-      try { bodyText = await res.text(); } catch {}
-    }
-
-    if (!res.ok) {
-      const detail = bodyJson ? JSON.stringify(bodyJson) : bodyText;
-      throw new Error(`HTTP ${res.status} ${detail || ""}`.trim());
-    }
-
-    if (bodyJson) return bodyJson;
-    throw new Error(`Expected JSON but got: ${bodyText.slice(0,120)}`);
+  async function readTextSafe(res) {
+    try { return await res.text(); } catch { return ""; }
   }
 
   async function tapscore(payload) {
     const url = `${BACKEND_BASE}/tapscore`;
-    return fetchJson(url, {
+
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload || {}),
     });
+
+    if (!res.ok) {
+      const txt = await readTextSafe(res);
+      throw new Error(`tapscore HTTP ${res.status} ${txt}`.trim());
+    }
+
+    // Force JSON parse errors to surface clearly
+    try {
+      return await res.json();
+    } catch (e) {
+      const txt = await readTextSafe(res);
+      throw new Error(`tapscore JSON parse failed. ${String(e?.message || e)} ${txt}`.trim());
+    }
   }
 
   async function ping() {
-    // Your backend has /ping for sure
-    const url = `${BACKEND_BASE}/ping`;
-    return fetchJson(url);
+    // Prefer /health, fall back to /ping, then /
+    const tries = ["/health", "/ping", "/"];
+    let lastErr = null;
+
+    for (const path of tries) {
+      try {
+        const res = await fetch(`${BACKEND_BASE}${path}`, { method: "GET" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return { ok: true, path, data };
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    throw new Error(`Ping failed. ${String(lastErr?.message || lastErr)}`);
   }
 
   window.tapscore = tapscore;
   window.tapscorePing = ping;
-  window.BACKEND_BASE = BACKEND_BASE;
+  window.tapscoreBase = () => BACKEND_BASE;
 })();
