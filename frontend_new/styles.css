@@ -1,364 +1,264 @@
+/* frontend_new/styles.css (FULL REPLACEMENT) */
+
 :root{
   --bg:#000;
-  --card:#111;
-  --card2:#161616;
-  --border:rgba(255,255,255,.10);
+  --card:#0b0b0c;
+  --card2:#0f0f11;
   --text:#fff;
-  --muted:rgba(255,255,255,.70);
-
-  /* hero accent */
-  --heroBorder:rgba(255,255,255,.14);
-  --accentA: rgba(30, 90, 255, .22);
-  --accentB: rgba(255, 30, 80, .16);
-
-  /* red/white/blue */
-  --red:#ff3b30;
-  --blue:#0a84ff;
-
-  /* green "See results" */
-  --green:#34c759;
-  --greenBg: rgba(52, 199, 89, .14);
-  --greenBorder: rgba(52, 199, 89, .38);
+  --muted:rgba(255,255,255,.65);
+  --muted2:rgba(255,255,255,.45);
+  --line:rgba(255,255,255,.10);
+  --green:#29d36a;
+  --green2:#17b957;
+  --red:#ff4d4d;
 }
 
-*{box-sizing:border-box}
-html,body{
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
   margin:0;
-  padding:0;
   background:var(--bg);
   color:var(--text);
   font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
-a{color:inherit}
 
 .page{
   max-width:980px;
   margin:0 auto;
-  padding:22px 16px 44px;
+  padding:18px 16px 30px;
 }
 
-.mt12{margin-top:12px}
-.mt14{margin-top:14px}
-.mt18{margin-top:18px}
-.mb6{margin-bottom:6px}
-.mb8{margin-bottom:8px}
-
-.subtle{color:var(--muted); font-size:16px; line-height:1.25}
-.strong{font-weight:900}
-.mono{
-  white-space:pre-wrap;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-  font-size:14px;
-}
-
-/* Brand */
-.brandRow{display:flex; align-items:center; justify-content:flex-start; margin-bottom:10px}
+.brandRow{ display:flex; justify-content:flex-start; }
 .brand{
-  font-weight:900;
-  letter-spacing:.6px;
-  font-size:18px;
-  opacity:.95;
-  user-select:none;
-}
-.brandTap{color:var(--red)}
-.brandN{color:#fff}
-.brandScore{color:var(--blue)}
-.brandTm{color:#fff; opacity:.9}
-
-/* Upload heading */
-.h1{
-  margin: 8px 0 12px;
-  font-size: clamp(34px, 7.6vw, 52px);
-  letter-spacing: -0.02em;
-}
-
-/* Hidden real input (must NOT be display:none) */
-.fileInputReal{
-  position:absolute;
-  left:-9999px;
-  top:auto;
-  width:1px;
-  height:1px;
-  opacity:0;
-  pointer-events:none;
-}
-
-/* HERO upload box */
-.uploadHero{
-  display:block;
-  width:100%;
-  border-radius:26px;
-  padding:0;
-  border:1px solid var(--heroBorder);
-  background:
-    radial-gradient(1200px 220px at 10% 0%, var(--accentA), transparent 60%),
-    radial-gradient(900px 240px at 90% 25%, var(--accentB), transparent 55%),
-    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
-  box-shadow:0 14px 34px rgba(0,0,0,.62);
-  cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
-  user-select:none;
-}
-.uploadHero:active{transform:translateY(1px)}
-.uploadHeroInner{
-  padding:18px 18px;
-  min-height:86px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:4px;
-}
-.uploadHeroTitle{
-  font-weight:950;
-  font-size:clamp(22px, 5.4vw, 32px);
-  line-height:1.05;
-  color:#fff;
-}
-.uploadHeroSub{
-  font-size:13px;
-  color:rgba(255,255,255,.60);
   font-weight:800;
+  letter-spacing:.5px;
+  font-size:18px;
+  padding:6px 0 10px;
+}
+.brandTap{ color:#ff3b30; }
+.brandN{ color:#fff; }
+.brandScore{ color:#0a84ff; }
+.brandTm{ color:#fff; opacity:.9; margin-left:2px; }
+
+.h1{
+  font-size:58px;
+  line-height:1;
+  margin:8px 0 12px;
+  font-weight:900;
 }
 
-/* Controls row (tight + no overflow) */
+.subtle{ color:var(--muted); }
+.strong{ font-weight:800; }
+
+.mt14{ margin-top:14px; }
+.mb8{ margin-bottom:8px; }
+
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:14px;
+}
+
+.uploadHero{
+  width:100%;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  padding:18px 14px;
+  background: radial-gradient(1200px 260px at 20% 30%, rgba(10,132,255,.35), transparent 50%),
+              radial-gradient(1200px 260px at 85% 60%, rgba(255,59,48,.25), transparent 55%),
+              rgba(255,255,255,.05);
+  color:var(--text);
+  cursor:pointer;
+}
+
+.uploadHeroInner{ text-align:center; }
+.uploadHeroTitle{ font-weight:900; font-size:44px; letter-spacing:.3px; }
+.uploadHeroSub{ margin-top:4px; font-weight:700; color:rgba(255,255,255,.55); }
+
 .controlsRow{
-  display:grid;
-  grid-template-columns: 1fr auto;
-  gap:10px;
+  display:flex;
   align-items:center;
-  margin-top:14px;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
 }
 
-/* Distance box */
 .distanceBox{
   display:flex;
   align-items:center;
   gap:10px;
-  min-width:0;
-}
-.distanceBox input{
-  width:96px;
-  padding:10px 12px;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--line);
   border-radius:16px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
+  padding:10px 12px;
+  min-width:260px;
+}
+
+#distanceYds{
+  width:110px;
+  height:40px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(0,0,0,.35);
   color:#fff;
-  font-size:18px;
+  font-size:22px;
+  font-weight:900;
+  text-align:center;
   outline:none;
 }
 
-/* Right-side taps cluster */
 .tapsBlock{
   display:flex;
   align-items:center;
+  gap:12px;
   justify-content:flex-end;
-  gap:10px;
-  min-width:0;
-}
-.tapsLine{
-  font-size:18px;
-  white-space:nowrap;
+  flex:1;
+  min-width:240px;
 }
 
-/* Buttons */
+.tapsLine{ font-size:18px; }
+
 .btn{
-  border-radius:18px;
-  padding:12px 16px;
-  border:1px solid var(--border);
+  border-radius:999px;
+  padding:10px 14px;
+  border:1px solid rgba(255,255,255,.16);
   background:rgba(255,255,255,.06);
   color:#fff;
   font-weight:900;
-  font-size:16px;
-  -webkit-tap-highlight-color:transparent;
-}
-.btn:active{transform:translateY(1px)}
-.btnPrimary{
-  background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.16);
-}
-.btnSecondary{ background:rgba(255,255,255,.05); }
-.btnTight{
-  padding:10px 12px;
-  border-radius:16px;
-  white-space:nowrap;
-  font-size:14px;
+  cursor:pointer;
 }
 
-/* Micro-slot: pinch hint / see results / vendor CTA */
+.btnTight{ padding:8px 12px; }
+.btnSecondary{ background:rgba(255,255,255,.05); }
+
 .microSlot{
-  margin-top:12px;
+  margin-top:10px;
   display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-start;
+  min-height:44px;
+}
+
+.hintPill{
+  display:inline-flex;
   align-items:center;
   gap:10px;
-}
-
-/* Pinch hint (quiet) */
-.pinchHint{
-  width:100%;
-  border-radius:18px;
-  padding:12px 14px;
-  border:1px solid rgba(255,255,255,.12);
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
   background:rgba(255,255,255,.05);
   color:rgba(255,255,255,.78);
   font-weight:900;
-  font-size:14px;
-  letter-spacing:.01em;
 }
 
-/* ✅ Green "See results" active box */
-.seeResultsHint{
-  width:100%;
-  display:flex;
+.btnGreen{
+  background:rgba(41,211,106,.12);
+  border:1px solid rgba(41,211,106,.35);
+  color:#d7ffe7;
+}
+.btnGreen:active{ transform:translateY(1px); }
+
+.vendorCta{
+  display:inline-flex;
   align-items:center;
-  justify-content:center;
-  padding:12px 14px;
-  border-radius:18px;
-  border:1px solid var(--greenBorder);
-  background:var(--greenBg);
-  color:rgba(255,255,255,.95);
-  font-weight:950;
-  font-size:15px;
-  letter-spacing:.01em;
-  cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
+  gap:10px;
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.05);
+  color:#fff;
+  font-weight:900;
+  text-decoration:none;
 }
-.seeResultsHint:active{transform:translateY(1px)}
 
-/* Vendor CTA */
-.vendorBuyBtn{
+.targetWrap{
+  overflow:hidden;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(0,0,0,.35);
+}
+
+.targetCanvas{
+  position:relative;
   width:100%;
+  overflow:auto;              /* allows pinch zoom + scroll */
+  -webkit-overflow-scrolling:touch;
+}
+
+.targetImg{
+  width:100%;
+  height:auto;
+  display:block;
+  user-select:none;
+  -webkit-user-drag:none;
+}
+
+.dotsLayer{
+  position:absolute;
+  left:0; top:0;
+  right:0; bottom:0;
+  pointer-events:none;
+}
+
+.dot{
+  position:absolute;
+  width:14px; height:14px;
+  border-radius:999px;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 0 2px rgba(0,0,0,.55);
+  border:2px solid rgba(255,255,255,.9);
+}
+.dotBull{ background:rgba(10,132,255,.85); }
+.dotHole{ background:rgba(255,59,48,.85); }
+
+.input{
+  width:100%;
+  height:44px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(0,0,0,.35);
+  color:#fff;
+  font-size:16px;
+  padding:0 12px;
+  outline:none;
+}
+
+/* Safari/iOS reliable hidden file input (DO NOT use display:none) */
+.fileInputReal{
+  position:fixed;
+  left:-9999px;
+  top:0;
+  width:1px;
+  height:1px;
+  opacity:0.001;
+  pointer-events:none;
+}
+
+.resultsGrid{ display:flex; flex-direction:column; gap:10px; }
+.resultRow{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  text-decoration:none;
-  border-radius:18px;
-  padding:14px 14px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.06);
-  box-shadow:0 10px 26px rgba(0,0,0,.45);
 }
-.vendorIcon{font-size:18px}
-.vendorText{
-  flex:1;
-  font-weight:950;
-  letter-spacing:.2px;
-  color:rgba(255,255,255,.92);
+.resultLabel{ color:rgba(255,255,255,.65); font-weight:900; }
+.resultValue{ font-weight:1000; font-size:18px; }
+.resultNote{
+  color:rgba(255,255,255,.70);
+  font-weight:800;
+  line-height:1.35;
 }
-.vendorArrow{
-  font-size:22px;
-  opacity:.65;
+.divider{
+  height:1px;
+  background:rgba(255,255,255,.10);
+  margin:6px 0;
 }
 
-/* Inputs */
-.input{
-  width:100%;
-  padding:14px 14px;
-  border-radius:18px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
-  color:#fff;
-  font-size:16px;
-  outline:none;
-}
-
-/* Cards */
-.card{
-  background:linear-gradient(180deg,var(--card2),var(--card));
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:14px;
-}
-
-/* Target container */
-.targetWrap{
-  position:relative;
-  width:100%;
-  border-radius:18px;
-  overflow:hidden;
-  background:#000;
-  border:1px solid rgba(255,255,255,.10);
-  padding:10px;
-}
-
-/* Canvas holds image + dots */
-.targetCanvas{
-  position:relative;
-  width:100%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-
-/* FIT behavior:
-   - We want to show more corners on mobile.
-   - Use contain (no crop) + allow pinch zoom.
-*/
-.targetImg{
-  display:block;
-  max-width:100%;
-  max-height:68vh;
-  width:auto;
-  height:auto;
-  border-radius:14px;
-
-  /* iOS: make pinch zoom smoother */
-  -webkit-user-drag:none;
-  user-select:none;
-  touch-action:pinch-zoom;
-}
-
-/* Dots overlay */
-.dotsLayer{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-}
-
-.tapDot{
-  position:absolute;
-  width:16px;
-  height:16px;
-  border-radius:999px;
-  transform:translate(-50%,-50%);
-  border:2px solid rgba(0,0,0,.55);
-  box-shadow:0 2px 8px rgba(0,0,0,.35);
-}
-.tapDot[data-kind="bull"]{ background:rgba(10,132,255,.95); } /* blue */
-.tapDot[data-kind="hole"]{ background:rgba(255,204,0,.95); } /* yellow */
-
-/* Footer */
 .footer{
-  margin-top:22px;
   text-align:center;
-  opacity:.65;
-}
-
-/* Phone tightening */
-@media (max-width:460px){
-  .page{padding:18px 14px 40px}
-
-  .controlsRow{
-    grid-template-columns: 1fr;
-    gap:10px;
-  }
-
-  /* distance row becomes left-aligned, taps row wraps cleanly */
-  .distanceBox{justify-content:flex-start}
-  .tapsBlock{
-    justify-content:space-between;
-    width:100%;
-  }
-
-  .distanceBox input{width:92px}
-  .tapsLine{font-size:16px}
-  .btnTight{padding:9px 10px}
-  .seeResultsHint{padding:12px 12px}
-}
-
-/* Super small */
-@media (max-width:360px){
-  .distanceBox input{width:86px}
-  .btnTight{font-size:13px}
+  margin-top:18px;
+  opacity:.6;
+  font-weight:900;
 }
