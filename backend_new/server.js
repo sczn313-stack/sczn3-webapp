@@ -1,82 +1,164 @@
-// backend_new/server.js
-// Express backend for Tap-n-Score
+// backend_new/server.js  (FULL REPLACEMENT)
+// SCZN3 Tap-n-Score Backend (normalized 0..1 coords, bull-first)
 // Routes:
-//  GET  /ping
-//  POST /tapscore  { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
+//   GET  /
+//   GET  /ping
+//   GET  /health
+//   POST /tapscore   { distanceYds, bullTap:{x,y}, taps:[{x,y},...], vendorLink? }
+//
+// Notes:
+// - This backend returns normalized math ONLY (0..1 space) so the frontend can verify flow.
+// - No inches/MOA/click conversion here until we lock a reliable scale.
+// - Includes strong CORS + JSON error handling so frontend always gets JSON.
 
 const express = require("express");
 const cors = require("cors");
 
+const SERVICE = "sczn3-backend-new1";
+const BUILD   = "TAPNSCORE_BACKEND_V1_FULL";
+
 const app = express();
 
-// If you want to restrict origins later, do it here.
+// ---- CORS (keep wide open during dev) ----
 app.use(cors({
   origin: "*",
-  methods: ["GET","POST","OPTIONS"],
-  allowedHeaders: ["Content-Type"]
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
 }));
 
-// IMPORTANT: allow enough JSON size if you ever send base64.
-// Right now frontend sends imageDataUrl: null, so this is just safe.
+// ---- JSON parsing ----
 app.use(express.json({ limit: "10mb" }));
 
-app.get("/", (req, res) => res.json({ ok: true, service: "sczn3-backend-new1" }));
-app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping" }));
+// ---- Always return JSON (even on errors) ----
+app.use((req, res, next) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  next();
+});
 
-function isNum(n){ return typeof n === "number" && Number.isFinite(n); }
-function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+// ---- Helpers ----
+function isNum(n) {
+  return typeof n === "number" && Number.isFinite(n);
+}
+
+function clamp01(v) {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function meanPoint(points) {
+  const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+function round6(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 1e6) / 1e6;
+}
+
+function cleanPoint(p) {
+  return { x: round6(p.x), y: round6(p.y) };
+}
+
+// ---- Routes ----
+app.get("/", (req, res) => {
+  res.status(200).send(JSON.stringify({ ok: true, service: SERVICE, build: BUILD }));
+});
+
+app.get("/ping", (req, res) => {
+  res.status(200).send(JSON.stringify({ ok: true, service: SERVICE, route: "/ping" }));
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).send(JSON.stringify({
+    ok: true,
+    service: SERVICE,
+    build: BUILD,
+    uptime_s: Math.round(process.uptime()),
+    ts: new Date().toISOString()
+  }));
+});
 
 app.post("/tapscore", (req, res) => {
   try {
     const body = req.body || {};
-    const distanceYds = Number(body.distanceYds || 100);
 
+    const distanceYds = Number(body.distanceYds || 100);
     const bullTap = body.bullTap;
-    const taps = Array.isArray(body.taps) ? body.taps : [];
+    const tapsRaw = Array.isArray(body.taps) ? body.taps : [];
 
     if (!bullTap || !isNum(bullTap.x) || !isNum(bullTap.y)) {
-      return res.status(400).json({ ok:false, error:"Missing bullTap {x,y}." });
-    }
-    if (taps.length < 1) {
-      return res.status(400).json({ ok:false, error:"Need at least 1 bullet-hole tap." });
+      return res.status(400).send(JSON.stringify({
+        ok: false,
+        error: { code: "BAD_BULL", message: "Missing bullTap {x,y} (numbers)." }
+      }));
     }
 
-    // Normalize/clamp
-    const bull = { x: clamp01(Number(bullTap.x)), y: clamp01(Number(bullTap.y)) };
-    const pts = taps
+    if (tapsRaw.length < 1) {
+      return res.status(400).send(JSON.stringify({
+        ok: false,
+        error: { code: "NO_HOLES", message: "Need at least 1 bullet-hole tap after the bull." }
+      }));
+    }
+
+    // Clamp bull + hole taps into normalized space
+    const bull = { x: clamp01(bullTap.x), y: clamp01(bullTap.y) };
+
+    const holes = tapsRaw
       .filter(p => p && isNum(p.x) && isNum(p.y))
-      .map(p => ({ x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) }));
+      .map(p => ({ x: clamp01(p.x), y: clamp01(p.y) }));
 
-    if (pts.length < 1) {
-      return res.status(400).json({ ok:false, error:"No valid taps." });
+    if (holes.length < 1) {
+      return res.status(400).send(JSON.stringify({
+        ok: false,
+        error: { code: "BAD_HOLES", message: "No valid hole taps found." }
+      }));
     }
 
-    // POIB = average of hole taps
-    const sum = pts.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x:0, y:0 });
-    const poib = { x: sum.x / pts.length, y: sum.y / pts.length };
+    // POIB in normalized space
+    const poib = meanPoint(holes);
 
-    // Canonical: correction = bull - POIB (direction to move POIB to bull)
+    // Canonical delta: bull - POIB  (direction to move POIB to bull)
     const delta = { x: bull.x - poib.x, y: bull.y - poib.y };
 
-    // NOTE: We are NOT converting to inches/MOA/clicks here because that requires a known scale.
-    // This backend returns normalized values only (0..1), so the frontend can display/verify.
+    // Lightweight score placeholder: just based on distance from bull (normalized)
+    // (Replace later with your Smart Score framework.)
+    const r = Math.sqrt((poib.x - bull.x) ** 2 + (poib.y - bull.y) ** 2);
+    const score = Math.max(0, Math.round(650 - r * 900));
 
-    return res.json({
+    // Debug echo fields (helps frontend prove it’s receiving JSON)
+    const vendorLink = typeof body.vendorLink === "string" ? body.vendorLink.trim() : null;
+
+    return res.status(200).send(JSON.stringify({
       ok: true,
-      distanceYds,
-      tapsCount: pts.length,
-      bullTap: bull,
-      poib,
-      delta, // bull - POIB
+      service: SERVICE,
+      build: BUILD,
+
+      distanceYds: Number.isFinite(distanceYds) && distanceYds > 0 ? distanceYds : 100,
+
+      tapsCount: holes.length,
+      bullTap: cleanPoint(bull),
+      poib: cleanPoint(poib),
+      delta: cleanPoint(delta),
+
+      // placeholders (until inches/MOA conversion is wired)
       windage: "--",
       elevation: "--",
-      score: "--"
-    });
+
+      score,
+      vendorLink,
+
+      tip: "Normalized output (0..1). delta = bull - POIB."
+    }));
   } catch (e) {
-    return res.status(500).json({ ok:false, error:"Server error", detail: String(e && e.message ? e.message : e) });
+    return res.status(500).send(JSON.stringify({
+      ok: false,
+      error: { code: "SERVER_ERROR", message: String(e?.message || e) }
+    }));
   }
 });
 
-// Render uses PORT
+// ---- Render PORT ----
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`tapscore backend listening on ${PORT}`));
+app.listen(PORT, () => console.log(`${SERVICE} on ${PORT} build=${BUILD}`));
