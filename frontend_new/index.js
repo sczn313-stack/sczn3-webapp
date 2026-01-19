@@ -1,5 +1,7 @@
 // frontend_new/index.js
-// Tap workflow + pinch zoom + disable taps during 2-finger gestures + See Results + Vendor CTA.
+// Tap workflow + pinch zoom + disable taps during 2-finger gestures + See Results + Vendor CTA
+// ✅ Backend payload EXACT match:
+//   { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
 
 (() => {
   const els = {
@@ -21,12 +23,18 @@
   const state = {
     imageLoaded: false,
     phase: "idle", // idle | bull | holes | ready
-    bull: null, // {x,y} normalized 0..1
-    holes: [], // [{x,y} normalized 0..1]
-    pinchActive: false, // true while 2 fingers down
+    bull: null,    // {x,y} normalized 0..1
+    taps: [],      // bullet-hole taps [{x,y}] normalized 0..1
+
+    pinchActive: false,  // true while 2 fingers down
     scale: 1,
     lastTouchDist: null,
+
     pinchHintShown: false,
+
+    // iOS: prevent touch -> click double-fire
+    lastTouchTapAt: 0,
+    ignoreClickUntil: 0,
   };
 
   // ---------- UI helpers ----------
@@ -63,11 +71,12 @@
         <div class="vendorText">Buy more targets like this</div>
         <div class="vendorArrow">›</div>
       `;
+
       if (a.href === "#") {
-        // no link: make it non-clickable but keep the spot
         a.addEventListener("click", (e) => e.preventDefault());
         a.style.opacity = "0.6";
       }
+
       els.microSlot.appendChild(a);
       return;
     }
@@ -106,22 +115,27 @@
   function refreshDots() {
     clearDots();
     if (state.bull) addDot("bull", state.bull);
-    for (const h of state.holes) addDot("hole", h);
+    for (const p of state.taps) addDot("hole", p);
   }
 
   function updateTapCount() {
-    const count = state.holes.length + (state.bull ? 1 : 0);
+    const count = state.taps.length + (state.bull ? 1 : 0);
     els.tapCount.textContent = String(count);
   }
 
   function resetAll() {
     state.phase = "idle";
     state.bull = null;
-    state.holes = [];
+    state.taps = [];
+
     state.scale = 1;
     state.lastTouchDist = null;
     state.pinchActive = false;
+
     state.pinchHintShown = false;
+
+    state.lastTouchTapAt = 0;
+    state.ignoreClickUntil = 0;
 
     els.targetImg.style.transform = `scale(1)`;
     clearDots();
@@ -136,7 +150,7 @@
     els.photoInput.click();
   });
 
-  els.photoInput.addEventListener("change", async (e) => {
+  els.photoInput.addEventListener("change", (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
 
@@ -146,39 +160,37 @@
     els.targetImg.onload = () => {
       state.imageLoaded = true;
       els.targetWrap.style.display = "block";
+
       state.phase = "bull";
       setInstruction("Tap bull first");
-      updateTapCount();
-      // microSlot stays empty until first tap (then pinch hint)
       setMicroSlot("empty");
+
+      updateTapCount();
       refreshDots();
       URL.revokeObjectURL(url);
     };
     els.targetImg.src = url;
   });
 
-  // ---------- Tap logic (click fallback for desktop) ----------
-  els.targetCanvas.addEventListener("click", (evt) => {
-    // Ignore click on iOS while pinch active (safety)
-    if (state.pinchActive) return;
-    if (!state.imageLoaded) return;
-    handlePointer(evt.clientX, evt.clientY);
-  });
-
+  // ---------- Pointer / tap handler ----------
   function handlePointer(clientX, clientY) {
+    if (!state.imageLoaded) return;
+    if (state.pinchActive) return;
+
     const rect = els.targetImg.getBoundingClientRect();
-    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+    if (
+      clientX < rect.left || clientX > rect.right ||
+      clientY < rect.top  || clientY > rect.bottom
+    ) return;
 
     const nx = (clientX - rect.left) / rect.width;
     const ny = (clientY - rect.top) / rect.height;
 
-    // After first valid tap, show pinch hint ONCE, then remove
+    // Show pinch hint once (after first valid tap)
     if (!state.pinchHintShown) {
       state.pinchHintShown = true;
       setMicroSlot("pinchHint");
-      // remove hint after a short moment or after next interaction
       setTimeout(() => {
-        // only remove if we haven't already advanced to results/vendor slot
         if (state.phase === "bull" || state.phase === "holes") setMicroSlot("empty");
       }, 1400);
     }
@@ -189,18 +201,34 @@
       setInstruction("Tap impacts (3–7). Then press See results.");
       setMicroSlot("empty");
     } else if (state.phase === "holes") {
-      state.holes.push({ x: nx, y: ny });
-      if (state.holes.length >= 1) {
+      state.taps.push({ x: nx, y: ny });
+
+      // as soon as we have 1 hole, show the green See Results button
+      if (state.taps.length >= 1) {
         state.phase = "ready";
         setMicroSlot("seeResults");
       }
+    } else if (state.phase === "ready") {
+      // keep collecting holes if they tap more (still ready)
+      state.taps.push({ x: nx, y: ny });
     }
 
     refreshDots();
     updateTapCount();
   }
 
-  // ---------- Touch + pinch zoom (disable taps while 2 fingers down) ----------
+  // ---------- Desktop / click fallback ----------
+  els.targetCanvas.addEventListener("click", (evt) => {
+    // iOS can generate click after touch — ignore for a short window
+    if (Date.now() < state.ignoreClickUntil) return;
+
+    if (!state.imageLoaded) return;
+    if (state.pinchActive) return;
+
+    handlePointer(evt.clientX, evt.clientY);
+  });
+
+  // ---------- Touch + pinch zoom ----------
   function dist(t1, t2) {
     const dx = t2.clientX - t1.clientX;
     const dy = t2.clientY - t1.clientY;
@@ -215,16 +243,13 @@
       state.lastTouchDist = dist(e.touches[0], e.touches[1]);
       return;
     }
-
-    // Single finger tap: allowed only if NOT pinchActive
-    if (state.pinchActive) return;
   }, { passive: false });
 
   els.targetCanvas.addEventListener("touchmove", (e) => {
     if (!state.imageLoaded) return;
 
     if (e.touches.length >= 2) {
-      e.preventDefault(); // stop page zoom/scroll
+      e.preventDefault(); // prevent page zoom/scroll
       state.pinchActive = true;
 
       const d = dist(e.touches[0], e.touches[1]);
@@ -235,24 +260,26 @@
         refreshDots();
       }
       state.lastTouchDist = d;
-      return;
     }
   }, { passive: false });
 
   els.targetCanvas.addEventListener("touchend", (e) => {
-    // if fingers drop below 2, end pinch mode AFTER a tiny delay
-    // (prevents the “release finger becomes a tap” problem)
+    if (!state.imageLoaded) return;
+
+    // If fingers drop below 2, end pinch mode AFTER a tiny delay
+    // (prevents pinch release creating a tap)
     if (e.touches.length < 2) {
       state.lastTouchDist = null;
       setTimeout(() => { state.pinchActive = false; }, 140);
     }
-  }, { passive: true });
 
-  // Convert touch tap to pointer tap when it's a real single-finger tap
-  els.targetCanvas.addEventListener("touchend", (e) => {
-    if (!state.imageLoaded) return;
+    // Convert a real single-finger tap into our handler
     if (state.pinchActive) return;
     if (e.changedTouches.length !== 1) return;
+
+    const now = Date.now();
+    state.lastTouchTapAt = now;
+    state.ignoreClickUntil = now + 600; // block the follow-up click event
 
     const t = e.changedTouches[0];
     handlePointer(t.clientX, t.clientY);
@@ -261,25 +288,38 @@
   // ---------- Clear taps ----------
   els.clearTapsBtn.addEventListener("click", () => {
     state.bull = null;
-    state.holes = [];
+    state.taps = [];
     state.phase = state.imageLoaded ? "bull" : "idle";
+
     setInstruction(state.imageLoaded ? "Tap bull first" : "Add a photo to begin.");
     setMicroSlot("empty");
     refreshDots();
     updateTapCount();
   });
 
-  // ---------- See Results ----------
+  // ---------- See Results (ONLY trigger) ----------
   async function onSeeResults() {
-    // Once pressed: progressive quietness (hide dots) + show Vendor CTA
+    if (!state.bull) {
+      els.resultsBox.textContent = JSON.stringify({ ok:false, error:"Missing bullTap." }, null, 2);
+      return;
+    }
+    if (state.taps.length < 1) {
+      els.resultsBox.textContent = JSON.stringify({ ok:false, error:"Need at least 1 bullet-hole tap." }, null, 2);
+      return;
+    }
+
+    // Progressive silence: hide dots + swap slot to vendor CTA
     clearDots();
     setMicroSlot("vendorCTA");
 
+    const distanceYds =
+      Number(String(els.distanceYds.value || "100").replace(/[^\d]/g, "")) || 100;
+
+    // ✅ EXACT backend shape:
     const payload = {
-      distanceYds: Number(String(els.distanceYds.value || "100").replace(/[^\d]/g, "")) || 100,
-      tapsCount: state.holes.length + (state.bull ? 1 : 0),
+      distanceYds,
       bullTap: state.bull,
-      holes: state.holes,
+      taps: state.taps
     };
 
     try {
