@@ -1,6 +1,6 @@
 // frontend_new/index.js (FULL REPLACEMENT)
-// Locks direction labels to backend outputs: out.windageDir / out.elevationDir
-// See Results appears only after: bull tap + 2 hole taps (3 total taps)
+// Shows results only after: bull tap + 2 hole taps (3 total taps)
+// Direction lock: Top = Up, Right = Right (image Y is inverted)
 
 (() => {
   // Elements
@@ -19,27 +19,22 @@
 
   const vendorLinkEl = document.getElementById("vendorLink");
 
-  // Results card elements (must exist in your index.html)
-  const resultsCard = document.getElementById("resultsCard");
-  const rDistance = document.getElementById("rDistance");
-  const rTapsUsed = document.getElementById("rTapsUsed");
-  const rWindage = document.getElementById("rWindage");
-  const rElevation = document.getElementById("rElevation");
-  const rScore = document.getElementById("rScore");
-  const rNote = document.getElementById("rNote");
+  // NOTE: your current HTML in this thread uses <pre id="resultsBox">
+  // but earlier code referenced resultsCard + rWindage/rElevation/etc.
+  // We will write into resultsBox to match your posted index.html.
+  const resultsBox = document.getElementById("resultsBox");
 
   // State
   let hasImage = false;
   let bullTap = null; // {x,y} normalized
-  let taps = []; // bullet taps normalized
+  let taps = []; // hole taps normalized
 
-  // Multi-touch guard (2-finger pinch should never create taps)
+  // Multi-touch guard
   let activeTouches = 0;
   let multiTouchActive = false;
   let suppressClicksUntil = 0;
 
-  // RULE: require bull + N holes before showing See Results
-  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
+  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps total
 
   function nowMs() {
     return Date.now();
@@ -58,7 +53,6 @@
     pill.className = "hintPill";
     pill.textContent = "Pinch to zoom";
     microSlot.appendChild(pill);
-    setMicroVendorCtaIfAny();
   }
 
   function setMicroSeeResults() {
@@ -75,7 +69,7 @@
   }
 
   function setMicroVendorCtaIfAny() {
-    const link = (vendorLinkEl?.value || "").trim();
+    const link = (vendorLinkEl.value || "").trim();
     if (!link) return;
 
     const a = document.createElement("a");
@@ -107,11 +101,8 @@
 
   function placeDot(normX, normY, cls) {
     const rect = targetImg.getBoundingClientRect();
-    const imgW = rect.width;
-    const imgH = rect.height;
-
-    const xPx = normX * imgW;
-    const yPx = normY * imgH;
+    const xPx = normX * rect.width;
+    const yPx = normY * rect.height;
 
     const dot = document.createElement("div");
     dot.className = `dot ${cls}`;
@@ -159,20 +150,20 @@
   function resetSession() {
     bullTap = null;
     taps = [];
-    if (resultsCard) resultsCard.style.display = "none";
     updateTapCount();
     setInstruction();
     refreshMicroSlot();
     rebuildDots();
+    if (resultsBox) resultsBox.textContent = "{}";
   }
 
-  // Upload (Safari-safe)
-  uploadHeroBtn?.addEventListener("click", () => {
+  // Upload
+  uploadHeroBtn.addEventListener("click", () => {
     photoInput.value = "";
     photoInput.click();
   });
 
-  photoInput?.addEventListener("change", () => {
+  photoInput.addEventListener("change", () => {
     const file = photoInput.files && photoInput.files[0];
     if (!file) return;
 
@@ -186,16 +177,16 @@
     targetImg.onload = () => {
       URL.revokeObjectURL(objectUrl);
       hasImage = true;
-      if (targetWrap) targetWrap.style.display = "block";
+      targetWrap.style.display = "block";
       resetSession();
     };
 
     targetImg.src = objectUrl;
   });
 
-  clearTapsBtn?.addEventListener("click", () => resetSession());
+  clearTapsBtn.addEventListener("click", () => resetSession());
 
-  // Touch tracking
+  // Touch tracking (2-finger pinch should never create taps)
   function handleTouchState(e) {
     activeTouches = e.touches ? e.touches.length : 0;
     if (activeTouches >= 2) {
@@ -206,13 +197,13 @@
     }
   }
 
-  targetCanvas?.addEventListener("touchstart", handleTouchState, { passive: true });
-  targetCanvas?.addEventListener("touchmove", handleTouchState, { passive: true });
-  targetCanvas?.addEventListener("touchend", handleTouchState, { passive: true });
-  targetCanvas?.addEventListener("touchcancel", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchstart", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchmove", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchend", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchcancel", handleTouchState, { passive: true });
 
   // Tap handler
-  targetCanvas?.addEventListener("click", (e) => {
+  targetCanvas.addEventListener("click", (e) => {
     if (!hasImage) return;
     if (multiTouchActive) return;
     if (nowMs() < suppressClicksUntil) return;
@@ -230,49 +221,74 @@
 
   window.addEventListener("resize", () => rebuildDots());
 
-  // ✅ RESULTS: direction comes ONLY from backend (no frontend direction math)
+  // ---- DIRECTION LOCK (Top=Up, Right=Right) ----
+  // We compute direction from taps locally so we NEVER get flipped by backend.
+  // - X: normal (math + screen): dx = bull.x - poib.x
+  // - Y: image is inverted (smaller y is UP), so elevation direction is flipped:
+  //   dy = bull.y - poib.y
+  //   dy > 0 => POIB above bull => move DOWN
+  //   dy < 0 => POIB below bull => move UP
+  function computePoib(pts) {
+    const sum = pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
+    return { x: sum.x / pts.length, y: sum.y / pts.length };
+  }
+
+  function dirWindage(dx) {
+    if (dx > 0) return "RIGHT";
+    if (dx < 0) return "LEFT";
+    return "CENTER";
+  }
+
+  function dirElevation_ImageInverted(dy) {
+    if (dy > 0) return "DOWN";
+    if (dy < 0) return "UP";
+    return "CENTER";
+  }
+
   async function onSeeResults() {
-    if (!hasImage) {
-      instructionLine.textContent = "Add a photo first.";
-      return;
-    }
-    if (!bullTap) {
-      instructionLine.textContent = "Tap bull first.";
-      return;
-    }
+    if (!hasImage) return;
+    if (!bullTap) return;
     if (taps.length < MIN_HOLES_FOR_RESULTS) {
       setInstruction();
       return;
     }
 
-    const distanceYds = Number(distanceYdsEl?.value || 100);
+    const distanceYds = Number(distanceYdsEl.value || 100);
     instructionLine.textContent = "Computing…";
 
+    // Local truth computation (direction lock)
+    const poib = computePoib(taps);
+    const dx = bullTap.x - poib.x;
+    const dy = bullTap.y - poib.y;
+
+    const windageDir = dirWindage(dx);
+    const elevationDir = dirElevation_ImageInverted(dy);
+
+    // Call backend (still useful to confirm plumbing), but we will NOT trust it for direction.
+    let backendOut = null;
     try {
-      const payload = { distanceYds, bullTap, taps };
-      const out = await window.tapscore(payload);
-
-      if (resultsCard) resultsCard.style.display = "block";
-      if (rDistance) rDistance.textContent = `${out.distanceYds} yds`;
-      if (rTapsUsed) rTapsUsed.textContent = String(out.tapsCount);
-
-      // ✅ LOCKED: use backend direction labels
-      const w = out.windageDir || out.windage || "—";
-      const e = out.elevationDir || out.elevation || "—";
-
-      if (rWindage) rWindage.textContent = w;
-      if (rElevation) rElevation.textContent = e;
-      if (rScore) rScore.textContent = out.score && out.score !== "--" ? out.score : "—";
-
-      // Helpful note (still safe): show backend instruction phrase
-      if (rNote) rNote.textContent = `Move POIB to bull: ${w} + ${e}.`;
-
-      instructionLine.textContent = "Done.";
-      refreshMicroSlot();
-    } catch (err) {
-      instructionLine.textContent = "Error — try again.";
-      if (resultsCard) resultsCard.style.display = "none";
+      backendOut = await window.tapscore({ distanceYds, bullTap, taps });
+    } catch (e) {
+      backendOut = { ok: false, error: String(e && e.message ? e.message : e) };
     }
+
+    const out = {
+      ok: true,
+      distanceYds,
+      tapsCount: taps.length,
+      bullTap,
+      poib,
+      delta: { x: dx, y: dy }, // bull - POIB
+      windage: windageDir,
+      elevation: elevationDir,
+      note: `Move POIB to bull: ${windageDir} + ${elevationDir}`,
+      backend: backendOut,
+    };
+
+    if (resultsBox) resultsBox.textContent = JSON.stringify(out, null, 2);
+
+    instructionLine.textContent = "Done.";
+    refreshMicroSlot();
   }
 
   // Init
