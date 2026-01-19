@@ -1,7 +1,7 @@
 // frontend_new/index.js (FULL REPLACEMENT)
 // - No JSON display
-// - Shooter-language directions (DIAL LEFT/RIGHT, DIAL UP/DOWN) + arrows
-// - "Corrections move POI to bull" clarification
+// - Directions computed locally from taps (truth-locked)
+// - Elevation fixed (screen Y is down; we flip to "Top = Up")
 // - See Results appears only after: bull tap + 2 hole taps (3 total taps)
 
 (() => {
@@ -21,7 +21,7 @@
 
   const vendorLinkEl = document.getElementById("vendorLink");
 
-  // If your HTML still has <pre id="resultsBox">, we will reuse it as a plain-text results panel.
+  // If HTML has <pre id="resultsBox">, we use it as plain-text output.
   const resultsBox = document.getElementById("resultsBox");
 
   // State
@@ -162,13 +162,6 @@
     return "•";
   }
 
-  function dialWord(axis, dir) {
-    // axis: "WINDAGE" | "ELEVATION"
-    if (axis === "WINDAGE") return `DIAL ${dir}`;
-    if (axis === "ELEVATION") return `DIAL ${dir}`;
-    return dir;
-  }
-
   function setResultsText(lines) {
     if (!resultsBox) return;
     resultsBox.textContent = lines.join("\n");
@@ -177,6 +170,12 @@
   function clearResultsText() {
     if (!resultsBox) return;
     resultsBox.textContent = "";
+  }
+
+  // Truth-locked POIB from taps (client-side)
+  function computePoib(points) {
+    const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+    return { x: sum.x / points.length, y: sum.y / points.length };
   }
 
   function resetSession() {
@@ -274,63 +273,49 @@
     const distanceYds = Number(distanceYdsEl.value || 100);
     instructionLine.textContent = "Computing…";
 
+    // ✅ TRUTH SOURCE: compute POIB + direction from the taps you just made
+    const poib = computePoib(taps);
+
+    // dx (right positive) is normal
+    const dx = bullTap.x - poib.x;
+
+    // dy MUST BE FLIPPED because screen Y increases downward.
+    // We want "Top = Up" meaning UP is positive.
+    // screenDy = bullY - poibY (positive when bull is lower)
+    // upDy     = -screenDy
+    const screenDy = bullTap.y - poib.y;
+    const dy = -screenDy;
+
+    const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
+    const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
+
+    // Optional: still call backend for pipeline/health
     try {
       const payload = { distanceYds, bullTap, taps };
-      const out = await window.tapscore(payload);
+      // If backend is down, we still show truth-based directions.
+      if (window.tapscore) await window.tapscore(payload).catch(() => {});
+    } catch (_) {}
 
-      // Expect backend returns:
-      // out.distanceYds, out.tapsCount, out.delta:{x,y}, out.correction_in:{dx,dy} maybe,
-      // and out.windage / out.elevation strings like "6.52 LEFT" etc.
-      // We'll compute direction from delta if strings are missing.
+    const lines = [];
+    lines.push(`Distance: ${distanceYds} yds`);
+    lines.push(`Taps used: ${taps.length}`);
 
-      const dx = out && out.delta && typeof out.delta.x === "number" ? out.delta.x : 0;
-      const dy = out && out.delta && typeof out.delta.y === "number" ? out.delta.y : 0;
+    if (windDir === "CENTER") lines.push(`Windage: • CENTER`);
+    else lines.push(`Windage: ${arrowFor(windDir)} DIAL ${windDir}`);
 
-      const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
-      const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
+    if (elevDir === "CENTER") lines.push(`Elevation: • CENTER`);
+    else lines.push(`Elevation: ${arrowFor(elevDir)} DIAL ${elevDir}`);
 
-      // Numbers (prefer backend inches if present)
-      const cin = out && out.correction_in ? out.correction_in : null;
-      const dxIn = cin && typeof cin.dx === "number" ? cin.dx : null;
-      const dyIn = cin && typeof cin.dy === "number" ? cin.dy : null;
+    lines.push("");
+    lines.push("Corrections move POI to bull.");
 
-      const windAmt = out && typeof out.windage === "string" && out.windage.trim() ? out.windage.trim() : null;
-      const elevAmt = out && typeof out.elevation === "string" && out.elevation.trim() ? out.elevation.trim() : null;
+    // (Optional) tiny debug-free numbers to prevent “CENTER lies” without showing JSON
+    // lines.push(`(dx=${fmt2(dx)}, dy=${fmt2(dy)})`);
 
-      // Build human output (NO JSON)
-      const lines = [];
+    setResultsText(lines);
 
-      lines.push(`Distance: ${out.distanceYds || distanceYds} yds`);
-      lines.push(`Taps used: ${out.tapsCount || taps.length}`);
-
-      // Windage line
-      if (windDir === "CENTER") {
-        lines.push(`Windage: • CENTER`);
-      } else {
-        // If backend already provides "6.52 LEFT", use it; otherwise fall back to dxIn if we have it
-        const amtText = windAmt ? windAmt : (dxIn !== null ? `${fmt2(Math.abs(dxIn))} ${windDir}` : `${windDir}`);
-        lines.push(`Windage: ${arrowFor(windDir)} ${dialWord("WINDAGE", windDir)}  (${amtText})`);
-      }
-
-      // Elevation line
-      if (elevDir === "CENTER") {
-        lines.push(`Elevation: • CENTER`);
-      } else {
-        const amtText = elevAmt ? elevAmt : (dyIn !== null ? `${fmt2(Math.abs(dyIn))} ${elevDir}` : `${elevDir}`);
-        lines.push(`Elevation: ${arrowFor(elevDir)} ${dialWord("ELEVATION", elevDir)}  (${amtText})`);
-      }
-
-      lines.push("");
-      lines.push("Corrections move POI to bull.");
-
-      setResultsText(lines);
-
-      instructionLine.textContent = "Done.";
-      refreshMicroSlot();
-    } catch (err) {
-      instructionLine.textContent = "Error — try again.";
-      setResultsText(["Error computing results."]);
-    }
+    instructionLine.textContent = "Done.";
+    refreshMicroSlot();
   }
 
   // Init
