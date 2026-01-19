@@ -7,21 +7,19 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <!-- cache buster -->
   <link rel="stylesheet" href="./styles.css?v=20260118a" />
 </head>
-
 <body>
   <div class="page">
-    <div class="brandRow">
-      <div class="brand" aria-label="Tap-n-Score brand">
+    <div class="brandRow" aria-label="Tap-n-Score brand">
+      <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
     <div class="h1">Upload</div>
 
-    <!-- HERO upload -->
+    <!-- HERO upload button -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -29,72 +27,52 @@
       </div>
     </button>
 
-    <!-- Hidden inputs (NOT display:none) -->
-    <input id="cameraInput" class="fileInputReal" type="file" accept="image/*" capture="environment" />
-    <input id="libraryInput" class="fileInputReal" type="file" accept="image/*" />
-    <input id="filesInput" class="fileInputReal" type="file" accept="image/*,application/pdf" />
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
+    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
     <div class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
-        <input id="distanceYds" inputmode="numeric" value="100" />
+        <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
         <div class="subtle strong">yds</div>
       </div>
 
       <div class="tapsBlock">
-        <div class="tapsLine"><span class="subtle strong">Taps:</span> <span id="tapsCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnTight" type="button">Clear taps</button>
+        <div class="tapsLine"><span class="subtle strong">Taps:</span> <span id="tapCount">0</span></div>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
+      </div>
+    </div>
+
+    <!-- Micro-slot: pinch hint / see results / vendor CTA all share this same spot -->
+    <div id="microSlot" class="microSlot">
+      <!-- will be populated by JS -->
+    </div>
+
+    <div class="card mt14">
+      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
+
+      <div id="targetWrap" class="targetWrap" style="display:none;">
+        <div id="targetCanvas" class="targetCanvas">
+          <img id="targetImg" class="targetImg" alt="Target" />
+          <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
+        </div>
       </div>
     </div>
 
     <div class="card mt14">
-      <div class="subtle" id="photoStatus">Add a photo to begin.</div>
-    </div>
-
-    <div class="mt14">
-      <div class="subtle mb6 strong">Vendor link (optional)</div>
+      <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <div class="microSlot">
-      <!-- ACTIVE green button -->
-      <button id="seeResultsBtn" class="seeResultsHint" type="button">See results</button>
-      <div class="pinchHint">Pinch to zoom. Two-finger pinch will NOT create taps.</div>
+    <div class="card mt14">
+      <div class="subtle strong mb8">Results</div>
+      <pre id="resultsBox" class="mono">{}</pre>
     </div>
 
-    <!-- Target image + tap overlay -->
-    <div class="targetWrap mt14">
-      <div id="targetCanvas" class="targetCanvas">
-        <img id="targetImg" class="targetImg" alt="Target preview" />
-        <div id="dotsLayer" class="dotsLayer"></div>
-      </div>
-    </div>
-
-    <!-- Results panel -->
-    <div id="resultsCard" class="card mt18" style="display:none;">
-      <div class="strong mb8">Results</div>
-      <div id="resultsPretty" class="subtle"></div>
-      <div class="mt14" style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
-        <button id="saveBtn" class="btn" type="button">Saved</button>
-        <button id="receiptBtn" class="btn" type="button">Receipt</button>
-      </div>
-      <pre id="receiptRaw" class="mono mt14" style="display:none;"></pre>
-    </div>
-
-    <div class="footer">Tap-n-Score™</div>
+    <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <!-- Action sheet -->
-  <div id="sheetMask" class="sheetMask" aria-hidden="true"></div>
-  <div id="sheet" class="sheet" aria-hidden="true">
-    <div class="sheetTitle">Upload target photo</div>
-    <button id="pickLibrary" class="sheetBtn" type="button">Photo Library</button>
-    <button id="pickCamera" class="sheetBtn" type="button">Take Photo</button>
-    <button id="pickFiles" class="sheetBtn" type="button">Files</button>
-    <button id="cancelSheet" class="sheetBtn sheetBtnCancel" type="button">Cancel</button>
-  </div>
-
+  <script src="./api.js?v=20260118a"></script>
   <script src="./index.js?v=20260118a"></script>
 </body>
 </html>
