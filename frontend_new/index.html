@@ -1,4 +1,3 @@
-<!-- frontend_new/index.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -12,6 +11,7 @@
 </head>
 <body>
   <div class="page">
+
     <!-- Brand -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
@@ -19,7 +19,7 @@
       </div>
     </div>
 
-    <!-- ✅ CONTROLS MOVED ABOVE CTA -->
+    <!-- Controls ABOVE CTA -->
     <div class="controlsRow">
       <div class="distanceBox">
         <div class="subtle strong labelCaps">Distance</div>
@@ -29,7 +29,6 @@
         </div>
       </div>
 
-      <!-- Optional boxes (safe if your JS uses them) -->
       <div class="statBox">
         <div class="subtle strong labelCaps">Windage</div>
         <div id="windageBox" class="statValue">—</div>
@@ -49,7 +48,7 @@
       </div>
     </div>
 
-    <!-- ✅ CTA (Upload button) -->
+    <!-- CTA -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -57,15 +56,16 @@
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
+    <!-- REAL INPUT (hidden) -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
     <!-- Micro-slot: pinch hint / see results / vendor CTA -->
     <div id="microSlot" class="microSlot"></div>
 
-    <!-- Target card -->
+    <!-- Tap card -->
     <div class="card mt10">
-      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
+      <!-- ✅ Hard-wired instruction line (but only shown when photo is loaded by JS) -->
+      <div class="subtle mb8" id="instructionLine"></div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -75,28 +75,23 @@
       </div>
     </div>
 
-    <!-- Vendor -->
+    <!-- Vendor link input (optional) -->
     <div class="card mt10">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- Results (simple) -->
-    <div class="card mt10">
-      <div class="subtle strong mb8">Results</div>
-      <pre id="resultsBox" class="mono">{}</pre>
-    </div>
-
-    <!-- ResultsCard (optional, safe placeholder if your JS references it) -->
+    <!-- ✅ Clean Results Card (NO JSON) -->
     <div id="resultsCard" class="card mt10" style="display:none;">
-      <div class="subtle strong mb8">Results (Card)</div>
+      <div class="subtle strong mb8">Results</div>
+
       <div class="grid2">
         <div class="kv"><div class="k">Distance</div><div id="rDistance" class="v">—</div></div>
-        <div class="kv"><div class="k">Taps Used</div><div id="rTapsUsed" class="v">—</div></div>
+        <div class="kv"><div class="k">Shots tapped</div><div id="rTapsUsed" class="v">—</div></div>
         <div class="kv"><div class="k">Windage</div><div id="rWindage" class="v">—</div></div>
         <div class="kv"><div class="k">Elevation</div><div id="rElevation" class="v">—</div></div>
-        <div class="kv"><div class="k">Score</div><div id="rScore" class="v">—</div></div>
       </div>
+
       <div id="rNote" class="subtle mt8">—</div>
     </div>
 
