@@ -1,3 +1,4 @@
+<!-- frontend_new/index.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,19 +8,10 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <!-- HARD BASE -->
-  <style>
-    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    a{color:inherit}
-  </style>
-
-  <!-- your styles.css from prior step -->
-  <link rel="stylesheet" href="./styles.css?v=20260118R1" />
+  <link rel="stylesheet" href="./styles.css?v=20260118_fix1" />
 </head>
-
 <body>
   <div class="page">
-
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
@@ -36,10 +28,10 @@
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" so iOS offers options -->
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" and DO NOT display:none via CSS -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <div class="controlsRow">
+    <div class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
@@ -52,14 +44,11 @@
       </div>
     </div>
 
-    <!-- Micro-slot: pinch hint (brief), See Results, Vendor CTA -->
-    <div id="microSlot" class="microSlot" aria-live="polite"></div>
+    <!-- Micro-slot: hint -> see results -> vendor CTA (same spot) -->
+    <div id="microSlot" class="microSlot"></div>
 
     <div class="card mt14">
-      <!-- This line is HARD-WIRED but stays hidden until a photo exists -->
-      <div id="tapHeaderLine" class="subtle strong mb8" style="display:none;">
-        Tap Bullseye or Aim Point 1st • then tap Bullet holes
-      </div>
+      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -74,16 +63,44 @@
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- Results (CLEAN TEXT ONLY, NO JSON) -->
-    <div id="resultsCard" class="card mt14" style="display:none;">
+    <div class="card mt14" id="resultsCard" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <div id="resultsText" class="subtle"></div>
+
+      <!-- NO JSON. Shooter-readable output only -->
+      <div class="resultsGrid">
+        <div class="resultRow">
+          <div class="resultLabel">Distance</div>
+          <div class="resultValue" id="rDistance">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="resultLabel">Taps used</div>
+          <div class="resultValue" id="rTapsUsed">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="resultLabel">Windage</div>
+          <div class="resultValue" id="rWindage">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="resultLabel">Elevation</div>
+          <div class="resultValue" id="rElevation">—</div>
+        </div>
+        <div class="resultRow">
+          <div class="resultLabel">Score</div>
+          <div class="resultValue" id="rScore">—</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="resultNote" id="rNote">
+          (Clicks/inches coming next. This is the clean direction + verification step.)
+        </div>
+      </div>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=20260118R1"></script>
-  <script src="./index.js?v=20260118R1"></script>
+  <script src="./api.js?v=20260118_fix1"></script>
+  <script src="./index.js?v=20260118_fix1"></script>
 </body>
 </html>
