@@ -1,13 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+  <title>Tap-n-Score™</title>
+
+  <!-- cache-bust -->
+  <link rel="stylesheet" href="./styles.css?v=20260118b" />
+</head>
+
 <body>
   <div class="page">
-    <!-- BRAND ONLY (no extra upload text under it) -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <!-- HERO upload button (single entry point) -->
+    <div class="h1">Tap</div>
+
+    <!-- HERO upload button (ONE button) -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
@@ -15,11 +29,11 @@
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" so iOS offers Camera + Library + Files -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <!-- CONTROLS ROW (moved ABOVE CTA slot) -->
-    <div class="controlsRow mt14" id="controlsRow">
+    <!-- Controls ABOVE CTA strip (so target can move up) -->
+    <div class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
@@ -32,9 +46,14 @@
       </div>
     </div>
 
-    <!-- TARGET CARD (moved UP into frame; instruction line stays inside) -->
-    <div class="card mt14" id="targetCard">
-      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
+    <!-- Micro-slot: pinch hint / See results / vendor CTA live here -->
+    <div id="microSlot" class="microSlot"></div>
+
+    <!-- Target card (instruction line hidden until photo exists) -->
+    <div class="card mt14">
+      <div id="instructionLine" class="subtle mb8" style="display:none;">
+        Tap Bullseye or Aim Point 1st — then tap bullet holes.
+      </div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -42,26 +61,37 @@
           <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
         </div>
       </div>
+
+      <div id="emptyHint" class="subtle" style="margin-top:10px;">
+        Add a photo to begin.
+      </div>
     </div>
 
-    <!-- MICRO-SLOT (now BELOW target; pops “See results” + vendor CTA here) -->
-    <div id="microSlot" class="microSlot"></div>
-
-    <!-- Vendor link (optional) -->
-    <div class="card mt14" id="vendorCard">
+    <!-- Vendor link input (quiet) -->
+    <div class="card mt14">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- Results -->
-    <div class="card mt14" id="resultsCard">
+    <!-- Results card (NO JSON) -->
+    <div id="resultsCard" class="card mt14" style="display:none;">
       <div class="subtle strong mb8">Results</div>
-      <pre id="resultsBox" class="mono">{}</pre>
+
+      <div class="subtle mb6">Distance: <span id="rDistance" class="strong">—</span></div>
+      <div class="subtle mb6">Taps used: <span id="rTapsUsed" class="strong">—</span></div>
+
+      <div class="subtle mb6">Windage: <span id="rWindage" class="strong">—</span></div>
+      <div class="subtle mb6">Elevation: <span id="rElevation" class="strong">—</span></div>
+
+      <div class="subtle mb6">Smart Score: <span id="rScore" class="strong">—</span></div>
+
+      <div id="rNote" class="subtle mt12">—</div>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
   </div>
 
-  <script src="./api.js?v=20260118a"></script>
-  <script src="./index.js?v=20260118a"></script>
+  <script src="./api.js?v=20260118b"></script>
+  <script src="./index.js?v=20260118b"></script>
 </body>
+</html>
