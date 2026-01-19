@@ -112,7 +112,7 @@ html,body{
   font-weight:700;
 }
 
-/* Controls row (tight + no run-off) */
+/* Controls row */
 .controlsRow{
   display:flex;
   align-items:center;
@@ -173,11 +173,12 @@ html,body{
   display:flex;
   align-items:center;
   gap:10px;
+  flex-wrap:wrap;
 }
 
 /* Pinch hint */
 .pinchHint{
-  width:100%;
+  flex:1;
   border-radius:18px;
   padding:12px 14px;
   border:1px solid rgba(255,255,255,.12);
@@ -188,29 +189,7 @@ html,body{
   letter-spacing:.01em;
 }
 
-/* Vendor CTA */
-.vendorBuyBtn{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  width:100%;
-  text-decoration:none;
-  border-radius:18px;
-  padding:14px 14px;
-  border:1px solid rgba(255,255,255,.14);
-  background:rgba(255,255,255,.06);
-}
-.vendorIcon{font-size:18px}
-.vendorText{
-  flex:1;
-  font-weight:900;
-  letter-spacing:.2px;
-  color:rgba(255,255,255,.92);
-}
-.vendorArrow{ font-size:22px; opacity:.65; }
-
-/* ✅ Green boxed whisper (ACTIVE button) */
+/* ✅ Green boxed ACTIVE button */
 .seeResultsHint{
   display:inline-flex;
   align-items:center;
@@ -225,6 +204,7 @@ html,body{
   letter-spacing:.01em;
   cursor:pointer;
   white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
 }
 .seeResultsHint:active{transform:translateY(1px)}
 
@@ -247,8 +227,9 @@ html,body{
   padding:14px;
 }
 
-/* Target container (FIT) */
+/* Target container */
 .targetWrap{
+  position:relative;
   width:100%;
   border-radius:18px;
   overflow:hidden;
@@ -257,19 +238,17 @@ html,body{
   padding:10px;
 }
 
-/* The tap canvas sizes itself to the IMAGE (so dots align perfectly) */
 .targetCanvas{
   position:relative;
-  display:inline-block;
-  max-width:100%;
-  margin:0 auto;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  width:100%;
+  touch-action: pinch-zoom; /* allow pinch */
 }
 
-/* Allow zoom/pinch on the page; we handle multi-touch taps in JS */
-.targetCanvas, .targetWrap { touch-action: auto; }
-
 .targetImg{
-  display:block;
+  display:none;
   max-width:100%;
   max-height:62vh;
   width:auto;
@@ -277,12 +256,10 @@ html,body{
   border-radius:14px;
 }
 
-/* Overlay exactly on top of the image */
+/* Overlay */
 .dotsLayer{
   position:absolute;
-  left:0; top:0;
-  width:100%;
-  height:100%;
+  inset:10px; /* match targetWrap padding visually */
   pointer-events:none;
 }
 
@@ -301,6 +278,48 @@ html,body{
   margin-top:22px;
   text-align:center;
   opacity:.65;
+}
+
+/* Action sheet */
+.sheetMask{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  display:none;
+  z-index:50;
+}
+.sheet{
+  position:fixed;
+  left:12px; right:12px;
+  bottom:12px;
+  background:rgba(25,25,25,.98);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:18px;
+  padding:12px;
+  display:none;
+  z-index:51;
+  box-shadow:0 18px 48px rgba(0,0,0,.7);
+}
+.sheetTitle{
+  font-weight:900;
+  margin:4px 6px 10px;
+  color:rgba(255,255,255,.9);
+}
+.sheetBtn{
+  width:100%;
+  border-radius:14px;
+  padding:14px 12px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+  color:#fff;
+  font-weight:900;
+  font-size:16px;
+  margin-top:8px;
+}
+.sheetBtn:active{transform:translateY(1px)}
+.sheetBtnCancel{
+  background:rgba(255,59,48,.10);
+  border-color:rgba(255,59,48,.25);
 }
 
 @media (max-width:420px){
