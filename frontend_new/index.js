@@ -1,14 +1,13 @@
 // frontend_new/index.js (FULL REPLACEMENT)
-// Tap-n-Score — bull first, then holes
-// - See Results appears only after: bull + 2 holes (3 total taps)
-// - Multi-touch guard: pinch/2-finger NEVER creates taps
-// - Direction/click display comes from BACKEND (single source of truth)
+// - No JSON display
+// - Shooter-language directions (DIAL LEFT/RIGHT, DIAL UP/DOWN) + arrows
+// - "Corrections move POI to bull" clarification
+// - See Results appears only after: bull tap + 2 hole taps (3 total taps)
 
 (() => {
-  // ===== DOM =====
+  // Elements
   const uploadHeroBtn = document.getElementById("uploadHeroBtn");
   const photoInput = document.getElementById("photoInput");
-
   const distanceYdsEl = document.getElementById("distanceYds");
   const clearTapsBtn = document.getElementById("clearTapsBtn");
   const tapCountEl = document.getElementById("tapCount");
@@ -22,296 +21,321 @@
 
   const vendorLinkEl = document.getElementById("vendorLink");
 
-  // Results (in your current HTML you have <pre id="resultsBox">)
+  // If your HTML still has <pre id="resultsBox">, we will reuse it as a plain-text results panel.
   const resultsBox = document.getElementById("resultsBox");
 
-  // ===== STATE =====
+  // State
   let hasImage = false;
-  let bullTap = null; // normalized {x,y}
-  let holes = [];    // normalized hole taps [{x,y},...]
+  let bullTap = null; // {x,y} normalized
+  let taps = [];      // bullet taps normalized
 
-  // Multi-touch guard
+  // Multi-touch guard (2-finger pinch should never create taps)
   let activeTouches = 0;
   let multiTouchActive = false;
   let suppressClicksUntil = 0;
 
-  // Require bull + 2 holes (3 taps total)
-  const MIN_HOLES_FOR_RESULTS = 2;
+  // RULE: require bull + N holes before showing See Results
+  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
 
-  function nowMs(){ return Date.now(); }
-  function clamp01(v){ return Math.max(0, Math.min(1, Number(v))); }
+  function nowMs() { return Date.now(); }
+  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
-  function totalTaps(){
-    return (bullTap ? 1 : 0) + holes.length;
+  function canShowResults() {
+    return !!bullTap && taps.length >= MIN_HOLES_FOR_RESULTS;
   }
 
-  function canShowResults(){
-    return !!bullTap && holes.length >= MIN_HOLES_FOR_RESULTS;
+  function updateTapCount() {
+    tapCountEl.textContent = String(taps.length + (bullTap ? 1 : 0));
   }
 
-  function setTapCount(){
-    if (tapCountEl) tapCountEl.textContent = String(totalTaps());
+  function clearAllDots() {
+    dotsLayer.innerHTML = "";
   }
 
-  function setInstruction(){
-    if (!instructionLine) return;
+  function placeDot(normX, normY, cls) {
+    const rect = targetImg.getBoundingClientRect();
+    const imgW = rect.width;
+    const imgH = rect.height;
 
-    if (!hasImage){
+    const xPx = normX * imgW;
+    const yPx = normY * imgH;
+
+    const dot = document.createElement("div");
+    dot.className = `dot ${cls}`;
+    dot.style.left = `${xPx}px`;
+    dot.style.top = `${yPx}px`;
+    dotsLayer.appendChild(dot);
+  }
+
+  function rebuildDots() {
+    clearAllDots();
+    if (!hasImage) return;
+    if (bullTap) placeDot(bullTap.x, bullTap.y, "dotBull");
+    for (const p of taps) placeDot(p.x, p.y, "dotHole");
+  }
+
+  function getNormalizedFromEvent(e) {
+    const r = targetImg.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    return { x: clamp01(x), y: clamp01(y) };
+  }
+
+  function setInstruction() {
+    if (!hasImage) {
       instructionLine.textContent = "Add a photo to begin.";
       return;
     }
-
-    // Only show this line when target is present (per your request)
-    if (!bullTap){
-      instructionLine.textContent = "Tap bull first — then tap bullet holes.";
+    if (!bullTap) {
+      instructionLine.textContent = "Tap bull first.";
       return;
     }
 
-    const remaining = Math.max(0, MIN_HOLES_FOR_RESULTS - holes.length);
-    if (remaining > 0){
+    const holesNeeded = Math.max(0, MIN_HOLES_FOR_RESULTS - taps.length);
+    if (holesNeeded > 0) {
       instructionLine.textContent =
-        remaining === 1
-          ? "Tap 1 more bullet hole to unlock results."
-          : `Tap ${remaining} more bullet holes to unlock results.`;
+        holesNeeded === 1
+          ? "Tap 1 more bullet hole to see results."
+          : `Tap ${holesNeeded} more bullet holes to see results.`;
       return;
     }
 
     instructionLine.textContent = "Ready — tap See results.";
   }
 
-  // ===== DOTS =====
-  function clearDots(){
-    if (dotsLayer) dotsLayer.innerHTML = "";
+  // Micro-slot UI
+  function setMicroHint() {
+    microSlot.innerHTML = "";
+    const pill = document.createElement("div");
+    pill.className = "hintPill";
+    pill.textContent = "Pinch to zoom";
+    microSlot.appendChild(pill);
   }
 
-  function dotPx(normX, normY){
-    const r = targetImg.getBoundingClientRect();
-    return { x: normX * r.width, y: normY * r.height };
+  function setMicroVendorCtaIfAny() {
+    const link = (vendorLinkEl.value || "").trim();
+    if (!link) return;
+
+    const a = document.createElement("a");
+    a.className = "vendorCta";
+    a.href = link;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = "Buy more targets like this";
+
+    microSlot.appendChild(a);
   }
 
-  function addDot(normX, normY, kind){
-    if (!dotsLayer) return;
-    const p = dotPx(normX, normY);
-
-    const d = document.createElement("div");
-    d.className = "tapDot";
-    d.dataset.kind = kind;
-    d.style.left = `${p.x}px`;
-    d.style.top = `${p.y}px`;
-    dotsLayer.appendChild(d);
-  }
-
-  function rebuildDots(){
-    clearDots();
-    if (!hasImage) return;
-    if (bullTap) addDot(bullTap.x, bullTap.y, "bull");
-    for (const h of holes) addDot(h.x, h.y, "hole");
-  }
-
-  // Keep dots aligned when the image size changes
-  window.addEventListener("resize", rebuildDots);
-
-  // ===== MICRO SLOT =====
-  function renderMicroSlot(){
-    if (!microSlot) return;
+  function setMicroSeeResults() {
     microSlot.innerHTML = "";
 
-    if (!hasImage) return;
+    const btn = document.createElement("button");
+    btn.className = "btn btnGreen";
+    btn.type = "button";
+    btn.textContent = "See results";
+    btn.addEventListener("click", onSeeResults);
 
-    // Show pinch hint after first tap only, then disappear (your “progressive quietness”)
-    if (totalTaps() === 1 && !canShowResults()){
-      const hint = document.createElement("div");
-      hint.className = "pinchHint";
-      hint.textContent = "Pinch to zoom";
-      microSlot.appendChild(hint);
-      return;
-    }
-
-    // Show See Results only when eligible (bull + 2 holes)
-    if (canShowResults()){
-      const btn = document.createElement("button");
-      btn.className = "seeResultsHint";
-      btn.type = "button";
-      btn.textContent = "See results";
-      btn.addEventListener("click", onSeeResults);
-      microSlot.appendChild(btn);
-
-      // Vendor CTA appears only once See Results is available (your request)
-      const link = String(vendorLinkEl?.value || "").trim();
-      if (link){
-        const a = document.createElement("a");
-        a.className = "vendorBuyBtn";
-        a.href = link;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.innerHTML = `
-          <span class="vendorIcon">🛒</span>
-          <span class="vendorText">Buy more targets like this</span>
-          <span class="vendorArrow">›</span>
-        `;
-        microSlot.appendChild(a);
-      }
-      return;
-    }
-
-    // Otherwise nothing (clean)
+    microSlot.appendChild(btn);
+    setMicroVendorCtaIfAny();
   }
 
-  // ===== SESSION RESET =====
-  function resetSession(){
+  function refreshMicroSlot() {
+    if (!hasImage) {
+      microSlot.innerHTML = "";
+      return;
+    }
+    if (canShowResults()) setMicroSeeResults();
+    else setMicroHint();
+  }
+
+  // Results formatting (no JSON)
+  function fmt2(n) {
+    if (typeof n !== "number" || !Number.isFinite(n)) return "0.00";
+    return n.toFixed(2);
+  }
+
+  function arrowFor(dir) {
+    if (dir === "LEFT") return "←";
+    if (dir === "RIGHT") return "→";
+    if (dir === "UP") return "↑";
+    if (dir === "DOWN") return "↓";
+    return "•";
+  }
+
+  function dialWord(axis, dir) {
+    // axis: "WINDAGE" | "ELEVATION"
+    if (axis === "WINDAGE") return `DIAL ${dir}`;
+    if (axis === "ELEVATION") return `DIAL ${dir}`;
+    return dir;
+  }
+
+  function setResultsText(lines) {
+    if (!resultsBox) return;
+    resultsBox.textContent = lines.join("\n");
+  }
+
+  function clearResultsText() {
+    if (!resultsBox) return;
+    resultsBox.textContent = "";
+  }
+
+  function resetSession() {
     bullTap = null;
-    holes = [];
-    setTapCount();
+    taps = [];
+    updateTapCount();
     setInstruction();
+    refreshMicroSlot();
     rebuildDots();
-    renderMicroSlot();
-    if (resultsBox) resultsBox.textContent = "{}";
+    clearResultsText();
   }
 
-  // ===== UPLOAD (ONE BUTTON) =====
-  if (uploadHeroBtn && photoInput){
-    uploadHeroBtn.addEventListener("click", () => {
-      // iOS needs this to re-select same image
-      photoInput.value = "";
-      photoInput.click();
-    });
+  // Upload (Safari-safe)
+  uploadHeroBtn.addEventListener("click", () => {
+    photoInput.value = "";
+    photoInput.click();
+  });
 
-    photoInput.addEventListener("change", () => {
-      const file = photoInput.files && photoInput.files[0];
-      if (!file) return;
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files && photoInput.files[0];
+    if (!file) return;
 
-      if (!file.type || !file.type.startsWith("image/")){
-        if (instructionLine) instructionLine.textContent = "Please choose an image file.";
-        return;
-      }
+    if (!file.type || !file.type.startsWith("image/")) {
+      instructionLine.textContent = "Please choose an image file.";
+      return;
+    }
 
-      const objectUrl = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
 
-      targetImg.onload = () => {
-        try { URL.revokeObjectURL(objectUrl); } catch {}
-        hasImage = true;
-        if (targetWrap) targetWrap.style.display = "block";
-        resetSession();
-      };
+    targetImg.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      hasImage = true;
+      targetWrap.style.display = "block";
+      resetSession();
+    };
 
-      targetImg.onerror = () => {
-        hasImage = false;
-        if (targetWrap) targetWrap.style.display = "none";
-        if (instructionLine) instructionLine.textContent = "Could not load that photo. Try again.";
-        resetSession();
-      };
+    targetImg.src = objectUrl;
+  });
 
-      targetImg.src = objectUrl;
-    });
-  }
+  clearTapsBtn.addEventListener("click", () => {
+    resetSession();
+  });
 
-  // ===== CLEAR =====
-  if (clearTapsBtn){
-    clearTapsBtn.addEventListener("click", () => resetSession());
-  }
-
-  // ===== MULTI-TOUCH GUARD =====
-  function trackTouchState(e){
+  // Touch tracking (pinch guard)
+  function handleTouchState(e) {
     activeTouches = e.touches ? e.touches.length : 0;
-    if (activeTouches >= 2){
+    if (activeTouches >= 2) {
       multiTouchActive = true;
-    } else if (activeTouches === 0){
-      if (multiTouchActive){
-        suppressClicksUntil = nowMs() + 300; // swallow the “first tap” after pinch
+    } else if (activeTouches === 0) {
+      if (multiTouchActive) {
+        suppressClicksUntil = nowMs() + 250;
       }
       multiTouchActive = false;
     }
   }
 
-  if (targetCanvas){
-    targetCanvas.addEventListener("touchstart", trackTouchState, { passive: true });
-    targetCanvas.addEventListener("touchmove", trackTouchState, { passive: true });
-    targetCanvas.addEventListener("touchend", trackTouchState, { passive: true });
-    targetCanvas.addEventListener("touchcancel", trackTouchState, { passive: true });
-  }
+  targetCanvas.addEventListener("touchstart", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchmove", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchend", handleTouchState, { passive: true });
+  targetCanvas.addEventListener("touchcancel", handleTouchState, { passive: true });
 
-  // ===== TAP CAPTURE =====
-  function normFromEvent(e){
-    const r = targetImg.getBoundingClientRect();
-    const nx = (e.clientX - r.left) / r.width;
-    const ny = (e.clientY - r.top) / r.height;
-    return { x: clamp01(nx), y: clamp01(ny) };
-  }
-
-  if (targetCanvas){
-    targetCanvas.addEventListener("click", (e) => {
-      if (!hasImage) return;
-      if (multiTouchActive) return;
-      if (nowMs() < suppressClicksUntil) return;
-
-      const p = normFromEvent(e);
-
-      if (!bullTap){
-        bullTap = p;
-      } else {
-        holes.push(p);
-      }
-
-      setTapCount();
-      rebuildDots();
-      setInstruction();
-      renderMicroSlot();
-    });
-  }
-
-  // ===== RESULTS (single source of truth: backend) =====
-  async function onSeeResults(){
+  // Tap handler
+  targetCanvas.addEventListener("click", (e) => {
     if (!hasImage) return;
-    if (!bullTap) return;
-    if (holes.length < MIN_HOLES_FOR_RESULTS) return;
+    if (multiTouchActive) return;
+    if (nowMs() < suppressClicksUntil) return;
 
-    const distanceYds = Number(distanceYdsEl?.value || 100);
+    const p = getNormalizedFromEvent(e);
 
-    if (instructionLine) instructionLine.textContent = "Computing…";
+    if (!bullTap) bullTap = p;
+    else taps.push(p);
 
-    try{
-      if (typeof window.tapscore !== "function"){
-        throw new Error("tapscore() missing (api.js not loaded).");
-      }
+    updateTapCount();
+    rebuildDots();
+    setInstruction();
+    refreshMicroSlot();
+  });
 
-      const payload = {
-        distanceYds,
-        bullTap,
-        taps: holes,      // backend expects "taps"
-        // Optional if you want explicit scale control:
-        // targetWIn: 8.5, targetHIn: 11, moaPerClick: 0.25
-      };
+  window.addEventListener("resize", () => rebuildDots());
 
+  async function onSeeResults() {
+    if (!hasImage) {
+      instructionLine.textContent = "Add a photo first.";
+      return;
+    }
+    if (!bullTap) {
+      instructionLine.textContent = "Tap bull first.";
+      return;
+    }
+    if (taps.length < MIN_HOLES_FOR_RESULTS) {
+      setInstruction();
+      return;
+    }
+
+    const distanceYds = Number(distanceYdsEl.value || 100);
+    instructionLine.textContent = "Computing…";
+
+    try {
+      const payload = { distanceYds, bullTap, taps };
       const out = await window.tapscore(payload);
 
-      // Display ONLY what backend returns (prevents frontend flipping directions)
-      if (resultsBox){
-        // Keep it simple for now (no “JSON blob” vibe can be styled later)
-        const wind = `${out?.clicks?.windage || "--"} ${out?.directions?.windage || ""}`.trim();
-        const elev = `${out?.clicks?.elevation || "--"} ${out?.directions?.elevation || ""}`.trim();
-        const dx = out?.correction_in?.dx;
-        const dy = out?.correction_in?.dy;
+      // Expect backend returns:
+      // out.distanceYds, out.tapsCount, out.delta:{x,y}, out.correction_in:{dx,dy} maybe,
+      // and out.windage / out.elevation strings like "6.52 LEFT" etc.
+      // We'll compute direction from delta if strings are missing.
 
-        resultsBox.textContent = JSON.stringify({
-          distanceYds: out.distanceYds,
-          tapsUsed: out.tapsCount,
-          windage: wind,
-          elevation: elev,
-          correction_in: { dx, dy }, // dx right+, dy up+
-          score: out.score
-        }, null, 2);
+      const dx = out && out.delta && typeof out.delta.x === "number" ? out.delta.x : 0;
+      const dy = out && out.delta && typeof out.delta.y === "number" ? out.delta.y : 0;
+
+      const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
+      const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
+
+      // Numbers (prefer backend inches if present)
+      const cin = out && out.correction_in ? out.correction_in : null;
+      const dxIn = cin && typeof cin.dx === "number" ? cin.dx : null;
+      const dyIn = cin && typeof cin.dy === "number" ? cin.dy : null;
+
+      const windAmt = out && typeof out.windage === "string" && out.windage.trim() ? out.windage.trim() : null;
+      const elevAmt = out && typeof out.elevation === "string" && out.elevation.trim() ? out.elevation.trim() : null;
+
+      // Build human output (NO JSON)
+      const lines = [];
+
+      lines.push(`Distance: ${out.distanceYds || distanceYds} yds`);
+      lines.push(`Taps used: ${out.tapsCount || taps.length}`);
+
+      // Windage line
+      if (windDir === "CENTER") {
+        lines.push(`Windage: • CENTER`);
+      } else {
+        // If backend already provides "6.52 LEFT", use it; otherwise fall back to dxIn if we have it
+        const amtText = windAmt ? windAmt : (dxIn !== null ? `${fmt2(Math.abs(dxIn))} ${windDir}` : `${windDir}`);
+        lines.push(`Windage: ${arrowFor(windDir)} ${dialWord("WINDAGE", windDir)}  (${amtText})`);
       }
 
-      if (instructionLine) instructionLine.textContent = "Done.";
-      renderMicroSlot();
-    } catch(err){
-      if (instructionLine) instructionLine.textContent = "Error — try again.";
-      if (resultsBox) resultsBox.textContent = "{}";
+      // Elevation line
+      if (elevDir === "CENTER") {
+        lines.push(`Elevation: • CENTER`);
+      } else {
+        const amtText = elevAmt ? elevAmt : (dyIn !== null ? `${fmt2(Math.abs(dyIn))} ${elevDir}` : `${elevDir}`);
+        lines.push(`Elevation: ${arrowFor(elevDir)} ${dialWord("ELEVATION", elevDir)}  (${amtText})`);
+      }
+
+      lines.push("");
+      lines.push("Corrections move POI to bull.");
+
+      setResultsText(lines);
+
+      instructionLine.textContent = "Done.";
+      refreshMicroSlot();
+    } catch (err) {
+      instructionLine.textContent = "Error — try again.";
+      setResultsText(["Error computing results."]);
     }
   }
 
-  // ===== INIT =====
-  setTapCount();
+  // Init
+  refreshMicroSlot();
+  updateTapCount();
   setInstruction();
-  renderMicroSlot();
+  clearResultsText();
 })();
