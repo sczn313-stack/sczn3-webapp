@@ -7,33 +7,19 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <!-- cache-bust -->
   <link rel="stylesheet" href="./styles.css?v=20260118b" />
 </head>
-
 <body>
   <div class="page">
+    <!-- Brand only (NO "Upload" header under it) -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <div class="h1">Tap</div>
-
-    <!-- HERO upload button (ONE button) -->
-    <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
-      <div class="uploadHeroInner">
-        <div class="uploadHeroTitle">Upload target photo</div>
-        <div class="uploadHeroSub">Camera • Photo Library • Files</div>
-      </div>
-    </button>
-
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" so iOS offers Camera + Library + Files -->
-    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
-
-    <!-- Controls ABOVE CTA strip (so target can move up) -->
-    <div class="controlsRow mt14">
+    <!-- Controls moved ABOVE the hero CTA (per your request) -->
+    <div class="controlsRow mt12">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
         <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
@@ -46,14 +32,23 @@
       </div>
     </div>
 
-    <!-- Micro-slot: pinch hint / See results / vendor CTA live here -->
-    <div id="microSlot" class="microSlot"></div>
-
-    <!-- Target card (instruction line hidden until photo exists) -->
-    <div class="card mt14">
-      <div id="instructionLine" class="subtle mb8" style="display:none;">
-        Tap Bullseye or Aim Point 1st — then tap bullet holes.
+    <!-- HERO upload button -->
+    <button id="uploadHeroBtn" class="uploadHero mt12" type="button" aria-label="Upload target photo">
+      <div class="uploadHeroInner">
+        <div class="uploadHeroTitle">Upload target photo</div>
+        <div class="uploadHeroSub">Camera • Photo Library • Files</div>
       </div>
+    </button>
+
+    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
+    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
+
+    <!-- Micro-slot: pinch hint / see results / vendor CTA share this spot -->
+    <div id="microSlot" class="microSlot mt10"></div>
+
+    <!-- Target card (pulled up) -->
+    <div class="card mt10">
+      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -61,31 +56,27 @@
           <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
         </div>
       </div>
-
-      <div id="emptyHint" class="subtle" style="margin-top:10px;">
-        Add a photo to begin.
-      </div>
     </div>
 
-    <!-- Vendor link input (quiet) -->
-    <div class="card mt14">
+    <!-- Vendor link -->
+    <div class="card mt10">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- Results card (NO JSON) -->
-    <div id="resultsCard" class="card mt14" style="display:none;">
-      <div class="subtle strong mb8">Results</div>
+    <!-- Results (hidden until See results) -->
+    <div id="resultsCard" class="card mt10" style="display:none;">
+      <div class="subtle strong mb10">Results</div>
 
-      <div class="subtle mb6">Distance: <span id="rDistance" class="strong">—</span></div>
-      <div class="subtle mb6">Taps used: <span id="rTapsUsed" class="strong">—</span></div>
+      <div class="resultsGrid">
+        <div class="rRow"><div class="rLabel">Distance</div><div id="rDistance" class="rVal">—</div></div>
+        <div class="rRow"><div class="rLabel">Taps used</div><div id="rTapsUsed" class="rVal">—</div></div>
+        <div class="rRow"><div class="rLabel">Windage</div><div id="rWindage" class="rVal">—</div></div>
+        <div class="rRow"><div class="rLabel">Elevation</div><div id="rElevation" class="rVal">—</div></div>
+        <div class="rRow"><div class="rLabel">Score</div><div id="rScore" class="rVal">—</div></div>
 
-      <div class="subtle mb6">Windage: <span id="rWindage" class="strong">—</span></div>
-      <div class="subtle mb6">Elevation: <span id="rElevation" class="strong">—</span></div>
-
-      <div class="subtle mb6">Smart Score: <span id="rScore" class="strong">—</span></div>
-
-      <div id="rNote" class="subtle mt12">—</div>
+        <div class="rNote" id="rNote"></div>
+      </div>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
