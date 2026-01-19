@@ -11,29 +11,15 @@
 </head>
 <body>
   <div class="page">
-    <!-- Brand only (NO "Upload" header under it) -->
+    <!-- BRAND (top-left) -->
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <!-- Controls moved ABOVE the hero CTA (per your request) -->
-    <div class="controlsRow mt12">
-      <div class="distanceBox">
-        <div class="subtle strong">Distance</div>
-        <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
-        <div class="subtle strong">yds</div>
-      </div>
-
-      <div class="tapsBlock">
-        <div class="tapsLine"><span class="subtle strong">Taps:</span> <span id="tapCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
-      </div>
-    </div>
-
     <!-- HERO upload button -->
-    <button id="uploadHeroBtn" class="uploadHero mt12" type="button" aria-label="Upload target photo">
+    <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
         <div class="uploadHeroSub">Camera • Photo Library • Files</div>
@@ -43,12 +29,44 @@
     <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
     <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
 
-    <!-- Micro-slot: pinch hint / see results / vendor CTA share this spot -->
-    <div id="microSlot" class="microSlot mt10"></div>
+    <!-- ✅ Controls ABOVE CTA (Distance + Clicks) -->
+    <div class="topStats mt14">
+      <div class="statBox">
+        <div class="statLabel">Distance</div>
+        <div class="statMain">
+          <input id="distanceYds" class="statInput" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
+          <div class="statSuffix">yds</div>
+        </div>
+      </div>
 
-    <!-- Target card (pulled up) -->
-    <div class="card mt10">
-      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
+      <div class="statBox">
+        <div class="statLabel">Windage</div>
+        <div id="windClicks" class="statValue">—</div>
+      </div>
+
+      <div class="statBox">
+        <div class="statLabel">Elevation</div>
+        <div id="elevClicks" class="statValue">—</div>
+      </div>
+
+      <div class="statBox statTaps">
+        <div class="statLabel">Taps</div>
+        <div class="statMain">
+          <div id="tapCount" class="statValue">0</div>
+          <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ✅ CTA SLOT (appears only when eligible) -->
+    <div id="microSlot" class="microSlot"></div>
+
+    <!-- Target card -->
+    <div class="card mt12">
+      <!-- NOTE: we are NOT showing instruction text up top anymore -->
+      <div id="targetHeader" class="targetHeader" style="display:none;">
+        Tap bullseye or aim point 1st — then tap bullet holes
+      </div>
 
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
@@ -56,27 +74,22 @@
           <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
         </div>
       </div>
+
+      <div id="emptyLine" class="subtle mt12">
+        Upload a target photo to begin.
+      </div>
     </div>
 
-    <!-- Vendor link -->
-    <div class="card mt10">
+    <!-- Vendor link (optional input) -->
+    <div class="card mt12">
       <div class="subtle strong mb8">Vendor link (optional)</div>
       <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
     </div>
 
-    <!-- Results (hidden until See results) -->
-    <div id="resultsCard" class="card mt10" style="display:none;">
-      <div class="subtle strong mb10">Results</div>
-
-      <div class="resultsGrid">
-        <div class="rRow"><div class="rLabel">Distance</div><div id="rDistance" class="rVal">—</div></div>
-        <div class="rRow"><div class="rLabel">Taps used</div><div id="rTapsUsed" class="rVal">—</div></div>
-        <div class="rRow"><div class="rLabel">Windage</div><div id="rWindage" class="rVal">—</div></div>
-        <div class="rRow"><div class="rLabel">Elevation</div><div id="rElevation" class="rVal">—</div></div>
-        <div class="rRow"><div class="rLabel">Score</div><div id="rScore" class="rVal">—</div></div>
-
-        <div class="rNote" id="rNote"></div>
-      </div>
+    <!-- Results (hidden by default) -->
+    <div id="resultsCard" class="card mt12" style="display:none;">
+      <div class="subtle strong mb8">Results</div>
+      <pre id="resultsBox" class="mono">{}</pre>
     </div>
 
     <div class="footer subtle">Tap-n-Score™</div>
