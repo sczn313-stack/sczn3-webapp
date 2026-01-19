@@ -7,99 +7,94 @@
   <meta name="theme-color" content="#000000" />
   <title>Tap-n-Score™</title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260118z9">
+  <!-- cache buster -->
+  <link rel="stylesheet" href="./styles.css?v=20260118a" />
 </head>
 
 <body>
-  <main class="page">
-
+  <div class="page">
     <div class="brandRow">
-      <div class="brand" aria-label="Tap-n-Score">
+      <div class="brand" aria-label="Tap-n-Score brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <h1 class="h1">Upload</h1>
+    <div class="h1">Upload</div>
 
-    <!-- (Removed the clunky instruction line under the header on purpose) -->
-
-    <!-- HERO upload box -->
+    <!-- HERO upload -->
     <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
-        <div class="uploadHeroSub" id="uploadSub">Camera • Photo Library • Files</div>
+        <div class="uploadHeroSub">Camera • Photo Library • Files</div>
       </div>
     </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" so iOS offers choices -->
-    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
+    <!-- Hidden inputs (NOT display:none) -->
+    <input id="cameraInput" class="fileInputReal" type="file" accept="image/*" capture="environment" />
+    <input id="libraryInput" class="fileInputReal" type="file" accept="image/*" />
+    <input id="filesInput" class="fileInputReal" type="file" accept="image/*,application/pdf" />
 
-    <!-- Controls row -->
-    <section class="controlsRow mt14">
+    <div class="controlsRow mt14">
       <div class="distanceBox">
         <div class="subtle strong">Distance</div>
-        <input id="distanceInput" type="number" value="100" min="1" step="1" />
+        <input id="distanceYds" inputmode="numeric" value="100" />
         <div class="subtle strong">yds</div>
       </div>
 
       <div class="tapsBlock">
-        <div class="subtle tapsLine">Taps: <span id="tapsCount">0</span></div>
-        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear taps</button>
+        <div class="tapsLine"><span class="subtle strong">Taps:</span> <span id="tapsCount">0</span></div>
+        <button id="clearTapsBtn" class="btn btnTight" type="button">Clear taps</button>
       </div>
-    </section>
-
-    <!-- Micro slot: Pinch hint OR Vendor CTA -->
-    <section id="microSlot" class="microSlot" style="display:none;">
-      <div id="pinchHint" class="pinchHint" style="display:none;">Pinch to zoom (two fingers)</div>
-
-      <a id="vendorCta" class="vendorBuyBtn" href="#" target="_blank" rel="noopener" style="display:none;">
-        <div class="vendorIcon">🛒</div>
-        <div class="vendorText">Buy more targets like this</div>
-        <div class="vendorArrow">›</div>
-      </a>
-    </section>
-
-    <!-- Target card -->
-    <section class="card mt14">
-      <!-- Anchor line (hidden until photo loaded) -->
-      <div id="tapRuleLine" class="subtle strong mb8" style="display:none;">
-        Tap bull’s-eye (aim point) first — then tap bullet holes.
-      </div>
-
-      <div id="targetWrap" class="targetWrap">
-        <div id="targetCanvas" class="targetCanvas" aria-label="Tap area">
-          <img id="targetImage" class="targetImg" alt="Target preview" />
-          <div id="dotsLayer" class="dotsLayer"></div>
-        </div>
-      </div>
-
-      <div id="emptyHint" class="subtle mt12">Add a photo to begin.</div>
-    </section>
-
-    <!-- Green active See Results (only appears when ready) -->
-    <div id="seeResultsRow" class="mt14" style="display:none;">
-      <button id="seeResultsHint" class="seeResultsHint" type="button">See results</button>
     </div>
 
-    <div class="subtle mt18 mb6">Vendor link (optional)</div>
-    <input id="vendorInput" class="input" type="url" placeholder="Paste vendor buy link here" />
+    <div class="card mt14">
+      <div class="subtle" id="photoStatus">Add a photo to begin.</div>
+    </div>
+
+    <div class="mt14">
+      <div class="subtle mb6 strong">Vendor link (optional)</div>
+      <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
+    </div>
+
+    <div class="microSlot">
+      <!-- ACTIVE green button -->
+      <button id="seeResultsBtn" class="seeResultsHint" type="button">See results</button>
+      <div class="pinchHint">Pinch to zoom. Two-finger pinch will NOT create taps.</div>
+    </div>
+
+    <!-- Target image + tap overlay -->
+    <div class="targetWrap mt14">
+      <div id="targetCanvas" class="targetCanvas">
+        <img id="targetImg" class="targetImg" alt="Target preview" />
+        <div id="dotsLayer" class="dotsLayer"></div>
+      </div>
+    </div>
 
     <!-- Results panel -->
-    <section id="resultsBox" class="card mt18" style="display:none;">
-      <div class="subtle strong mb8">Results</div>
-      <div id="resultsText" class="mono"></div>
-
-      <div class="controlsRow mt14">
-        <button id="backBtn" class="btn btnSecondary btnTight" type="button">Back</button>
-        <button id="savedBtn" class="btn btnSecondary btnTight" type="button">Saved</button>
-        <button id="receiptBtn" class="btn btnSecondary btnTight" type="button">Receipt</button>
+    <div id="resultsCard" class="card mt18" style="display:none;">
+      <div class="strong mb8">Results</div>
+      <div id="resultsPretty" class="subtle"></div>
+      <div class="mt14" style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button id="backBtn" class="btn btnSecondary" type="button">Back</button>
+        <button id="saveBtn" class="btn" type="button">Saved</button>
+        <button id="receiptBtn" class="btn" type="button">Receipt</button>
       </div>
-    </section>
+      <pre id="receiptRaw" class="mono mt14" style="display:none;"></pre>
+    </div>
 
-    <div class="footer subtle">Tap-n-Score™</div>
-  </main>
+    <div class="footer">Tap-n-Score™</div>
+  </div>
 
-  <script src="./api.js?v=20260118z9"></script>
-  <script src="./index.js?v=20260118z9"></script>
+  <!-- Action sheet -->
+  <div id="sheetMask" class="sheetMask" aria-hidden="true"></div>
+  <div id="sheet" class="sheet" aria-hidden="true">
+    <div class="sheetTitle">Upload target photo</div>
+    <button id="pickLibrary" class="sheetBtn" type="button">Photo Library</button>
+    <button id="pickCamera" class="sheetBtn" type="button">Take Photo</button>
+    <button id="pickFiles" class="sheetBtn" type="button">Files</button>
+    <button id="cancelSheet" class="sheetBtn sheetBtnCancel" type="button">Cancel</button>
+  </div>
+
+  <script src="./index.js?v=20260118a"></script>
 </body>
 </html>
