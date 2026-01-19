@@ -1,3 +1,4 @@
+<!-- sczn3-webapp/frontend_new/index.html (FULL REPLACEMENT) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -5,90 +6,107 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#000000" />
-  <title>Tap-n-Score™</title>
+  <title>Tap-n-Score™v233333333 </title>
 
-  <link rel="stylesheet" href="./styles.css?v=20260119a" />
+  <link rel="stylesheet" href="./styles.css?v=20260119b" />
 </head>
+
 <body>
-  <div class="page">
-    <!-- Brand only (NO "Upload" header) -->
+  <main class="page">
+
     <div class="brandRow" aria-label="Tap-n-Score brand">
       <div class="brand">
         <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTm">™</span>
       </div>
     </div>
 
-    <!-- Stats ABOVE CTA -->
-    <div class="statsGrid" aria-label="Session stats">
-      <div class="statCard">
-        <div class="statLabel">Distance</div>
-        <div class="statValueRow">
-          <input id="distanceYds" class="distanceInput" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
-          <div class="statUnit">yds</div>
-        </div>
-      </div>
-
-      <div class="statCard">
-        <div class="statLabel">Windage</div>
-        <div id="windageReadout" class="statValueBig">—</div>
-      </div>
-
-      <div class="statCard">
-        <div class="statLabel">Elevation</div>
-        <div id="elevationReadout" class="statValueBig">—</div>
-      </div>
-
-      <div class="statCard statCardWide">
-        <div class="statLabel">Taps</div>
-        <div class="tapsRow">
-          <div id="tapCount" class="tapsCount">0</div>
-          <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- CTA (Upload) BELOW stats -->
-    <button id="uploadHeroBtn" class="uploadHero" type="button" aria-label="Upload target photo">
+    <!-- HERO UPLOAD (Label + input overlay = iOS reliable) -->
+    <label class="uploadHero uploadHeroLabel" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
         <div class="uploadHeroSub">Camera • Photo Library • Files</div>
       </div>
-    </button>
 
-    <!-- REAL INPUT (hidden). IMPORTANT: no capture="" -->
-    <input id="photoInput" class="fileInputReal" type="file" accept="image/*" />
+      <!-- REAL INPUT: no capture="" so iOS offers camera + library + files -->
+      <input
+        id="photoInput"
+        class="fileInputOverlay"
+        type="file"
+        accept="image/*"
+      />
+    </label>
 
-    <!-- Micro-slot: pinch hint OR See results -->
-    <div id="microSlot" class="microSlot"></div>
+    <!-- Controls row -->
+    <div class="controlsRow mt14">
+      <div class="distanceBox" aria-label="Distance">
+        <div class="subtle strong">Distance</div>
+        <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
+        <div class="subtle strong">yds</div>
+      </div>
 
-    <!-- Target card -->
-    <div class="card mt10">
-      <div class="subtle mb8" id="instructionLine">Add a photo to begin.</div>
-
-      <div id="targetWrap" class="targetWrap" style="display:none;">
-        <div id="targetCanvas" class="targetCanvas">
-          <img id="targetImg" class="targetImg" alt="Target" />
-          <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
+      <div class="tapsBlock" aria-label="Taps and clear">
+        <div class="tapsLine">
+          <span class="subtle strong">Taps:</span>
+          <span id="tapCount">0</span>
         </div>
+        <button id="clearTapsBtn" class="btn btnSecondary btnTight" type="button">Clear</button>
       </div>
     </div>
 
-    <!-- Vendor link -->
-    <div class="card mt10">
-      <div class="subtle strong mb8">Vendor link (optional)</div>
-      <input id="vendorLink" class="input" placeholder="Paste vendor buy link here" />
-    </div>
+    <!-- Micro slot -->
+    <div id="microSlot" class="microSlot"></div>
 
-    <!-- Results -->
-    <div class="card mt10">
+    <!-- Tap Card -->
+    <section class="card mt14" aria-label="Tap area">
+      <div id="instructionLine" class="subtle strong mb8">Add a photo to begin.</div>
+
+      <div id="targetWrap" class="targetWrap" style="display:none;">
+        <div id="targetCanvas" class="targetCanvas">
+          <img id="targetImg" class="targetImg" alt="Target photo" />
+          <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vendor -->
+    <section class="card mt14" aria-label="Vendor link">
+      <div class="subtle strong mb8">Vendor link (optional)</div>
+      <input id="vendorLink" class="input" type="url" placeholder="Paste vendor buy link here" />
+    </section>
+
+    <!-- Results (no JSON) -->
+    <section id="resultsCard" class="card mt14" style="display:none;" aria-label="Results">
       <div class="subtle strong mb8">Results</div>
-      <pre id="resultsBox" class="mono">{}</pre>
-    </div>
+
+      <div class="controlsRow">
+        <div class="subtle strong">Distance: <span id="rDistance" class="subtle">—</span></div>
+        <div class="subtle strong">Taps: <span id="rTapsUsed" class="subtle">—</span></div>
+      </div>
+
+      <div class="mt12">
+        <div class="subtle strong">Windage</div>
+        <div id="rWindage" class="subtle">—</div>
+      </div>
+
+      <div class="mt12">
+        <div class="subtle strong">Elevation</div>
+        <div id="rElevation" class="subtle">—</div>
+      </div>
+
+      <div class="mt12">
+        <div class="subtle strong">Score</div>
+        <div id="rScore" class="subtle">—</div>
+      </div>
+
+      <div class="mt12">
+        <div id="rNote" class="subtle">—</div>
+      </div>
+    </section>
 
     <div class="footer subtle">Tap-n-Score™</div>
-  </div>
+  </main>
 
-  <script src="./api.js?v=20260119a"></script>
-  <script src="./index.js?v=20260119a"></script>
+  <script src="./api.js?v=20260119b"></script>
+  <script src="./index.js?v=20260119b"></script>
 </body>
 </html>

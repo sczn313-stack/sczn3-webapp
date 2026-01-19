@@ -1,8 +1,6 @@
 // frontend_new/index.js (FULL REPLACEMENT)
-// - No JSON display
-// - Directions computed locally from taps (truth-locked)
-// - Elevation fixed (screen Y is down; we flip to "Top = Up")
-// - See Results appears only after: bull tap + 2 hole taps (3 total taps)
+// iPad Safari-safe image loading (objectURL + FileReader fallback)
+// See Results appears only after: bull tap + 2 hole taps (3 total taps)
 
 (() => {
   // Elements
@@ -21,15 +19,20 @@
 
   const vendorLinkEl = document.getElementById("vendorLink");
 
-  // If HTML has <pre id="resultsBox">, we use it as plain-text output.
-  const resultsBox = document.getElementById("resultsBox");
+  const resultsCard = document.getElementById("resultsCard");
+  const rDistance = document.getElementById("rDistance");
+  const rTapsUsed = document.getElementById("rTapsUsed");
+  const rWindage = document.getElementById("rWindage");
+  const rElevation = document.getElementById("rElevation");
+  const rScore = document.getElementById("rScore");
+  const rNote = document.getElementById("rNote");
 
   // State
   let hasImage = false;
-  let bullTap = null; // {x,y} normalized
-  let taps = [];      // bullet taps normalized
+  let bullTap = null;         // {x,y} normalized
+  let taps = [];              // bullet taps normalized
 
-  // Multi-touch guard (2-finger pinch should never create taps)
+  // Multi-touch guard
   let activeTouches = 0;
   let multiTouchActive = false;
   let suppressClicksUntil = 0;
@@ -37,22 +40,66 @@
   // RULE: require bull + N holes before showing See Results
   const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
 
-  function nowMs() { return Date.now(); }
-  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+  function nowMs(){ return Date.now(); }
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
-  function canShowResults() {
+  function canShowResults(){
     return !!bullTap && taps.length >= MIN_HOLES_FOR_RESULTS;
   }
 
-  function updateTapCount() {
+  function setMicroHint() {
+    microSlot.innerHTML = "";
+    const pill = document.createElement("div");
+    pill.className = "hintPill";
+    pill.textContent = "Pinch to zoom";
+    microSlot.appendChild(pill);
+  }
+
+  function setMicroSeeResults() {
+    microSlot.innerHTML = "";
+
+    const btn = document.createElement("button");
+    btn.className = "btn btnGreen";
+    btn.type = "button";
+    btn.textContent = "See results";
+    btn.addEventListener("click", onSeeResults);
+
+    microSlot.appendChild(btn);
+    setMicroVendorCtaIfAny();
+  }
+
+  function setMicroVendorCtaIfAny() {
+    const link = (vendorLinkEl.value || "").trim();
+    if (!link) return;
+
+    const a = document.createElement("a");
+    a.className = "vendorCta";
+    a.href = link;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = "Buy more targets like this";
+
+    microSlot.appendChild(a);
+  }
+
+  function refreshMicroSlot(){
+    if (!hasImage) {
+      microSlot.innerHTML = "";
+      return;
+    }
+    if (canShowResults()) setMicroSeeResults();
+    else setMicroHint();
+  }
+
+  function updateTapCount(){
     tapCountEl.textContent = String(taps.length + (bullTap ? 1 : 0));
   }
 
-  function clearAllDots() {
+  function clearAllDots(){
     dotsLayer.innerHTML = "";
   }
 
-  function placeDot(normX, normY, cls) {
+  function placeDot(normX, normY, cls){
     const rect = targetImg.getBoundingClientRect();
     const imgW = rect.width;
     const imgH = rect.height;
@@ -67,21 +114,21 @@
     dotsLayer.appendChild(dot);
   }
 
-  function rebuildDots() {
+  function rebuildDots(){
     clearAllDots();
     if (!hasImage) return;
     if (bullTap) placeDot(bullTap.x, bullTap.y, "dotBull");
     for (const p of taps) placeDot(p.x, p.y, "dotHole");
   }
 
-  function getNormalizedFromEvent(e) {
+  function getNormalizedFromEvent(e){
     const r = targetImg.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
     const y = (e.clientY - r.top) / r.height;
     return { x: clamp01(x), y: clamp01(y) };
   }
 
-  function setInstruction() {
+  function setInstruction(){
     if (!hasImage) {
       instructionLine.textContent = "Add a photo to begin.";
       return;
@@ -103,93 +150,130 @@
     instructionLine.textContent = "Ready — tap See results.";
   }
 
-  // Micro-slot UI
-  function setMicroHint() {
-    microSlot.innerHTML = "";
-    const pill = document.createElement("div");
-    pill.className = "hintPill";
-    pill.textContent = "Pinch to zoom";
-    microSlot.appendChild(pill);
-  }
-
-  function setMicroVendorCtaIfAny() {
-    const link = (vendorLinkEl.value || "").trim();
-    if (!link) return;
-
-    const a = document.createElement("a");
-    a.className = "vendorCta";
-    a.href = link;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = "Buy more targets like this";
-
-    microSlot.appendChild(a);
-  }
-
-  function setMicroSeeResults() {
-    microSlot.innerHTML = "";
-
-    const btn = document.createElement("button");
-    btn.className = "btn btnGreen";
-    btn.type = "button";
-    btn.textContent = "See results";
-    btn.addEventListener("click", onSeeResults);
-
-    microSlot.appendChild(btn);
-    setMicroVendorCtaIfAny();
-  }
-
-  function refreshMicroSlot() {
-    if (!hasImage) {
-      microSlot.innerHTML = "";
-      return;
-    }
-    if (canShowResults()) setMicroSeeResults();
-    else setMicroHint();
-  }
-
-  // Results formatting (no JSON)
-  function fmt2(n) {
-    if (typeof n !== "number" || !Number.isFinite(n)) return "0.00";
-    return n.toFixed(2);
-  }
-
-  function arrowFor(dir) {
-    if (dir === "LEFT") return "←";
-    if (dir === "RIGHT") return "→";
-    if (dir === "UP") return "↑";
-    if (dir === "DOWN") return "↓";
-    return "•";
-  }
-
-  function setResultsText(lines) {
-    if (!resultsBox) return;
-    resultsBox.textContent = lines.join("\n");
-  }
-
-  function clearResultsText() {
-    if (!resultsBox) return;
-    resultsBox.textContent = "";
-  }
-
-  // Truth-locked POIB from taps (client-side)
-  function computePoib(points) {
-    const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
-    return { x: sum.x / points.length, y: sum.y / points.length };
-  }
-
-  function resetSession() {
+  function resetSession(){
     bullTap = null;
     taps = [];
+    resultsCard.style.display = "none";
     updateTapCount();
     setInstruction();
     refreshMicroSlot();
     rebuildDots();
-    clearResultsText();
   }
 
-  // Upload (Safari-safe)
+  // ---------- iPad Safari SAFE image loading ----------
+  let lastObjectUrl = null;
+
+  function cleanupObjectUrl(){
+    if (lastObjectUrl) {
+      try { URL.revokeObjectURL(lastObjectUrl); } catch (_) {}
+      lastObjectUrl = null;
+    }
+  }
+
+  function showLoadDebug(file){
+    const name = file?.name || "unknown";
+    const type = file?.type || "unknown";
+    const size = file?.size ? `${Math.round(file.size/1024)}KB` : "unknown";
+    instructionLine.textContent = `Loading: ${name} (${type}, ${size})…`;
+  }
+
+  function finishImageLoadOk(){
+    hasImage = true;
+    targetWrap.style.display = "block";
+    resetSession();
+    instructionLine.textContent = "Tap bull first.";
+  }
+
+  function failImageLoad(msg){
+    hasImage = false;
+    cleanupObjectUrl();
+    targetImg.removeAttribute("src");
+    targetWrap.style.display = "none";
+    microSlot.innerHTML = "";
+    tapCountEl.textContent = "0";
+    instructionLine.textContent = msg || "Image failed to load.";
+  }
+
+  function loadViaFileReader(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("FileReader failed"));
+      reader.onload = () => {
+        try {
+          targetImg.onload = () => resolve(true);
+          targetImg.onerror = () => reject(new Error("Image decode failed (FileReader)"));
+          targetImg.src = reader.result;
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadViaObjectUrl(file){
+    return new Promise((resolve, reject) => {
+      try {
+        cleanupObjectUrl();
+        const objectUrl = URL.createObjectURL(file);
+        lastObjectUrl = objectUrl;
+
+        let settled = false;
+
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error("ObjectURL load timeout"));
+        }, 4000);
+
+        targetImg.onload = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          // Keep objectUrl alive while image is displayed; we'll revoke on next load.
+          resolve(true);
+        };
+
+        targetImg.onerror = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error("Image decode failed (ObjectURL)"));
+        };
+
+        targetImg.src = objectUrl;
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  async function loadImageFile(file){
+    showLoadDebug(file);
+
+    // Try objectURL first, then FileReader fallback (iPad Safari sometimes fails objectURL)
+    try {
+      await loadViaObjectUrl(file);
+      finishImageLoadOk();
+      return;
+    } catch (_) {
+      // fall through to FileReader
+    }
+
+    try {
+      await loadViaFileReader(file);
+      cleanupObjectUrl();
+      finishImageLoadOk();
+      return;
+    } catch (e) {
+      failImageLoad("Image failed to load. Try a smaller photo or a screenshot.");
+    }
+  }
+  // ---------------------------------------------------
+
+  // Upload
   uploadHeroBtn.addEventListener("click", () => {
+    // Reset input so selecting same image twice still fires change on iOS
     photoInput.value = "";
     photoInput.click();
   });
@@ -203,31 +287,20 @@
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
-
-    targetImg.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      hasImage = true;
-      targetWrap.style.display = "block";
-      resetSession();
-    };
-
-    targetImg.src = objectUrl;
+    loadImageFile(file);
   });
 
   clearTapsBtn.addEventListener("click", () => {
     resetSession();
   });
 
-  // Touch tracking (pinch guard)
-  function handleTouchState(e) {
+  // Touch tracking
+  function handleTouchState(e){
     activeTouches = e.touches ? e.touches.length : 0;
     if (activeTouches >= 2) {
       multiTouchActive = true;
     } else if (activeTouches === 0) {
-      if (multiTouchActive) {
-        suppressClicksUntil = nowMs() + 250;
-      }
+      if (multiTouchActive) suppressClicksUntil = nowMs() + 250;
       multiTouchActive = false;
     }
   }
@@ -256,71 +329,45 @@
 
   window.addEventListener("resize", () => rebuildDots());
 
-  async function onSeeResults() {
-    if (!hasImage) {
-      instructionLine.textContent = "Add a photo first.";
-      return;
-    }
-    if (!bullTap) {
-      instructionLine.textContent = "Tap bull first.";
-      return;
-    }
-    if (taps.length < MIN_HOLES_FOR_RESULTS) {
-      setInstruction();
-      return;
-    }
+  async function onSeeResults(){
+    if (!hasImage) { instructionLine.textContent = "Add a photo first."; return; }
+    if (!bullTap) { instructionLine.textContent = "Tap bull first."; return; }
+    if (taps.length < MIN_HOLES_FOR_RESULTS) { setInstruction(); return; }
 
     const distanceYds = Number(distanceYdsEl.value || 100);
     instructionLine.textContent = "Computing…";
 
-    // ✅ TRUTH SOURCE: compute POIB + direction from the taps you just made
-    const poib = computePoib(taps);
-
-    // dx (right positive) is normal
-    const dx = bullTap.x - poib.x;
-
-    // dy MUST BE FLIPPED because screen Y increases downward.
-    // We want "Top = Up" meaning UP is positive.
-    // screenDy = bullY - poibY (positive when bull is lower)
-    // upDy     = -screenDy
-    const screenDy = bullTap.y - poib.y;
-    const dy = -screenDy;
-
-    const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
-    const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
-
-    // Optional: still call backend for pipeline/health
     try {
       const payload = { distanceYds, bullTap, taps };
-      // If backend is down, we still show truth-based directions.
-      if (window.tapscore) await window.tapscore(payload).catch(() => {});
-    } catch (_) {}
+      const out = await window.tapscore(payload);
 
-    const lines = [];
-    lines.push(`Distance: ${distanceYds} yds`);
-    lines.push(`Taps used: ${taps.length}`);
+      resultsCard.style.display = "block";
+      rDistance.textContent = `${out.distanceYds} yds`;
+      rTapsUsed.textContent = String(out.tapsCount);
 
-    if (windDir === "CENTER") lines.push(`Windage: • CENTER`);
-    else lines.push(`Windage: ${arrowFor(windDir)} DIAL ${windDir}`);
+      rWindage.textContent = out.windage && out.windage !== "--" ? out.windage : "—";
+      rElevation.textContent = out.elevation && out.elevation !== "--" ? out.elevation : "—";
+      rScore.textContent = out.score && out.score !== "--" ? out.score : "—";
 
-    if (elevDir === "CENTER") lines.push(`Elevation: • CENTER`);
-    else lines.push(`Elevation: ${arrowFor(elevDir)} DIAL ${elevDir}`);
+      // Move POIB to bull (bull - POIB): dx>0 RIGHT, dx<0 LEFT; dy>0 UP, dy<0 DOWN
+      const dx = out.delta && typeof out.delta.x === "number" ? out.delta.x : 0;
+      const dy = out.delta && typeof out.delta.y === "number" ? out.delta.y : 0;
 
-    lines.push("");
-    lines.push("Corrections move POI to bull.");
+      const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
+      const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
 
-    // (Optional) tiny debug-free numbers to prevent “CENTER lies” without showing JSON
-    // lines.push(`(dx=${fmt2(dx)}, dy=${fmt2(dy)})`);
+      rNote.textContent = `Move POIB to bull: ${windDir} + ${elevDir}.`;
 
-    setResultsText(lines);
-
-    instructionLine.textContent = "Done.";
-    refreshMicroSlot();
+      instructionLine.textContent = "Done.";
+      refreshMicroSlot();
+    } catch (_) {
+      instructionLine.textContent = "Error — try again.";
+      resultsCard.style.display = "none";
+    }
   }
 
   // Init
   refreshMicroSlot();
   updateTapCount();
   setInstruction();
-  clearResultsText();
 })();
