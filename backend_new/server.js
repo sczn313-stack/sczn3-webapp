@@ -1,118 +1,120 @@
 // backend_new/server.js (FULL REPLACEMENT)
-// Express backend for Tap-n-Score
+// SCZN3 Tap-n-Score backend for Render
 // Routes:
-//  GET  /
-//  GET  /ping
-//  POST /tapscore  { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
+//   GET  /           health
+//   GET  /ping       health
+//   POST /tapscore   { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
 //
-// IMPORTANT AXIS LOCK:
-// - Right = Right uses +dx => RIGHT, -dx => LEFT
-// - Top = Up requires Y flip because screen Y grows downward.
-//   We compute dyUp = -(bullY - poibY)
-//   Then +dyUp => UP, -dyUp => DOWN
+// Notes:
+// - Coordinates are normalized 0..1 (from the frontend image box)
+// - Canonical correction: delta = bull - POIB
+//   dx > 0 => RIGHT, dx < 0 => LEFT
+//   dy > 0 => UP,    dy < 0 => DOWN  (TOP = UP on the screen)
 
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
 
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
+// ---- CORS (safe + simple) ----
+// If you later want to lock it down, replace origin:"*" with your frontend URL.
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
 
-app.use(express.json({ limit: "10mb" }));
+// Ensure preflight always succeeds
+app.options("*", cors());
 
-app.get("/", (req, res) => res.json({ ok: true, service: "sczn3-backend-new" }));
-app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping" }));
+// JSON body
+app.use(express.json({ limit: "2mb" }));
 
-function isNum(n) { return typeof n === "number" && Number.isFinite(n); }
-function clamp01(v) { return Math.max(0, Math.min(1, v)); }
-
-function avgPoint(points) {
-  const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
-  return { x: sum.x / points.length, y: sum.y / points.length };
+function isNum(n) {
+  return typeof n === "number" && Number.isFinite(n);
+}
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+function normPoint(p) {
+  return { x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) };
 }
 
-function dirFromDx(dx) {
-  if (dx > 0) return "RIGHT";
-  if (dx < 0) return "LEFT";
-  return "CENTER";
-}
+// ---- Health ----
+app.get("/", (req, res) => {
+  res.json({ ok: true, service: "sczn3-backend-new", route: "/" });
+});
 
-function dirFromDyUp(dyUp) {
-  if (dyUp > 0) return "UP";
-  if (dyUp < 0) return "DOWN";
-  return "CENTER";
-}
+app.get("/ping", (req, res) => {
+  res.json({ ok: true, service: "sczn3-backend-new", route: "/ping" });
+});
 
+// ---- Core ----
 app.post("/tapscore", (req, res) => {
   try {
     const body = req.body || {};
-    const distanceYds = Number(body.distanceYds || 100);
 
+    const distanceYds = Number(body.distanceYds ?? 100);
     const bullTap = body.bullTap;
-    const taps = Array.isArray(body.taps) ? body.taps : [];
+    const tapsIn = Array.isArray(body.taps) ? body.taps : [];
 
     if (!bullTap || !isNum(bullTap.x) || !isNum(bullTap.y)) {
       return res.status(400).json({ ok: false, error: "Missing bullTap {x,y}." });
     }
-    if (taps.length < 1) {
+    if (tapsIn.length < 1) {
       return res.status(400).json({ ok: false, error: "Need at least 1 bullet-hole tap." });
     }
 
-    // Normalize/clamp
-    const bull = { x: clamp01(Number(bullTap.x)), y: clamp01(Number(bullTap.y)) };
-    const pts = taps
-      .filter(p => p && isNum(p.x) && isNum(p.y))
-      .map(p => ({ x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) }));
+    const bull = normPoint(bullTap);
 
-    if (pts.length < 1) {
+    const taps = tapsIn
+      .filter((p) => p && isNum(p.x) && isNum(p.y))
+      .map(normPoint);
+
+    if (taps.length < 1) {
       return res.status(400).json({ ok: false, error: "No valid taps." });
     }
 
-    // POIB = average of hole taps (normalized 0..1)
-    const poib = avgPoint(pts);
+    // POIB = average of hole taps
+    let sx = 0,
+      sy = 0;
+    for (const p of taps) {
+      sx += p.x;
+      sy += p.y;
+    }
+    const poib = { x: sx / taps.length, y: sy / taps.length };
 
-    // Canonical geometry:
-    // dx: bull - POIB (right positive)
+    // Canonical correction: bull - POIB
     const dx = bull.x - poib.x;
+    const dy = bull.y - poib.y;
 
-    // screenDy: bullY - poibY (positive when bull is LOWER on screen)
-    const screenDy = bull.y - poib.y;
+    const windDir = dx > 0 ? "RIGHT" : dx < 0 ? "LEFT" : "CENTER";
+    const elevDir = dy > 0 ? "UP" : dy < 0 ? "DOWN" : "CENTER";
 
-    // dyUp flips screen Y so "Top = Up"
-    const dyUp = -screenDy;
-
-    const windDir = dirFromDx(dx);
-    const elevDir = dirFromDyUp(dyUp);
-
+    // Return normalized deltas + directions.
+    // (Clicks/inches require a known inch-scale; keep that on the frontend once scale is defined.)
     return res.json({
       ok: true,
       distanceYds,
-      tapsCount: pts.length,
+      tapsCount: taps.length,
       bullTap: bull,
       poib,
-      // Keep these as raw normalized deltas for debugging
-      delta: { dx, dyUp },
-      // Directions (truth-locked)
-      windageDir: windDir,
-      elevationDir: elevDir,
-      // Placeholders for later inches/MOA/clicks
-      windage: windDir,
-      elevation: elevDir,
-      score: "--"
+      delta: { x: dx, y: dy }, // bull - POIB
+      directions: { windage: windDir, elevation: elevDir },
     });
   } catch (e) {
     return res.status(500).json({
       ok: false,
       error: "Server error",
-      detail: String(e && e.message ? e.message : e)
+      detail: String(e && e.message ? e.message : e),
     });
   }
 });
 
 // Render uses PORT
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`tapscore backend listening on ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`sczn3-backend-new listening on ${PORT}`);
+});
