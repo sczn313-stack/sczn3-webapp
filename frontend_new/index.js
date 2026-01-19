@@ -1,373 +1,86 @@
-// frontend_new/index.js (FULL REPLACEMENT)
-// iPad Safari-safe image loading (objectURL + FileReader fallback)
-// See Results appears only after: bull tap + 2 hole taps (3 total taps)
-
-(() => {
-  // Elements
-  const uploadHeroBtn = document.getElementById("uploadHeroBtn");
-  const photoInput = document.getElementById("photoInput");
-  const distanceYdsEl = document.getElementById("distanceYds");
-  const clearTapsBtn = document.getElementById("clearTapsBtn");
-  const tapCountEl = document.getElementById("tapCount");
-  const microSlot = document.getElementById("microSlot");
-
-  const instructionLine = document.getElementById("instructionLine");
-  const targetWrap = document.getElementById("targetWrap");
-  const targetCanvas = document.getElementById("targetCanvas");
-  const targetImg = document.getElementById("targetImg");
-  const dotsLayer = document.getElementById("dotsLayer");
-
-  const vendorLinkEl = document.getElementById("vendorLink");
-
-  const resultsCard = document.getElementById("resultsCard");
-  const rDistance = document.getElementById("rDistance");
-  const rTapsUsed = document.getElementById("rTapsUsed");
-  const rWindage = document.getElementById("rWindage");
-  const rElevation = document.getElementById("rElevation");
-  const rScore = document.getElementById("rScore");
-  const rNote = document.getElementById("rNote");
-
-  // State
-  let hasImage = false;
-  let bullTap = null;         // {x,y} normalized
-  let taps = [];              // bullet taps normalized
-
-  // Multi-touch guard
-  let activeTouches = 0;
-  let multiTouchActive = false;
-  let suppressClicksUntil = 0;
-
-  // RULE: require bull + N holes before showing See Results
-  const MIN_HOLES_FOR_RESULTS = 2; // bull + 2 holes = 3 total taps
-
-  function nowMs(){ return Date.now(); }
-  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
-
-  function canShowResults(){
-    return !!bullTap && taps.length >= MIN_HOLES_FOR_RESULTS;
-  }
-
-  function setMicroHint() {
-    microSlot.innerHTML = "";
-    const pill = document.createElement("div");
-    pill.className = "hintPill";
-    pill.textContent = "Pinch to zoom";
-    microSlot.appendChild(pill);
-  }
-
-  function setMicroSeeResults() {
-    microSlot.innerHTML = "";
-
-    const btn = document.createElement("button");
-    btn.className = "btn btnGreen";
-    btn.type = "button";
-    btn.textContent = "See results";
-    btn.addEventListener("click", onSeeResults);
-
-    microSlot.appendChild(btn);
-    setMicroVendorCtaIfAny();
-  }
-
-  function setMicroVendorCtaIfAny() {
-    const link = (vendorLinkEl.value || "").trim();
-    if (!link) return;
-
-    const a = document.createElement("a");
-    a.className = "vendorCta";
-    a.href = link;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = "Buy more targets like this";
-
-    microSlot.appendChild(a);
-  }
-
-  function refreshMicroSlot(){
-    if (!hasImage) {
-      microSlot.innerHTML = "";
-      return;
-    }
-    if (canShowResults()) setMicroSeeResults();
-    else setMicroHint();
-  }
-
-  function updateTapCount(){
-    tapCountEl.textContent = String(taps.length + (bullTap ? 1 : 0));
-  }
-
-  function clearAllDots(){
-    dotsLayer.innerHTML = "";
-  }
-
-  function placeDot(normX, normY, cls){
-    const rect = targetImg.getBoundingClientRect();
-    const imgW = rect.width;
-    const imgH = rect.height;
-
-    const xPx = normX * imgW;
-    const yPx = normY * imgH;
-
-    const dot = document.createElement("div");
-    dot.className = `dot ${cls}`;
-    dot.style.left = `${xPx}px`;
-    dot.style.top = `${yPx}px`;
-    dotsLayer.appendChild(dot);
-  }
-
-  function rebuildDots(){
-    clearAllDots();
-    if (!hasImage) return;
-    if (bullTap) placeDot(bullTap.x, bullTap.y, "dotBull");
-    for (const p of taps) placeDot(p.x, p.y, "dotHole");
-  }
-
-  function getNormalizedFromEvent(e){
-    const r = targetImg.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width;
-    const y = (e.clientY - r.top) / r.height;
-    return { x: clamp01(x), y: clamp01(y) };
-  }
-
-  function setInstruction(){
-    if (!hasImage) {
-      instructionLine.textContent = "Add a photo to begin.";
-      return;
-    }
-    if (!bullTap) {
-      instructionLine.textContent = "Tap bull first.";
-      return;
-    }
-
-    const holesNeeded = Math.max(0, MIN_HOLES_FOR_RESULTS - taps.length);
-    if (holesNeeded > 0) {
-      instructionLine.textContent =
-        holesNeeded === 1
-          ? "Tap 1 more bullet hole to see results."
-          : `Tap ${holesNeeded} more bullet holes to see results.`;
-      return;
-    }
-
-    instructionLine.textContent = "Ready — tap See results.";
-  }
-
-  function resetSession(){
-    bullTap = null;
-    taps = [];
-    resultsCard.style.display = "none";
-    updateTapCount();
-    setInstruction();
-    refreshMicroSlot();
-    rebuildDots();
-  }
-
-  // ---------- iPad Safari SAFE image loading ----------
-  let lastObjectUrl = null;
-
-  function cleanupObjectUrl(){
-    if (lastObjectUrl) {
-      try { URL.revokeObjectURL(lastObjectUrl); } catch (_) {}
-      lastObjectUrl = null;
-    }
-  }
-
-  function showLoadDebug(file){
-    const name = file?.name || "unknown";
-    const type = file?.type || "unknown";
-    const size = file?.size ? `${Math.round(file.size/1024)}KB` : "unknown";
-    instructionLine.textContent = `Loading: ${name} (${type}, ${size})…`;
-  }
-
-  function finishImageLoadOk(){
-    hasImage = true;
-    targetWrap.style.display = "block";
-    resetSession();
-    instructionLine.textContent = "Tap bull first.";
-  }
-
-  function failImageLoad(msg){
-    hasImage = false;
-    cleanupObjectUrl();
-    targetImg.removeAttribute("src");
-    targetWrap.style.display = "none";
-    microSlot.innerHTML = "";
-    tapCountEl.textContent = "0";
-    instructionLine.textContent = msg || "Image failed to load.";
-  }
-
-  function loadViaFileReader(file){
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("FileReader failed"));
-      reader.onload = () => {
-        try {
-          targetImg.onload = () => resolve(true);
-          targetImg.onerror = () => reject(new Error("Image decode failed (FileReader)"));
-          targetImg.src = reader.result;
-        } catch (e) {
-          reject(e);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  function loadViaObjectUrl(file){
-    return new Promise((resolve, reject) => {
-      try {
-        cleanupObjectUrl();
-        const objectUrl = URL.createObjectURL(file);
-        lastObjectUrl = objectUrl;
-
-        let settled = false;
-
-        const timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          reject(new Error("ObjectURL load timeout"));
-        }, 4000);
-
-        targetImg.onload = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          // Keep objectUrl alive while image is displayed; we'll revoke on next load.
-          resolve(true);
-        };
-
-        targetImg.onerror = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          reject(new Error("Image decode failed (ObjectURL)"));
-        };
-
-        targetImg.src = objectUrl;
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-
-  async function loadImageFile(file){
-    showLoadDebug(file);
-
-    // Try objectURL first, then FileReader fallback (iPad Safari sometimes fails objectURL)
-    try {
-      await loadViaObjectUrl(file);
-      finishImageLoadOk();
-      return;
-    } catch (_) {
-      // fall through to FileReader
-    }
-
-    try {
-      await loadViaFileReader(file);
-      cleanupObjectUrl();
-      finishImageLoadOk();
-      return;
-    } catch (e) {
-      failImageLoad("Image failed to load. Try a smaller photo or a screenshot.");
-    }
-  }
-  // ---------------------------------------------------
-
-  // Upload
-  uploadHeroBtn.addEventListener("click", () => {
-    // Reset input so selecting same image twice still fires change on iOS
-    photoInput.value = "";
-    photoInput.click();
-  });
-
-  photoInput.addEventListener("change", () => {
-    const file = photoInput.files && photoInput.files[0];
-    if (!file) return;
-
-    if (!file.type || !file.type.startsWith("image/")) {
-      instructionLine.textContent = "Please choose an image file.";
-      return;
-    }
-
-    loadImageFile(file);
-  });
-
-  clearTapsBtn.addEventListener("click", () => {
-    resetSession();
-  });
-
-  // Touch tracking
-  function handleTouchState(e){
-    activeTouches = e.touches ? e.touches.length : 0;
-    if (activeTouches >= 2) {
-      multiTouchActive = true;
-    } else if (activeTouches === 0) {
-      if (multiTouchActive) suppressClicksUntil = nowMs() + 250;
-      multiTouchActive = false;
-    }
-  }
-
-  targetCanvas.addEventListener("touchstart", handleTouchState, { passive: true });
-  targetCanvas.addEventListener("touchmove", handleTouchState, { passive: true });
-  targetCanvas.addEventListener("touchend", handleTouchState, { passive: true });
-  targetCanvas.addEventListener("touchcancel", handleTouchState, { passive: true });
-
-  // Tap handler
-  targetCanvas.addEventListener("click", (e) => {
-    if (!hasImage) return;
-    if (multiTouchActive) return;
-    if (nowMs() < suppressClicksUntil) return;
-
-    const p = getNormalizedFromEvent(e);
-
-    if (!bullTap) bullTap = p;
-    else taps.push(p);
-
-    updateTapCount();
-    rebuildDots();
-    setInstruction();
-    refreshMicroSlot();
-  });
-
-  window.addEventListener("resize", () => rebuildDots());
-
-  async function onSeeResults(){
-    if (!hasImage) { instructionLine.textContent = "Add a photo first."; return; }
-    if (!bullTap) { instructionLine.textContent = "Tap bull first."; return; }
-    if (taps.length < MIN_HOLES_FOR_RESULTS) { setInstruction(); return; }
-
-    const distanceYds = Number(distanceYdsEl.value || 100);
-    instructionLine.textContent = "Computing…";
-
-    try {
-      const payload = { distanceYds, bullTap, taps };
-      const out = await window.tapscore(payload);
-
-      resultsCard.style.display = "block";
-      rDistance.textContent = `${out.distanceYds} yds`;
-      rTapsUsed.textContent = String(out.tapsCount);
-
-      rWindage.textContent = out.windage && out.windage !== "--" ? out.windage : "—";
-      rElevation.textContent = out.elevation && out.elevation !== "--" ? out.elevation : "—";
-      rScore.textContent = out.score && out.score !== "--" ? out.score : "—";
-
-      // Move POIB to bull (bull - POIB): dx>0 RIGHT, dx<0 LEFT; dy>0 UP, dy<0 DOWN
-      const dx = out.delta && typeof out.delta.x === "number" ? out.delta.x : 0;
-      const dy = out.delta && typeof out.delta.y === "number" ? out.delta.y : 0;
-
-      const windDir = dx > 0 ? "RIGHT" : (dx < 0 ? "LEFT" : "CENTER");
-      const elevDir = dy > 0 ? "UP" : (dy < 0 ? "DOWN" : "CENTER");
-
-      rNote.textContent = `Move POIB to bull: ${windDir} + ${elevDir}.`;
-
-      instructionLine.textContent = "Done.";
-      refreshMicroSlot();
-    } catch (_) {
-      instructionLine.textContent = "Error — try again.";
-      resultsCard.style.display = "none";
-    }
-  }
-
-  // Init
-  refreshMicroSlot();
-  updateTapCount();
-  setInstruction();
-})();
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+  <title>Tap-n-Score™</title>
+  <link rel="stylesheet" href="./styles.css?v=20260119_uploadfix1" />
+</head>
+
+<body>
+  <main class="page">
+    <!-- BRAND -->
+    <div class="brandRow" aria-label="Tap-n-Score brand">
+      <div class="brand">
+        <span class="brandTap">TAP</span><span class="brandN">-N-</span><span class="brandScore">SCORE</span><span class="brandTM">™</span>
+      </div>
+    </div>
+
+    <!-- UPLOAD HERO (iOS SAFE) -->
+    <section class="hero">
+      <div class="heroCard">
+        <div class="heroTitle">Upload target photo</div>
+        <div class="heroSub">Camera • Photo Library • Files</div>
+
+        <!-- IMPORTANT: input is NOT display:none (iOS Safari reliability) -->
+        <input
+          id="fileInput"
+          class="fileInput"
+          type="file"
+          accept="image/*"
+        />
+      </div>
+    </section>
+
+    <!-- CONTROLS -->
+    <section class="controls">
+      <div class="ctrl">
+        <div class="ctrlLabel">Distance</div>
+        <div class="ctrlRow">
+          <input id="distanceYds" class="ctrlInput" type="number" inputmode="numeric" min="1" value="100" />
+          <div class="ctrlUnit">yds</div>
+        </div>
+      </div>
+
+      <div class="ctrlRight">
+        <div class="ctrlSmall">
+          <div class="ctrlLabel">Taps:</div>
+          <div id="tapCount" class="ctrlValue">0</div>
+        </div>
+        <button id="clearBtn" class="btnSecondary" type="button">Clear</button>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="seeResultsBtn" class="btnPrimary" type="button">See results</button>
+    </section>
+
+    <!-- PREVIEW / TAP AREA -->
+    <section class="card">
+      <div id="instructionLine" class="cardTitle">Add a photo to begin.</div>
+
+      <div id="previewWrap" class="previewWrap" aria-label="Target preview">
+        <img id="previewImg" class="previewImg" alt="Target preview" />
+        <canvas id="tapCanvas" class="tapCanvas"></canvas>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="cardTitle">Vendor link (optional)</div>
+      <input id="vendorLink" class="vendorInput" type="url" placeholder="Paste vendor buy link here" />
+    </section>
+
+    <section class="card">
+      <div class="cardTitle">Results</div>
+      <pre id="resultsBox" class="resultsBox">{}</pre>
+    </section>
+
+    <footer class="footer">Tap-n-Score™</footer>
+  </main>
+
+  <script src="./api.js?v=20260119_uploadfix1"></script>
+  <script src="./app.js?v=20260119_uploadfix1"></script>
+</body>
+</html>
