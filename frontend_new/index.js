@@ -1,248 +1,299 @@
-// Tap-n-Score™ frontend_new/index.js
+// frontend_new/index.js
+// Tap workflow + pinch zoom + disable taps during 2-finger gestures + See Results + Vendor CTA.
+
 (() => {
-  const uploadHeroBtn = document.getElementById("uploadHeroBtn");
-  const cameraInput = document.getElementById("cameraInput");
-  const libraryInput = document.getElementById("libraryInput");
-  const filesInput = document.getElementById("filesInput");
+  const els = {
+    uploadHeroBtn: document.getElementById("uploadHeroBtn"),
+    photoInput: document.getElementById("photoInput"),
+    distanceYds: document.getElementById("distanceYds"),
+    tapCount: document.getElementById("tapCount"),
+    clearTapsBtn: document.getElementById("clearTapsBtn"),
+    instructionLine: document.getElementById("instructionLine"),
+    targetWrap: document.getElementById("targetWrap"),
+    targetCanvas: document.getElementById("targetCanvas"),
+    targetImg: document.getElementById("targetImg"),
+    dotsLayer: document.getElementById("dotsLayer"),
+    microSlot: document.getElementById("microSlot"),
+    vendorLink: document.getElementById("vendorLink"),
+    resultsBox: document.getElementById("resultsBox"),
+  };
 
-  const sheetMask = document.getElementById("sheetMask");
-  const sheet = document.getElementById("sheet");
-  const pickLibrary = document.getElementById("pickLibrary");
-  const pickCamera = document.getElementById("pickCamera");
-  const pickFiles = document.getElementById("pickFiles");
-  const cancelSheet = document.getElementById("cancelSheet");
+  const state = {
+    imageLoaded: false,
+    phase: "idle", // idle | bull | holes | ready
+    bull: null, // {x,y} normalized 0..1
+    holes: [], // [{x,y} normalized 0..1]
+    pinchActive: false, // true while 2 fingers down
+    scale: 1,
+    lastTouchDist: null,
+    pinchHintShown: false,
+  };
 
-  const targetCanvas = document.getElementById("targetCanvas");
-  const targetImg = document.getElementById("targetImg");
-  const dotsLayer = document.getElementById("dotsLayer");
+  // ---------- UI helpers ----------
+  function setMicroSlot(mode) {
+    // mode: "empty" | "pinchHint" | "seeResults" | "vendorCTA"
+    els.microSlot.innerHTML = "";
 
-  const distanceYds = document.getElementById("distanceYds");
-  const tapsCountEl = document.getElementById("tapsCount");
-  const clearTapsBtn = document.getElementById("clearTapsBtn");
-  const photoStatus = document.getElementById("photoStatus");
+    if (mode === "pinchHint") {
+      const div = document.createElement("div");
+      div.className = "pinchHint";
+      div.textContent = "Pinch to zoom";
+      els.microSlot.appendChild(div);
+      return;
+    }
 
-  const seeResultsBtn = document.getElementById("seeResultsBtn");
-  const resultsCard = document.getElementById("resultsCard");
-  const resultsPretty = document.getElementById("resultsPretty");
-  const receiptRaw = document.getElementById("receiptRaw");
-  const backBtn = document.getElementById("backBtn");
-  const saveBtn = document.getElementById("saveBtn");
-  const receiptBtn = document.getElementById("receiptBtn");
+    if (mode === "seeResults") {
+      const btn = document.createElement("button");
+      btn.className = "seeResultsHint";
+      btn.type = "button";
+      btn.textContent = "See results";
+      btn.addEventListener("click", onSeeResults);
+      els.microSlot.appendChild(btn);
+      return;
+    }
 
-  let taps = []; // {xPct,yPct, kind:"hole"|"bull"}
-  let hasPhoto = false;
-
-  // --- Pinch guard (ignore taps when 2 fingers are down)
-  let activePointers = new Set();
-  let isPinching = false;
-  let pinchCooldownUntil = 0;
-
-  function nowMs() { return Date.now(); }
-
-  function openSheet() {
-    sheetMask.style.display = "block";
-    sheet.style.display = "block";
-    sheetMask.setAttribute("aria-hidden", "false");
-    sheet.setAttribute("aria-hidden", "false");
-  }
-  function closeSheet() {
-    sheetMask.style.display = "none";
-    sheet.style.display = "none";
-    sheetMask.setAttribute("aria-hidden", "true");
-    sheet.setAttribute("aria-hidden", "true");
-  }
-
-  uploadHeroBtn.addEventListener("click", openSheet);
-  sheetMask.addEventListener("click", closeSheet);
-  cancelSheet.addEventListener("click", closeSheet);
-
-  pickCamera.addEventListener("click", () => { closeSheet(); cameraInput.click(); });
-  pickLibrary.addEventListener("click", () => { closeSheet(); libraryInput.click(); });
-  pickFiles.addEventListener("click", () => { closeSheet(); filesInput.click(); });
-
-  function handleFile(file) {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    targetImg.src = url;
-    targetImg.style.display = "block";
-    hasPhoto = true;
-    photoStatus.textContent = "Tap bull first, then tap each bullet hole. Pinch to zoom anytime.";
-    clearDots();
-    taps = [];
-    updateTapCount();
-  }
-
-  cameraInput.addEventListener("change", (e) => handleFile(e.target.files && e.target.files[0]));
-  libraryInput.addEventListener("change", (e) => handleFile(e.target.files && e.target.files[0]));
-  filesInput.addEventListener("change", (e) => handleFile(e.target.files && e.target.files[0]));
-
-  function updateTapCount() {
-    tapsCountEl.textContent = String(taps.filter(t => t.kind === "hole").length);
+    if (mode === "vendorCTA") {
+      const a = document.createElement("a");
+      a.className = "vendorBuyBtn";
+      a.href = (els.vendorLink.value || "").trim() || "#";
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.innerHTML = `
+        <div class="vendorIcon">🛒</div>
+        <div class="vendorText">Buy more targets like this</div>
+        <div class="vendorArrow">›</div>
+      `;
+      if (a.href === "#") {
+        // no link: make it non-clickable but keep the spot
+        a.addEventListener("click", (e) => e.preventDefault());
+        a.style.opacity = "0.6";
+      }
+      els.microSlot.appendChild(a);
+      return;
+    }
   }
 
-  clearTapsBtn.addEventListener("click", () => {
-    taps = [];
-    clearDots();
-    updateTapCount();
-  });
+  function setInstruction(text) {
+    els.instructionLine.textContent = text;
+  }
 
   function clearDots() {
-    while (dotsLayer.firstChild) dotsLayer.removeChild(dotsLayer.firstChild);
+    els.dotsLayer.innerHTML = "";
   }
 
-  function addDot(xPct, yPct, kind) {
+  function addDot(kind, normPt) {
+    const rect = els.targetImg.getBoundingClientRect();
+    const wrapRect = els.targetCanvas.getBoundingClientRect();
+
+    // position relative to targetCanvas
+    const px = wrapRect.left;
+    const py = wrapRect.top;
+
+    const imgLeft = rect.left - px;
+    const imgTop = rect.top - py;
+
+    const x = imgLeft + normPt.x * rect.width;
+    const y = imgTop + normPt.y * rect.height;
+
     const dot = document.createElement("div");
     dot.className = "tapDot";
     dot.dataset.kind = kind;
-    dot.style.left = (xPct * 100).toFixed(3) + "%";
-    dot.style.top  = (yPct * 100).toFixed(3) + "%";
-    dotsLayer.appendChild(dot);
+    dot.style.left = `${x}px`;
+    dot.style.top = `${y}px`;
+    els.dotsLayer.appendChild(dot);
   }
 
-  function getRelativePctFromEvent(clientX, clientY) {
-    const rect = targetImg.getBoundingClientRect();
-    const x = (clientX - rect.left) / rect.width;
-    const y = (clientY - rect.top) / rect.height;
-    return { x: clamp01(x), y: clamp01(y) };
+  function refreshDots() {
+    clearDots();
+    if (state.bull) addDot("bull", state.bull);
+    for (const h of state.holes) addDot("hole", h);
   }
-  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
-  // Pointer tracking for pinch
-  targetCanvas.addEventListener("pointerdown", (e) => {
-    if (e.pointerType !== "touch") return;
-    activePointers.add(e.pointerId);
-    if (activePointers.size >= 2) {
-      isPinching = true;
+  function updateTapCount() {
+    const count = state.holes.length + (state.bull ? 1 : 0);
+    els.tapCount.textContent = String(count);
+  }
+
+  function resetAll() {
+    state.phase = "idle";
+    state.bull = null;
+    state.holes = [];
+    state.scale = 1;
+    state.lastTouchDist = null;
+    state.pinchActive = false;
+    state.pinchHintShown = false;
+
+    els.targetImg.style.transform = `scale(1)`;
+    clearDots();
+    updateTapCount();
+    setMicroSlot("empty");
+    setInstruction("Add a photo to begin.");
+    els.resultsBox.textContent = "{}";
+  }
+
+  // ---------- Upload ----------
+  els.uploadHeroBtn.addEventListener("click", () => {
+    els.photoInput.click();
+  });
+
+  els.photoInput.addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    resetAll();
+
+    const url = URL.createObjectURL(file);
+    els.targetImg.onload = () => {
+      state.imageLoaded = true;
+      els.targetWrap.style.display = "block";
+      state.phase = "bull";
+      setInstruction("Tap bull first");
+      updateTapCount();
+      // microSlot stays empty until first tap (then pinch hint)
+      setMicroSlot("empty");
+      refreshDots();
+      URL.revokeObjectURL(url);
+    };
+    els.targetImg.src = url;
+  });
+
+  // ---------- Tap logic (click fallback for desktop) ----------
+  els.targetCanvas.addEventListener("click", (evt) => {
+    // Ignore click on iOS while pinch active (safety)
+    if (state.pinchActive) return;
+    if (!state.imageLoaded) return;
+    handlePointer(evt.clientX, evt.clientY);
+  });
+
+  function handlePointer(clientX, clientY) {
+    const rect = els.targetImg.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+
+    const nx = (clientX - rect.left) / rect.width;
+    const ny = (clientY - rect.top) / rect.height;
+
+    // After first valid tap, show pinch hint ONCE, then remove
+    if (!state.pinchHintShown) {
+      state.pinchHintShown = true;
+      setMicroSlot("pinchHint");
+      // remove hint after a short moment or after next interaction
+      setTimeout(() => {
+        // only remove if we haven't already advanced to results/vendor slot
+        if (state.phase === "bull" || state.phase === "holes") setMicroSlot("empty");
+      }, 1400);
     }
-  }, { passive: true });
 
-  targetCanvas.addEventListener("pointerup", (e) => {
-    if (e.pointerType !== "touch") return;
-    activePointers.delete(e.pointerId);
-    if (activePointers.size < 2 && isPinching) {
-      isPinching = false;
-      pinchCooldownUntil = nowMs() + 250; // ignore the "first tap" after pinch
+    if (state.phase === "bull") {
+      state.bull = { x: nx, y: ny };
+      state.phase = "holes";
+      setInstruction("Tap impacts (3–7). Then press See results.");
+      setMicroSlot("empty");
+    } else if (state.phase === "holes") {
+      state.holes.push({ x: nx, y: ny });
+      if (state.holes.length >= 1) {
+        state.phase = "ready";
+        setMicroSlot("seeResults");
+      }
     }
-  }, { passive: true });
 
-  targetCanvas.addEventListener("pointercancel", (e) => {
-    if (e.pointerType !== "touch") return;
-    activePointers.delete(e.pointerId);
-    if (activePointers.size < 2) {
-      isPinching = false;
-      pinchCooldownUntil = nowMs() + 250;
-    }
-  }, { passive: true });
+    refreshDots();
+    updateTapCount();
+  }
 
-  // Tap handler (single-finger only)
-  targetCanvas.addEventListener("click", (e) => {
-    if (!hasPhoto) return;
+  // ---------- Touch + pinch zoom (disable taps while 2 fingers down) ----------
+  function dist(t1, t2) {
+    const dx = t2.clientX - t1.clientX;
+    const dy = t2.clientY - t1.clientY;
+    return Math.hypot(dx, dy);
+  }
 
-    // Ignore taps while pinching or right after pinching
-    if (isPinching || nowMs() < pinchCooldownUntil) return;
+  els.targetCanvas.addEventListener("touchstart", (e) => {
+    if (!state.imageLoaded) return;
 
-    // Must click on image area
-    const rect = targetImg.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
-
-    const { x, y } = getRelativePctFromEvent(e.clientX, e.clientY);
-
-    const hasBull = taps.some(t => t.kind === "bull");
-    if (!hasBull) {
-      taps.push({ xPct: x, yPct: y, kind: "bull" });
-      addDot(x, y, "bull");
+    if (e.touches.length >= 2) {
+      state.pinchActive = true;
+      state.lastTouchDist = dist(e.touches[0], e.touches[1]);
       return;
     }
 
-    taps.push({ xPct: x, yPct: y, kind: "hole" });
-    addDot(x, y, "hole");
+    // Single finger tap: allowed only if NOT pinchActive
+    if (state.pinchActive) return;
+  }, { passive: false });
+
+  els.targetCanvas.addEventListener("touchmove", (e) => {
+    if (!state.imageLoaded) return;
+
+    if (e.touches.length >= 2) {
+      e.preventDefault(); // stop page zoom/scroll
+      state.pinchActive = true;
+
+      const d = dist(e.touches[0], e.touches[1]);
+      if (state.lastTouchDist != null) {
+        const delta = d / state.lastTouchDist;
+        state.scale = Math.min(4, Math.max(1, state.scale * delta));
+        els.targetImg.style.transform = `scale(${state.scale})`;
+        refreshDots();
+      }
+      state.lastTouchDist = d;
+      return;
+    }
+  }, { passive: false });
+
+  els.targetCanvas.addEventListener("touchend", (e) => {
+    // if fingers drop below 2, end pinch mode AFTER a tiny delay
+    // (prevents the “release finger becomes a tap” problem)
+    if (e.touches.length < 2) {
+      state.lastTouchDist = null;
+      setTimeout(() => { state.pinchActive = false; }, 140);
+    }
+  }, { passive: true });
+
+  // Convert touch tap to pointer tap when it's a real single-finger tap
+  els.targetCanvas.addEventListener("touchend", (e) => {
+    if (!state.imageLoaded) return;
+    if (state.pinchActive) return;
+    if (e.changedTouches.length !== 1) return;
+
+    const t = e.changedTouches[0];
+    handlePointer(t.clientX, t.clientY);
+  }, { passive: true });
+
+  // ---------- Clear taps ----------
+  els.clearTapsBtn.addEventListener("click", () => {
+    state.bull = null;
+    state.holes = [];
+    state.phase = state.imageLoaded ? "bull" : "idle";
+    setInstruction(state.imageLoaded ? "Tap bull first" : "Add a photo to begin.");
+    setMicroSlot("empty");
+    refreshDots();
     updateTapCount();
   });
 
-  // Results UI
-  function buildBackendPayload() {
-    const bull = taps.find(t => t.kind === "bull");
-    const holes = taps.filter(t => t.kind === "hole");
-    return {
-      distanceYds: Number(distanceYds.value || 100),
-      bullTap: bull ? { x: bull.xPct, y: bull.yPct } : null,
-      holeTaps: holes.map(h => ({ x: h.xPct, y: h.yPct }))
+  // ---------- See Results ----------
+  async function onSeeResults() {
+    // Once pressed: progressive quietness (hide dots) + show Vendor CTA
+    clearDots();
+    setMicroSlot("vendorCTA");
+
+    const payload = {
+      distanceYds: Number(String(els.distanceYds.value || "100").replace(/[^\d]/g, "")) || 100,
+      tapsCount: state.holes.length + (state.bull ? 1 : 0),
+      bullTap: state.bull,
+      holes: state.holes,
     };
-  }
 
-  async function callBackend() {
-    // TODO: set this to your real endpoint
-    // Example: const url = "https://YOUR-BACKEND.onrender.com/tapscore";
-    const url = "/tapscore";
-
-    const payload = buildBackendPayload();
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`Backend error (${res.status}): ${t || "no body"}`);
-    }
-    return res.json();
-  }
-
-  function renderShooterResults(data) {
-    // Friendly summary (still keep raw receipt option)
-    // Expecting data like: { ok, distanceYds, tapsCount, bullTap, poib, delta, windage, elevation, score }
-    const ok = data && data.ok === true;
-
-    const w = (data && data.windage) ? String(data.windage) : "--";
-    const el = (data && data.elevation) ? String(data.elevation) : "--";
-    const score = (data && data.score) ? String(data.score) : "--";
-
-    resultsPretty.innerHTML = `
-      <div class="subtle"><span class="strong">Status:</span> ${ok ? "VERIFIED" : "CHECK INPUT"}</div>
-      <div class="subtle mt12"><span class="strong">Windage:</span> ${w}</div>
-      <div class="subtle"><span class="strong">Elevation:</span> ${el}</div>
-      <div class="subtle"><span class="strong">Score:</span> ${score}</div>
-    `;
-
-    receiptRaw.textContent = JSON.stringify(data, null, 2);
-  }
-
-  seeResultsBtn.addEventListener("click", async () => {
-    // Minimum requirements
-    const bull = taps.find(t => t.kind === "bull");
-    const holes = taps.filter(t => t.kind === "hole");
-    if (!bull || holes.length < 1) {
-      alert("Tap the bull first, then tap at least 1 bullet hole.");
-      return;
-    }
-
-    seeResultsBtn.disabled = true;
-    seeResultsBtn.textContent = "Working...";
     try {
-      const data = await callBackend();
-      resultsCard.style.display = "block";
-      renderShooterResults(data);
-      receiptRaw.style.display = "none";
+      const data = await window.tapscore(payload);
+      els.resultsBox.textContent = JSON.stringify(data, null, 2);
     } catch (err) {
-      alert(err.message || String(err));
-    } finally {
-      seeResultsBtn.disabled = false;
-      seeResultsBtn.textContent = "See results";
+      els.resultsBox.textContent = JSON.stringify(
+        { ok: false, error: String(err?.message || err) },
+        null,
+        2
+      );
     }
-  });
+  }
 
-  backBtn.addEventListener("click", () => {
-    resultsCard.style.display = "none";
-  });
-
-  saveBtn.addEventListener("click", () => {
-    // placeholder: you can wire this to localStorage or a backend later
-    alert("Saved (stub).");
-  });
-
-  receiptBtn.addEventListener("click", () => {
-    receiptRaw.style.display = (receiptRaw.style.display === "none") ? "block" : "none";
-  });
+  // boot
+  resetAll();
 })();
