@@ -1,53 +1,265 @@
-/* ================================
-   Upload hero MUST NOT overlap page
-=================================== */
+/* ============================================================================
+   Tap-n-Score — styles.css (FULL REPLACEMENT)
+   Goal:
+   - Dark UI, clean cards
+   - Upload hero file input overlay ONLY inside hero (never covers page)
+   - Target tap area always above hero
+============================================================================ */
 
-.uploadHeroLabel{
-  position: relative;         /* anchor the overlay */
-  display: block;
-  width: 100%;
-  max-width: 980px;
-  margin: 0 auto;
-  border-radius: 14px;
-  overflow: hidden;           /* critical: keeps overlay inside hero */
-  z-index: 2;                 /* only above background, not above target */
+:root{
+  --bg:#000;
+  --panel: rgba(255,255,255,.06);
+  --panel2: rgba(255,255,255,.04);
+  --border: rgba(255,255,255,.10);
+  --text: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.70);
+  --muted2: rgba(255,255,255,.55);
+  --tapRed:#ff3b30;
+  --tapBlue:#2f7fff;
+  --ok:#2fd36b;
 }
 
-/* The invisible file input overlay should ONLY cover the hero label box */
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Page shell */
+.page{
+  width: min(980px, calc(100% - 24px));
+  margin: 0 auto;
+  padding: 18px 0 36px;
+}
+
+/* Brand */
+.brandRow{ margin: 10px 0 12px; }
+.brand{
+  font-weight: 800;
+  letter-spacing: .5px;
+  font-size: 28px;
+  line-height: 1;
+}
+.brandTap{ color: var(--tapRed); }
+.brandN{ color: rgba(255,255,255,.85); }
+.brandScore{ color: var(--tapBlue); }
+.brandTm{ color: rgba(255,255,255,.75); margin-left: 2px; }
+
+/* Generic text helpers */
+.subtle{ color: var(--muted); }
+.strong{ font-weight: 700; }
+.mt14{ margin-top: 14px; }
+.mt12{ margin-top: 12px; }
+.mb8{ margin-bottom: 8px; }
+
+/* Upload hero */
+.uploadHero{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 14px;
+}
+
+/* IMPORTANT: label anchors overlay */
+.uploadHeroLabel{
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;        /* CRITICAL: keeps the input overlay inside */
+  z-index: 1;
+}
+
+.uploadHeroInner{
+  pointer-events: none;    /* text doesn’t steal clicks; input overlay handles it */
+}
+
+.uploadHeroTitle{
+  font-size: 18px;
+  font-weight: 800;
+  color: rgba(255,255,255,.92);
+}
+.uploadHeroSub{
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* The invisible input overlay MUST stay inside hero only */
 .fileInputOverlay{
   position: absolute;
-  inset: 0;                   /* fills hero label, NOT the page */
+  inset: 0;
   width: 100%;
   height: 100%;
   opacity: 0;
   cursor: pointer;
-
-  z-index: 3;                 /* above hero contents only */
+  z-index: 2;
 }
 
-/* ================================
-   Target tap area MUST sit above hero
-=================================== */
+/* Controls row */
+.controlsRow{
+  display:flex;
+  gap: 12px;
+  align-items: stretch;
+  justify-content: space-between;
+}
 
+.distanceBox, .tapsBlock{
+  flex: 1 1 auto;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.distanceBox input{
+  width: 110px;
+  padding: 10px 10px;
+  margin: 8px 0 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.35);
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+}
+
+.tapsLine{ margin-bottom: 10px; }
+#tapCount{ font-weight: 800; margin-left: 6px; }
+
+/* Buttons */
+.btn{
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  font-weight: 700;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+}
+.btn:active{ transform: translateY(1px); }
+.btnSecondary{
+  background: rgba(255,255,255,.06);
+}
+.btnTight{
+  padding: 8px 10px;
+}
+
+/* Cards */
 .card{
   position: relative;
-  z-index: 5;                 /* higher than hero */
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  z-index: 5; /* MUST be above hero overlay */
 }
 
+/* Target area */
 .targetWrap{
   position: relative;
+  display: block;
+  width: 100%;
   z-index: 6;
 }
 
 .targetCanvas{
   position: relative;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(255,255,255,.08);
   z-index: 7;
 }
 
-/* Ensure the tap surface receives touches */
-.targetImg,
-.dotsLayer{
+/* The image (tap surface) */
+.targetImg{
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 72vh;
+  object-fit: contain;
+  touch-action: manipulation; /* helps iOS tap responsiveness */
+  -webkit-user-select: none;
+  user-select: none;
   position: relative;
   z-index: 8;
-  touch-action: manipulation;
+}
+
+/* Dots overlay */
+.dotsLayer{
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none; /* overlay never blocks taps */
+}
+
+/* Tap dot */
+.dot{
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: rgba(255,255,255,.92);
+  border: 2px solid rgba(0,0,0,.65);
+  box-shadow: 0 1px 6px rgba(0,0,0,.45);
+}
+
+/* Inputs */
+.input{
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.35);
+  color: var(--text);
+  outline: none;
+}
+
+/* Footer */
+.footer{
+  margin-top: 18px;
+  text-align: center;
+  color: var(--muted2);
+}
+
+/* Micro slot */
+.microSlot{
+  min-height: 0;
+}
+
+/* =========================================================
+   HARD SAFETY CLAMP (prevents any overlay leakage)
+   If some older CSS ever sets input to fixed/viewport, this wins.
+========================================================= */
+.uploadHeroLabel{ max-height: 140px; } /* keep hero reasonably tall */
+
+.uploadHeroLabel .fileInputOverlay{
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0 !important;
+  z-index: 2 !important;
+}
+
+/* Make sure file input is never fixed/fullscreen */
+.fileInputOverlay{
+  position: absolute !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+}
+
+/* Make sure target always wins stacking */
+#targetWrap, #targetCanvas, #targetImg, #dotsLayer{
+  position: relative !important;
+  z-index: 999 !important;
 }
