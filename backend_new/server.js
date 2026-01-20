@@ -4,6 +4,8 @@
    - Backend is the ONLY authority for correction directions.
    - Computes correction vector POIB -> Bull (bull - poib).
    - Returns explicit direction strings + signed deltas for debug.
+   - FIX: Elevation direction now matches SCREEN-SPACE Y (down = +).
+          This removes the UP/DOWN flip you saw in UL/UR tests.
    ============================================================ */
 
 const express = require("express");
@@ -34,9 +36,16 @@ function directionLR(dx) {
   return "CENTER";
 }
 
+/**
+ * Screen-space Y:
+ * - y increases DOWN the screen.
+ * We compute dy = bullY - poibY (POIB -> Bull).
+ * If dy > 0, bull is LOWER than POIB => correction is DOWN.
+ * If dy < 0, bull is HIGHER than POIB => correction is UP.
+ */
 function directionUD(dy) {
-  if (dy > 0) return "UP";
-  if (dy < 0) return "DOWN";
+  if (dy > 0) return "DOWN";
+  if (dy < 0) return "UP";
   return "CENTER";
 }
 
@@ -117,17 +126,11 @@ app.post("/api/calc", (req, res) => {
     // =========================================================
     // CORRECTION VECTOR (SOURCE OF TRUTH):
     // POIB -> Bull  (bull - poib)
+    //
     // dx > 0 => RIGHT, dx < 0 => LEFT
-    // dy > 0 => UP,    dy < 0 => DOWN
+    // dy handled by directionUD() using SCREEN-SPACE Y rules.
     //
-    // NOTE: This dy logic assumes your coordinate system is
-    // "Top = Up" in the data you send. If your UI taps are in
-    // screen pixels (where y grows downward), you MUST convert
-    // to "math y" before sending OR keep sending screen y but
-    // then ALSO invert consistently BEFORE this step.
-    //
-    // To enforce "backend only", do your inversion upstream and
-    // always send backend-normalized y.
+    // Frontend must NEVER decide direction. It prints these.
     // =========================================================
     const dxPx = bull.x - poib.x; // correction px
     const dyPx = bull.y - poib.y; // correction px
