@@ -1,4 +1,10 @@
-<!-- sczn3-webapp/frontend_new/index.html (FULL REPLACEMENT) -->
+<!-- =========================================================
+     sczn3-webapp/frontend_new/index.html  (FULL REPLACEMENT)
+     Adds:
+     - Target size selector (for inches scale)
+     - SEC download button
+     - Vector SVG overlay layer (arrow)
+========================================================= -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,9 +12,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#000000" />
-  <title>Tap-n-Score™v233333333 </title>
-
-  <link rel="stylesheet" href="./styles.css?v=20260119b" />
+  <title>Tap-n-Score™</title>
+  <link rel="stylesheet" href="./styles.css?v=20260120a" />
 </head>
 
 <body>
@@ -20,28 +25,31 @@
       </div>
     </div>
 
-    <!-- HERO UPLOAD (Label + input overlay = iOS reliable) -->
+    <!-- HERO UPLOAD -->
     <label class="uploadHero uploadHeroLabel" aria-label="Upload target photo">
       <div class="uploadHeroInner">
         <div class="uploadHeroTitle">Upload target photo</div>
         <div class="uploadHeroSub">Camera • Photo Library • Files</div>
       </div>
-
-      <!-- REAL INPUT: no capture="" so iOS offers camera + library + files -->
-      <input
-        id="photoInput"
-        class="fileInputOverlay"
-        type="file"
-        accept="image/*"
-      />
+      <input id="photoInput" class="fileInputOverlay" type="file" accept="image/*" />
     </label>
 
     <!-- Controls row -->
     <div class="controlsRow mt14">
+
       <div class="distanceBox" aria-label="Distance">
         <div class="subtle strong">Distance</div>
         <input id="distanceYds" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Distance yards" />
         <div class="subtle strong">yds</div>
+      </div>
+
+      <div class="distanceBox" aria-label="Target size">
+        <div class="subtle strong">Target</div>
+        <select id="targetSize" class="select" aria-label="Target size">
+          <option value="8.5x11">8.5×11 (Letter)</option>
+          <option value="23x23">23×23</option>
+          <option value="23x35">23×35</option>
+        </select>
       </div>
 
       <div class="tapsBlock" aria-label="Taps and clear">
@@ -53,9 +61,6 @@
       </div>
     </div>
 
-    <!-- Micro slot -->
-    <div id="microSlot" class="microSlot"></div>
-
     <!-- Tap Card -->
     <section class="card mt14" aria-label="Tap area">
       <div id="instructionLine" class="subtle strong mb8">Add a photo to begin.</div>
@@ -63,24 +68,25 @@
       <div id="targetWrap" class="targetWrap" style="display:none;">
         <div id="targetCanvas" class="targetCanvas">
           <img id="targetImg" class="targetImg" alt="Target photo" />
+          <!-- Vector arrow overlay -->
+          <svg id="vectorLayer" class="vectorLayer" aria-hidden="true"></svg>
+          <!-- Dots overlay -->
           <div id="dotsLayer" class="dotsLayer" aria-hidden="true"></div>
         </div>
       </div>
+
+      <div class="controlsRow mt12" aria-label="Actions">
+        <button id="downloadSecBtn" class="btn" type="button" disabled>Download SEC PNG</button>
+      </div>
     </section>
 
-    <!-- Vendor -->
-    <section class="card mt14" aria-label="Vendor link">
-      <div class="subtle strong mb8">Vendor link (optional)</div>
-      <input id="vendorLink" class="input" type="url" placeholder="Paste vendor buy link here" />
-    </section>
-
-    <!-- Results (no JSON) -->
+    <!-- Results -->
     <section id="resultsCard" class="card mt14" style="display:none;" aria-label="Results">
       <div class="subtle strong mb8">Results</div>
 
       <div class="controlsRow">
         <div class="subtle strong">Distance: <span id="rDistance" class="subtle">—</span></div>
-        <div class="subtle strong">Taps: <span id="rTapsUsed" class="subtle">—</span></div>
+        <div class="subtle strong">Taps Used: <span id="rTapsUsed" class="subtle">—</span></div>
       </div>
 
       <div class="mt12">
@@ -94,11 +100,7 @@
       </div>
 
       <div class="mt12">
-        <div class="subtle strong">Score</div>
-        <div id="rScore" class="subtle">—</div>
-      </div>
-
-      <div class="mt12">
+        <div class="subtle strong">Note</div>
         <div id="rNote" class="subtle">—</div>
       </div>
     </section>
@@ -106,7 +108,6 @@
     <div class="footer subtle">Tap-n-Score™</div>
   </main>
 
-  <script src="./api.js?v=20260119b"></script>
-  <script src="./index.js?v=20260119b"></script>
+  <script src="./index.js?v=20260120a"></script>
 </body>
 </html>
