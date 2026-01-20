@@ -1,185 +1,53 @@
-:root{
-  --bg:#000;
-  --card: rgba(255,255,255,.06);
-  --card2: rgba(255,255,255,.08);
-  --stroke: rgba(255,255,255,.12);
-  --text: rgba(255,255,255,.92);
-  --muted: rgba(255,255,255,.68);
-  --greenBg: rgba(31, 180, 90, .25);
-  --greenBorder: rgba(31, 180, 90, .45);
-  --greenText: rgba(220,255,235,.95);
-}
+/* ================================
+   Upload hero MUST NOT overlap page
+=================================== */
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-}
-
-.page{
-  max-width: 860px;
+.uploadHeroLabel{
+  position: relative;         /* anchor the overlay */
+  display: block;
+  width: 100%;
+  max-width: 980px;
   margin: 0 auto;
-  padding: 18px 14px 28px;
+  border-radius: 14px;
+  overflow: hidden;           /* critical: keeps overlay inside hero */
+  z-index: 2;                 /* only above background, not above target */
 }
 
-.brandRow{display:flex;justify-content:flex-start;margin:4px 0 12px}
-.brand{
-  font-weight:900;
-  letter-spacing:.5px;
-  font-size: 20px;
-}
-.brandTap{color:#ff3b30}
-.brandN{color:#fff}
-.brandScore{color:#0a84ff}
-.brandTM{color:#fff;opacity:.85}
+/* The invisible file input overlay should ONLY cover the hero label box */
+.fileInputOverlay{
+  position: absolute;
+  inset: 0;                   /* fills hero label, NOT the page */
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 
-.hero{margin: 6px 0 12px}
-.heroCard{
-  position:relative;
-  border-radius: 22px;
-  padding: 18px 18px;
-  border: 1px solid var(--stroke);
-  background: radial-gradient(1200px 260px at 20% 0%, rgba(38,87,255,.32), transparent 55%),
-              radial-gradient(900px 220px at 90% 20%, rgba(255,62,134,.25), transparent 55%),
-              rgba(255,255,255,.06);
-}
-.heroTitle{font-size: 34px; font-weight: 900; text-align:center}
-.heroSub{margin-top:6px;text-align:center;color:var(--muted);font-weight:700}
-
-/* iOS SAFE: not display:none; still tappable */
-.fileInput{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  opacity:0.01;       /* keep "visible" for iOS */
-  cursor:pointer;
-  z-index: 5;
+  z-index: 3;                 /* above hero contents only */
 }
 
-.controls{
-  display:flex;
-  justify-content:space-between;
-  gap: 12px;
-  margin: 10px 0 8px;
-}
-.ctrl{
-  flex: 1;
-  border: 1px solid var(--stroke);
-  background: var(--card);
-  border-radius: 16px;
-  padding: 12px;
-}
-.ctrlLabel{color:var(--muted);font-weight:800;font-size:13px;margin-bottom:8px}
-.ctrlRow{display:flex;align-items:center;gap:10px}
-.ctrlInput{
-  width: 120px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--stroke);
-  background: rgba(0,0,0,.35);
-  color: var(--text);
-  font-weight: 900;
-  font-size: 16px;
-}
-.ctrlUnit{color:var(--muted);font-weight:900}
-
-.ctrlRight{
-  width: 170px;
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap: 10px;
-}
-.ctrlSmall{
-  border:1px solid var(--stroke);
-  background: var(--card);
-  border-radius: 16px;
-  padding: 12px 12px;
-  min-width: 96px;
-}
-.ctrlValue{font-weight:900;font-size:18px}
-
-.actions{margin: 10px 0 10px}
-.btnPrimary{
-  width: 220px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid var(--greenBorder);
-  background: var(--greenBg);
-  color: var(--greenText);
-  font-weight: 900;
-  font-size: 16px;
-}
-.btnSecondary{
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid var(--stroke);
-  background: rgba(255,255,255,.06);
-  color: var(--text);
-  font-weight: 900;
-}
+/* ================================
+   Target tap area MUST sit above hero
+=================================== */
 
 .card{
-  border-radius: 18px;
-  border: 1px solid var(--stroke);
-  background: var(--card);
-  padding: 12px;
-  margin-top: 12px;
-}
-.cardTitle{color: var(--muted); font-weight: 900; margin-bottom: 10px}
-
-.previewWrap{
   position: relative;
-  width: 100%;
-  border-radius: 16px;
-  background: rgba(0,0,0,.25);
-  border: 1px solid rgba(255,255,255,.10);
-  overflow: hidden;
-  min-height: 280px;
+  z-index: 5;                 /* higher than hero */
 }
 
-.previewImg{
-  display:block;
-  width: 100%;
-  height: auto;
+.targetWrap{
+  position: relative;
+  z-index: 6;
 }
 
-.tapCanvas{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
+.targetCanvas{
+  position: relative;
+  z-index: 7;
+}
+
+/* Ensure the tap surface receives touches */
+.targetImg,
+.dotsLayer{
+  position: relative;
+  z-index: 8;
   touch-action: manipulation;
-}
-
-.vendorInput{
-  width:100%;
-  padding: 12px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--stroke);
-  background: rgba(0,0,0,.35);
-  color: var(--text);
-  font-weight: 800;
-}
-
-.resultsBox{
-  margin:0;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,.10);
-  background: rgba(0,0,0,.35);
-  color: rgba(255,255,255,.90);
-  overflow:auto;
-  min-height: 90px;
-}
-
-.footer{
-  text-align:center;
-  margin-top: 18px;
-  color: rgba(255,255,255,.45);
-  font-weight: 900;
 }
