@@ -1,210 +1,182 @@
-/* ============================================================================
-   Tap-n-Score — index.js (FULL REPLACEMENT)
-   Fix: taps not appearing on iOS Safari
-
-   IDs used (must exist in HTML):
-     #photoInput
-     #targetWrap
-     #targetCanvas
-     #targetImg
-     #dotsLayer
-     #instructionLine
-     #tapCount
-     #clearTapsBtn
-     #distanceYds (optional)
-     #vendorLink (optional)
-============================================================================ */
+/* ============================================================
+   sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
+   Fixes:
+   - iOS Safari "file chosen but not loaded" (stores File immediately)
+   - Tap dots visible + correctly positioned on top of image
+   - Prevents phantom tap layer issues by using dotsLayer coords
+============================================================ */
 
 (() => {
-  const elPhotoInput  = document.getElementById("photoInput");
-  const elTargetWrap  = document.getElementById("targetWrap");
-  const elTargetCanvas= document.getElementById("targetCanvas");
-  const elTargetImg   = document.getElementById("targetImg");
-  const elDotsLayer   = document.getElementById("dotsLayer");
-  const elInstruction = document.getElementById("instructionLine");
-  const elTapCount    = document.getElementById("tapCount");
-  const elClear       = document.getElementById("clearTapsBtn");
+  const $ = (id) => document.getElementById(id);
 
-  const elDistance    = document.getElementById("distanceYds");
-  const elVendor      = document.getElementById("vendorLink");
+  // --- HTML IDs (must exist)
+  const elFile = $("photoInput");
+  const elImg = $("targetImg");
+  const elDots = $("dotsLayer");
+  const elTapCount = $("tapCount");
+  const elClear = $("clearTapsBtn");
+  const elInstruction = $("instructionLine");
+  const elWrap = $("targetWrap");
+  const elDistance = $("distanceYds");
+  const elVendor = $("vendorLink");
 
+  // --- State
   let selectedFile = null;
   let objectUrl = null;
-  let taps = []; // { nx, ny } normalized to displayed image box (0..1)
-  let imageReady = false;
+  let taps = []; // { nx, ny } normalized (0..1)
 
-  const setInstruction = (msg) => { if (elInstruction) elInstruction.textContent = msg; };
-  const setTapCount = () => { if (elTapCount) elTapCount.textContent = String(taps.length); };
-
-  function cleanupObjectUrl() {
-    if (objectUrl) {
-      try { URL.revokeObjectURL(objectUrl); } catch(_) {}
-      objectUrl = null;
-    }
+  // --- UI helpers
+  function setInstruction(msg) {
+    if (elInstruction) elInstruction.textContent = msg;
   }
 
-  function showTarget() {
-    if (elTargetWrap) elTargetWrap.style.display = "block";
-  }
-
-  function hideTarget() {
-    if (elTargetWrap) elTargetWrap.style.display = "none";
+  function setTapCount() {
+    if (elTapCount) elTapCount.textContent = String(taps.length);
   }
 
   function clearDots() {
-    if (elDotsLayer) elDotsLayer.innerHTML = "";
+    if (elDots) elDots.innerHTML = "";
   }
 
-  function addDot(nx, ny) {
-    if (!elDotsLayer || !elTargetImg) return;
-
-    const rect = elTargetImg.getBoundingClientRect();
-    const x = rect.width * nx;
-    const y = rect.height * ny;
-
-    const dot = document.createElement("div");
-    dot.className = "dot";
-    dot.style.left = `${x}px`;
-    dot.style.top  = `${y}px`;
-    elDotsLayer.appendChild(dot);
+  function showTarget() {
+    if (elWrap) elWrap.style.display = "block";
   }
 
-  function loadFile(file) {
-    selectedFile = file;
-    imageReady = false;
+  function hideTarget() {
+    if (elWrap) elWrap.style.display = "none";
+  }
 
-    cleanupObjectUrl();
-    objectUrl = URL.createObjectURL(file);
+  // --- File load (iOS safe)
+  function onFileChange(e) {
+    const f = e?.target?.files && e.target.files[0];
 
-    // Reset taps
+    if (!f) {
+      selectedFile = null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+
+      if (elImg) elImg.removeAttribute("src");
+      taps = [];
+      setTapCount();
+      clearDots();
+      hideTarget();
+      setInstruction("No photo loaded. Tap Upload target photo again.");
+      return;
+    }
+
+    selectedFile = f;
+
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(f);
+
+    if (elImg) {
+      elImg.onload = () => {
+        // after image dimensions settle
+        showTarget();
+        setInstruction(`Loaded: ${f.name} (${Math.round(f.size / 1024)} KB)`);
+      };
+      elImg.src = objectUrl;
+    } else {
+      showTarget();
+      setInstruction(`Loaded: ${f.name}`);
+    }
+
     taps = [];
     setTapCount();
     clearDots();
-
-    if (elTargetImg) {
-      elTargetImg.onload = () => {
-        imageReady = true;
-        // Ensure dots layer is aligned to the image box
-        setInstruction(`Loaded: ${file.name}. Tap on the target to add dots.`);
-      };
-      elTargetImg.onerror = () => {
-        imageReady = false;
-        setInstruction("Image failed to load. Try selecting the photo again.");
-      };
-      elTargetImg.src = objectUrl;
-    }
-
-    showTarget();
-    setInstruction(`Loading: ${file.name}...`);
   }
 
-  function onPick(e) {
-    const file = e?.target?.files && e.target.files[0];
-    if (!file) {
-      setInstruction("No photo loaded. Tap Upload target photo and select again.");
-      return;
-    }
-    loadFile(file);
-  }
+  // --- Tap handling
+  function addDotAtClientPoint(clientX, clientY) {
+    if (!elDots || !elImg) return;
 
-  // iOS: selecting same file again won’t always fire change unless value is cleared
-  function enableSameFileReselect() {
-    if (!elPhotoInput) return;
-    const clearVal = () => { try { elPhotoInput.value = ""; } catch(_) {} };
-    elPhotoInput.addEventListener("click", clearVal);
-    elPhotoInput.addEventListener("touchstart", clearVal, { passive: true });
-  }
+    // Use dotsLayer rect as the coordinate system (most reliable)
+    const rect = elDots.getBoundingClientRect();
 
-  function getClientXY(evt) {
-    if (evt.touches && evt.touches[0]) {
-      return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
-    }
-    return { x: evt.clientX, y: evt.clientY };
-  }
+    // Tap must land inside the dotsLayer box
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
 
-  function onTap(evt) {
-    // If the file overlay is still leaking, your tap will never reach this handler.
-    // So if this runs, we KNOW the overlay is not blocking taps.
-    evt.preventDefault();
-
-    if (!selectedFile) {
-      setInstruction("Add a photo to begin.");
-      return;
-    }
-    if (!imageReady) {
-      setInstruction("Image still loading… try again in a second.");
-      return;
-    }
-    if (!elTargetImg) return;
-
-    const { x, y } = getClientXY(evt);
-
-    // Normalize taps to the rendered IMAGE box (best for dot placement)
-    const imgRect = elTargetImg.getBoundingClientRect();
-    const localX = x - imgRect.left;
-    const localY = y - imgRect.top;
-
-    // Only accept taps inside the image area
-    if (localX < 0 || localY < 0 || localX > imgRect.width || localY > imgRect.height) {
-      setInstruction("Tap inside the target image.");
-      return;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+      return; // ignore taps outside image box
     }
 
-    const nx = imgRect.width  ? localX / imgRect.width  : 0;
-    const ny = imgRect.height ? localY / imgRect.height : 0;
+    // Normalized
+    const nx = rect.width ? x / rect.width : 0;
+    const ny = rect.height ? y / rect.height : 0;
 
     taps.push({ nx, ny });
     setTapCount();
-    addDot(nx, ny);
-
     setInstruction(`Tap recorded: ${taps.length}`);
+
+    // Draw dot
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    dot.style.left = `${nx * rect.width}px`;
+    dot.style.top = `${ny * rect.height}px`;
+    elDots.appendChild(dot);
   }
 
-  function wireTapListeners() {
-    if (!elTargetCanvas) return;
+  function onTap(ev) {
+    // only allow taps when an image is truly loaded
+    if (!selectedFile || !objectUrl || !elImg?.src) {
+      setInstruction("Add a photo to begin.");
+      return;
+    }
 
-    // Tap on the wrapper (works reliably on iOS)
-    elTargetCanvas.addEventListener("touchstart", onTap, { passive: false });
-    elTargetCanvas.addEventListener("click", onTap);
-    elTargetCanvas.addEventListener("pointerdown", onTap);
+    const t = ev.touches && ev.touches[0];
+    const clientX = t ? t.clientX : ev.clientX;
+    const clientY = t ? t.clientY : ev.clientY;
+
+    addDotAtClientPoint(clientX, clientY);
   }
 
+  // --- Clear
   function onClear() {
     taps = [];
     setTapCount();
     clearDots();
 
-    selectedFile = null;
-    imageReady = false;
-    cleanupObjectUrl();
+    // clear input value so iOS allows re-picking same image
+    if (elFile) elFile.value = "";
 
-    if (elTargetImg) elTargetImg.src = "";
+    selectedFile = null;
+
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
+
+    if (elImg) elImg.removeAttribute("src");
     hideTarget();
     setInstruction("Add a photo to begin.");
   }
 
+  // --- Boot
   function init() {
+    // Defaults
+    if (elDistance && !elDistance.value) elDistance.value = "100";
+    if (elVendor) elVendor.value = (elVendor.value || "").trim();
+
     setTapCount();
+    clearDots();
     hideTarget();
     setInstruction("Add a photo to begin.");
 
-    if (!elPhotoInput) {
-      console.warn("Missing #photoInput");
-      return;
-    }
-
-    elPhotoInput.addEventListener("change", onPick);
-    elPhotoInput.addEventListener("input", onPick); // helps some iOS cases
-    enableSameFileReselect();
-
-    wireTapListeners();
+    // Events
+    if (elFile) elFile.addEventListener("change", onFileChange);
 
     if (elClear) elClear.addEventListener("click", onClear);
 
-    if (elDistance && !elDistance.value) elDistance.value = "100";
-    if (elVendor) elVendor.addEventListener("blur", () => {
-      elVendor.value = (elVendor.value || "").trim();
-    });
+    // IMPORTANT:
+    // Attach taps to the IMAGE and the DOTS layer so it always works.
+    // Use {passive:true} for iOS smoothness.
+    if (elImg) {
+      elImg.addEventListener("touchstart", onTap, { passive: true });
+      elImg.addEventListener("click", onTap);
+    }
+    if (elDots) {
+      elDots.addEventListener("touchstart", onTap, { passive: true });
+      elDots.addEventListener("click", onTap);
+    }
   }
 
   if (document.readyState === "loading") {
