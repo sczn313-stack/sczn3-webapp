@@ -1,160 +1,86 @@
-/* ============================================================================
-   Tap-N-Score — iOS Safari “file selected but not loaded” FIX (FULL REPLACEMENT)
-   Drop-in replacement for your frontend JS (e.g., frontend_new/index.js)
+/* ============================================================
+   sczn3-webapp/frontend_new/api.js  (FULL REPLACEMENT)
 
-   REQUIREMENTS (IDs in your HTML):
-     <input  id="targetFile" type="file" accept="image/*" />
-     <div    id="photoStatus"></div>          // text like "Add a photo to begin."
-     <img    id="targetPreview" />            // preview of selected image
-     <input  id="distance" />                 // distance input
-     <span   id="tapsCount"></span>           // shows tap count
-     <button id="clearBtn"></button>          // clears taps + resets
-     <input  id="vendorLink" />               // optional vendor link input
+   Goal:
+   - ALWAYS define window.SCZN3_API (so your app never shows
+     "API not loaded (SCZN3_API missing)")
+   - Keep it static-site friendly (no modules, no imports)
+   - Safe defaults + easy to change URLs in ONE place
 
-   OPTIONAL (if you have a tap overlay/canvas):
-     <div id="tapLayer"></div> OR <canvas id="tapCanvas"></canvas>
+   After you paste this file:
+   1) Make sure frontend_new/index.html loads api.js BEFORE index.js:
+        <script src="./api.js"></script>
+        <script src="./index.js"></script>
 
-   iOS Safari hardening:
-   - Listen to BOTH 'change' and 'input' (iOS sometimes prefers input)
-   - Clear file input value BEFORE picker opens (allows selecting same image again)
-   - Store file immediately; never rely on input.files later
-============================================================================ */
+   2) Deploy latest commit on Render (Manual Deploy → Deploy latest commit)
+============================================================ */
 
 (() => {
-  // ----------------------------
-  // DOM helpers
-  // ----------------------------
-  const $ = (id) => document.getElementById(id);
+  // ---------- EDIT THESE ----------
+  // Put your backend base URL here (NO trailing slash)
+  // Example: "https://sczn3-sec-backend.onrender.com"
+  const BACKEND_BASE_URL = ""; // <-- SET THIS
 
-  const elFile = $("targetFile");
-  const elStatus = $("photoStatus");
-  const elPreview = $("targetPreview");
-  const elDistance = $("distance");
-  const elTapsCount = $("tapsCount");
-  const elClear = $("clearBtn");
-  const elVendor = $("vendorLink");
+  // If you have a specific analyze endpoint path, set it here.
+  // If your index.js already builds endpoints itself, this can stay as-is.
+  const DEFAULT_ANALYZE_PATH = "/analyze";
 
-  // Tap layer (optional). If you use something else, adjust setTapHandlers().
-  const elTapLayer = $("tapLayer");
-  const elCanvas = $("tapCanvas");
+  // Optional: if you have a health endpoint
+  const DEFAULT_HEALTH_PATH = "/health";
 
-  // ----------------------------
-  // State
-  // ----------------------------
-  let selectedFile = null;
-  let selectedObjectUrl = null;
-  let taps = [];
+  // ---------- HELPERS ----------
+  const stripTrailingSlash = (s) => (typeof s === "string" ? s.replace(/\/+$/, "") : "");
+  const join = (base, path) => {
+    base = stripTrailingSlash(base || "");
+    path = (path || "").trim();
+    if (!path) return base;
+    if (!path.startsWith("/")) path = "/" + path;
+    return base + path;
+  };
 
-  // ----------------------------
-  // UI
-  // ----------------------------
-  function setStatus(msg) {
-    if (elStatus) elStatus.textContent = msg;
+  const base = stripTrailingSlash(BACKEND_BASE_URL);
+
+  // ---------- DEFINE GLOBAL ----------
+  // This MUST exist before index.js runs.
+  window.SCZN3_API = {
+    // Base backend URL (NO trailing slash)
+    BASE_URL: base,
+
+    // Prebuilt URLs (optional convenience)
+    URLS: {
+      ANALYZE: join(base, DEFAULT_ANALYZE_PATH),
+      HEALTH: join(base, DEFAULT_HEALTH_PATH),
+    },
+
+    // Fetch wrapper (optional convenience)
+    async fetchJSON(url, opts = {}) {
+      const res = await fetch(url, opts);
+      const text = await res.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (_) {
+        // non-json response; return as text
+        data = { ok: res.ok, status: res.status, text };
+        return data;
+      }
+      if (!res.ok) {
+        // normalize error
+        return { ok: false, status: res.status, data };
+      }
+      return { ok: true, status: res.status, data };
+    },
+  };
+
+  // ---------- HARD FAIL GUARD ----------
+  // If you forgot to set BACKEND_BASE_URL, don't break the app — just warn.
+  if (!window.SCZN3_API.BASE_URL) {
+    // Still defined (so your banner should disappear), but not configured.
+    console.warn(
+      "SCZN3_API loaded, but BACKEND_BASE_URL is empty. Set it in frontend_new/api.js."
+    );
   }
 
-  function setTapsCount() {
-    if (elTapsCount) elTapsCount.textContent = String(taps.length);
-  }
-
-  function showPreview(url) {
-    if (!elPreview) return;
-    elPreview.src = url;
-    elPreview.style.display = "block";
-  }
-
-  function hidePreview() {
-    if (!elPreview) return;
-    elPreview.src = "";
-    elPreview.style.display = "none";
-  }
-
-  // ----------------------------
-  // Core: iOS-safe file selection
-  // ----------------------------
-  function clearObjectUrl() {
-    if (selectedObjectUrl) {
-      try { URL.revokeObjectURL(selectedObjectUrl); } catch (_) {}
-      selectedObjectUrl = null;
-    }
-  }
-
-  function resetImageState(msg) {
-    selectedFile = null;
-    clearObjectUrl();
-    hidePreview();
-    taps = [];
-    setTapsCount();
-    clearTapMarkers();
-    if (msg) setStatus(msg);
-  }
-
-  function onFilePickedFromEvent(e) {
-    const file = e?.target?.files && e.target.files[0];
-
-    // iOS Safari glitch: name appears but file object can be missing
-    if (!file) {
-      resetImageState("No photo loaded. Tap Choose File again (iOS picker can glitch).");
-      return;
-    }
-
-    // Store immediately — NEVER rely on elFile.files later
-    selectedFile = file;
-
-    // Create a preview URL (fast + iOS friendly)
-    clearObjectUrl();
-    selectedObjectUrl = URL.createObjectURL(file);
-
-    showPreview(selectedObjectUrl);
-    setStatus(`Loaded: ${file.name}`);
-
-    // Reset taps whenever a new image is selected
-    taps = [];
-    setTapsCount();
-    clearTapMarkers();
-  }
-
-  function onFileChange(e) {
-    onFilePickedFromEvent(e);
-  }
-
-  // iOS sometimes prefers 'input' over 'change'
-  function onFileInput(e) {
-    onFilePickedFromEvent(e);
-  }
-
-  // IMPORTANT: allow selecting the SAME image again by clearing BEFORE picker opens
-  function armReselectSameFileFix() {
-    if (!elFile) return;
-
-    // pointerdown works across mouse/touch; capture ensures it runs early
-    const clearValue = () => {
-      // clearing here enables same-file reselection to fire events
-      elFile.value = "";
-    };
-
-    elFile.addEventListener("pointerdown", clearValue, { capture: true });
-    elFile.addEventListener("touchstart", clearValue, { capture: true, passive: true });
-    elFile.addEventListener("mousedown", clearValue, { capture: true });
-    elFile.addEventListener("click", clearValue, { capture: true });
-  }
-
-  // ----------------------------
-  // Tap capture (generic)
-  // ----------------------------
-  function clearTapMarkers() {
-    if (elCanvas && elCanvas.getContext) {
-      const ctx = elCanvas.getContext("2d");
-      if (ctx) ctx.clearRect(0, 0, elCanvas.width, elCanvas.height);
-    }
-    if (elTapLayer) elTapLayer.innerHTML = "";
-  }
-
-  function addTapMarker(clientX, clientY) {
-    if (!elPreview) return;
-
-    const rect = elPreview.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    // Store normalized coords (0..1)
-    const nx = rect.width ? x / rect.width
+  // Optional debug marker (handy for troubleshooting)
+  window.__SCZN3_API_LOADED__ = true;
+})();
