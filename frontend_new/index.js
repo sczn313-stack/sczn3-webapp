@@ -1,43 +1,98 @@
 /* ============================================================
-   frontend_new/index.js (FULL REPLACEMENT)
+   frontend_new/index.js (FULL REPLACEMENT) — SAFE + AUTO-DETECT
    Fixes:
-   - Prevents stray/ghost taps (outside image / on UI / on dots)
-   - Prevents double-binding (no double counts)
-   - Tap 1 = Bull (blue), Tap 2+ = Impacts (orange)
-   - POIB = cyan (computed)
-   - NO frontend direction logic: prints backend direction strings
+   - Target/photo preview always loads (file input -> img src)
+   - Auto-detects element IDs so it won’t crash if IDs differ
+   - No ghost taps (outside image ignored; taps on dots ignored)
+   - No double-binding
+   - Tap #1 = Bull, Tap #2+ = Impacts
+   - Backend is sole direction authority (frontend prints backend strings)
 ============================================================ */
 
 (() => {
-  const $ = (id) => document.getElementById(id);
+  // ---------- helpers
+  const byId = (id) => (id ? document.getElementById(id) : null);
 
-  // --- Required element IDs (must exist in index.html)
-  const elImg = $("targetImg");           // <img>
-  const elWrap = $("targetWrap");         // wrapper around img + overlay
-  const elDots = $("dotsLayer");          // overlay layer (positioned over img)
-  const elTapCount = $("tapCount");       // tap counter text
-  const elClear = $("clearTapsBtn");      // clear button
-  const elDistance = $("distanceYds");    // distance input
-  const elTargetSel = $("targetSelect");  // optional; if not present, ok
+  function pickFirstId(ids) {
+    for (const id of ids) {
+      const el = byId(id);
+      if (el) return el;
+    }
+    return null;
+  }
 
-  // Results fields (optional; if not present, ok)
-  const elWindage = $("windageLine");
-  const elElevation = $("elevationLine");
+  function pickFirstSelector(selectors) {
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
 
-  // --- Backend URL (set this to your backend service)
-  // If you already have a global or existing config, keep it.
+  // ---------- auto-detect core elements
+  // IMG (preview target/photo)
+  const elImg =
+    pickFirstId(["targetImg", "photoImg", "previewImg", "imagePreview", "targetImage"]) ||
+    pickFirstSelector(["img#targetImg", "img#preview", "img.preview", "img"]);
+
+  // WRAP (positioning container for img + overlay)
+  const elWrap =
+    pickFirstId(["targetWrap", "imgWrap", "imageWrap", "previewWrap", "canvasWrap"]) ||
+    (elImg ? elImg.parentElement : null);
+
+  // OVERLAY layer (absolute positioned)
+  let elDots =
+    pickFirstId(["dotsLayer", "tapLayer", "overlay", "overlayLayer", "marksLayer"]);
+
+  // If overlay div doesn’t exist, create one (so your target still shows)
+  if (!elDots && elWrap) {
+    elWrap.style.position = elWrap.style.position || "relative";
+    elDots = document.createElement("div");
+    elDots.id = "dotsLayer";
+    elDots.style.position = "absolute";
+    elDots.style.left = "0";
+    elDots.style.top = "0";
+    elDots.style.right = "0";
+    elDots.style.bottom = "0";
+    elDots.style.pointerEvents = "auto";
+    elWrap.appendChild(elDots);
+  }
+
+  // FILE INPUT (so photo selection loads)
+  const elFile =
+    pickFirstId(["photoInput", "fileInput", "imageInput", "uploadInput"]) ||
+    pickFirstSelector(['input[type="file"]']);
+
+  // UI elements (optional)
+  const elTapCount = pickFirstId(["tapCount", "tapsCount", "tapCounter"]);
+  const elClear = pickFirstId(["clearTapsBtn", "clearBtn", "btnClear"]);
+  const elDistance = pickFirstId(["distanceYds", "distance", "yards"]);
+  const elWindage = pickFirstId(["windageLine", "windageText", "windage"]);
+  const elElevation = pickFirstId(["elevationLine", "elevationText", "elevation"]);
+
+  // If we can’t find the image container, don’t hard crash — but tell you why.
+  if (!elImg || !elWrap || !elDots) {
+    console.warn("Missing required elements:", {
+      elImg: !!elImg,
+      elWrap: !!elWrap,
+      elDots: !!elDots
+    });
+    // Still return without breaking the page completely
+    return;
+  }
+
+  // ---------- backend calc endpoint
   const BACKEND_CALC_URL =
     (window.SCNZ3_BACKEND_CALC_URL || window.BACKEND_CALC_URL || "").trim() ||
     "/api/calc";
 
-  // --- State
-  let bull = null;          // {x,y} in IMAGE PIXEL space (relative to displayed image)
-  let impacts = [];         // [{x,y}, ...]
-  let poib = null;          // computed from backend response
+  // ---------- state
+  let objectUrl = null;
+  let bull = null;
+  let impacts = [];
+  let poib = null;
   let lastResult = null;
 
-  // --- Tap mode rules
-  // Tap #1 = bull, then impacts forever until Clear.
   function tapsTotal() {
     return (bull ? 1 : 0) + impacts.length;
   }
@@ -46,27 +101,14 @@
     if (elTapCount) elTapCount.textContent = String(tapsTotal());
   }
 
-  // --- Utility: get displayed image rect in page coordinates
   function getImgRect() {
     return elImg.getBoundingClientRect();
   }
 
-  // Convert a pointer event to coordinates relative to the displayed image (0..w, 0..h)
-  function getImagePointFromEvent(evt) {
-    const r = getImgRect();
-    const clientX = evt.clientX;
-    const clientY = evt.clientY;
-
-    const x = clientX - r.left;
-    const y = clientY - r.top;
-
-    // Inside check
-    if (x < 0 || y < 0 || x > r.width || y > r.height) return null;
-
-    return { x, y, w: r.width, h: r.height };
+  function clearOverlay() {
+    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
   }
 
-  // Create a dot element
   function makeDot({ x, y, kind }) {
     const d = document.createElement("div");
     d.className = `dot dot-${kind}`;
@@ -74,7 +116,7 @@
     d.style.top = `${y}px`;
     d.dataset.kind = kind;
 
-    // IMPORTANT: prevent taps on dots from creating new taps
+    // prevent dot taps from creating taps
     d.style.pointerEvents = "auto";
     d.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -84,44 +126,15 @@
     return d;
   }
 
-  // Clear overlay dots/arrows
-  function clearOverlay() {
-    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
-  }
-
-  // Draw bull + impacts + (optional) poib + arrow
-  function redrawOverlay() {
-    clearOverlay();
-
-    // Ensure overlay matches image size
+  function syncOverlaySize() {
     const r = getImgRect();
     elDots.style.width = `${r.width}px`;
     elDots.style.height = `${r.height}px`;
-
-    // --- Impacts (orange)
-    for (const p of impacts) {
-      elDots.appendChild(makeDot({ x: p.x, y: p.y, kind: "impact" }));
-    }
-
-    // --- Bull (blue)
-    if (bull) {
-      elDots.appendChild(makeDot({ x: bull.x, y: bull.y, kind: "bull" }));
-    }
-
-    // --- POIB (cyan)
-    if (poib) {
-      elDots.appendChild(makeDot({ x: poib.x, y: poib.y, kind: "poib" }));
-    }
-
-    // --- Arrow (POIB -> Bull)
-    if (bull && poib) {
-      drawArrow(poib, bull);
-    }
   }
 
-  // Arrow drawer (simple SVG overlay)
   function drawArrow(from, to) {
     const r = getImgRect();
+
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "arrowSvg");
     svg.setAttribute("width", String(r.width));
@@ -163,21 +176,43 @@
     elDots.appendChild(svg);
   }
 
-  // --- Backend call (direction authority)
+  function redrawOverlay() {
+    clearOverlay();
+    syncOverlaySize();
+
+    // impacts first
+    for (const p of impacts) elDots.appendChild(makeDot({ x: p.x, y: p.y, kind: "impact" }));
+
+    // bull
+    if (bull) elDots.appendChild(makeDot({ x: bull.x, y: bull.y, kind: "bull" }));
+
+    // poib
+    if (poib) elDots.appendChild(makeDot({ x: poib.x, y: poib.y, kind: "poib" }));
+
+    // arrow poib -> bull
+    if (bull && poib) drawArrow(poib, bull);
+  }
+
+  function getImagePointFromEvent(evt) {
+    const r = getImgRect();
+    const x = evt.clientX - r.left;
+    const y = evt.clientY - r.top;
+
+    // ignore taps outside image
+    if (x < 0 || y < 0 || x > r.width || y > r.height) return null;
+
+    return { x, y };
+  }
+
   async function computeResult() {
     if (!bull || impacts.length < 1) return;
 
     const distanceYds = Number(elDistance?.value || 100);
 
-    // IMPORTANT: inchesPerPixel must come from your target profile.
-    // For now, keep your existing system. If you already compute it elsewhere,
-    // set window.INCHES_PER_PIXEL before calling.
-    const inchesPerPixel =
-      Number(window.INCHES_PER_PIXEL || window.inchesPerPixel || NaN);
-
-    // If you don’t have this yet, stop — don’t guess scale.
+    // must be provided by your target profile layer
+    const inchesPerPixel = Number(window.INCHES_PER_PIXEL || window.inchesPerPixel || NaN);
     if (!Number.isFinite(inchesPerPixel) || inchesPerPixel <= 0) {
-      console.warn("Missing inchesPerPixel. Set window.INCHES_PER_PIXEL for this target profile.");
+      console.warn("Missing inchesPerPixel. Set window.INCHES_PER_PIXEL for this target.");
       return;
     }
 
@@ -203,44 +238,29 @@
       return;
     }
 
-    // Backend returns poib in its own payload
     poib = data.poib ? { x: data.poib.x, y: data.poib.y } : null;
 
-    // Print EXACT backend strings (no frontend direction logic)
+    // print backend strings exactly
     if (elWindage && data.ui?.windage) elWindage.textContent = data.ui.windage;
     if (elElevation && data.ui?.elevation) elElevation.textContent = data.ui.elevation;
 
     redrawOverlay();
   }
 
-  // --- Tap handler (single binding, strict filtering)
   function onPointerDown(evt) {
-    // Only left click / primary touch
-    if (evt.button != null && evt.button !== 0) return;
-
-    // If user tapped a dot, ignore (dot handler stops propagation, but double-safety)
-    if (evt.target && evt.target.classList && evt.target.classList.contains("dot")) return;
+    // ignore if tap is on a dot (double safety)
+    if (evt.target?.classList?.contains("dot")) return;
 
     const p = getImagePointFromEvent(evt);
-    if (!p) {
-      // Outside the image: IGNORE. This kills stray red markers.
-      return;
-    }
+    if (!p) return; // ignore outside-image taps (kills ghost taps)
 
-    // Record tap
-    if (!bull) {
-      bull = { x: p.x, y: p.y };
-    } else {
-      impacts.push({ x: p.x, y: p.y });
-    }
+    if (!bull) bull = { x: p.x, y: p.y };
+    else impacts.push({ x: p.x, y: p.y });
 
-    setTapCount();
-
-    // Redraw immediately (bull + impacts). POIB/arrow after backend call.
     poib = null;
+    setTapCount();
     redrawOverlay();
 
-    // Compute from backend once we have at least 1 impact
     if (bull && impacts.length >= 1) {
       computeResult().catch((e) => console.warn("computeResult error:", e));
     }
@@ -257,36 +277,45 @@
     if (elElevation) elElevation.textContent = "";
   }
 
-  // --- Ensure overlay always matches image size after load/resize
-  function syncOverlaySize() {
-    const r = getImgRect();
-    elDots.style.width = `${r.width}px`;
-    elDots.style.height = `${r.height}px`;
-    redrawOverlay();
+  // ---------- file input -> load into img
+  function onFileChange() {
+    const f = elFile?.files?.[0];
+    if (!f) return;
+
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(f);
+
+    elImg.src = objectUrl;
+
+    // reset taps when new image loads
+    clearAll();
   }
 
-  // --- Init (prevent double-binding)
-  // Remove any existing handler if hot reloaded / re-initialized
+  // ---------- bind once (no double counts)
   elDots.removeEventListener("pointerdown", onPointerDown);
-  elDots.addEventListener("pointerdown", onPointerDown, { passive: false });
+  elDots.addEventListener("pointerdown", onPointerDown, { passive: true });
 
   if (elClear) elClear.addEventListener("click", clearAll);
+  if (elFile) elFile.addEventListener("change", onFileChange);
 
-  if (elImg) {
-    elImg.addEventListener("load", syncOverlaySize);
-  }
-  window.addEventListener("resize", syncOverlaySize);
+  elImg.addEventListener("load", () => {
+    syncOverlaySize();
+    redrawOverlay();
+  });
 
-  // --- Minimal dot styling injection (kills red rings)
-  // If you already style dots in CSS, you can delete this block.
+  window.addEventListener("resize", () => {
+    syncOverlaySize();
+    redrawOverlay();
+  });
+
+  // ---------- dot styling (no red rings)
   (function injectDotCSS() {
     const css = `
-      #dotsLayer { position:absolute; left:0; top:0; pointer-events:auto; }
       .dot { position:absolute; width:16px; height:16px; border-radius:50%;
              transform: translate(-50%, -50%); box-sizing:border-box; }
-      .dot-impact { background: #f59a23; border: 4px solid #000; }
-      .dot-poib   { background: #5de6ff; border: 4px solid #000; box-shadow: 0 0 10px rgba(93,230,255,0.6); }
-      .dot-bull   { background: #0b5cff; border: 4px solid #fff; box-shadow: 0 0 0 2px #000 inset; }
+      .dot-impact { background:#f59a23; border:4px solid #000; }
+      .dot-poib   { background:#5de6ff; border:4px solid #000; box-shadow:0 0 10px rgba(93,230,255,0.6); }
+      .dot-bull   { background:#0b5cff; border:4px solid #fff; box-shadow:0 0 0 2px #000 inset; }
       .arrowSvg { overflow: visible; }
     `;
     const style = document.createElement("style");
@@ -294,7 +323,7 @@
     document.head.appendChild(style);
   })();
 
-  // Initial
+  // initial
   setTapCount();
   syncOverlaySize();
 })();
