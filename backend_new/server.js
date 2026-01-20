@@ -1,139 +1,204 @@
-/**
- * backend_new/server.js — Tap-n-Score backend (STABLE)
- *
- * Routes:
- *  - GET  /            (health)
- *  - GET  /health
- *  - GET  /ping
- *  - POST /tapscore    (JSON)  { distanceYds, bullTap:{x,y}, taps:[{x,y},...] }
- *  - POST /api/analyze (JSON)  alias -> /tapscore (keeps older frontend alive)
- *
- * Normalized tap coords:
- *  - x grows RIGHT  (0..1)
- *  - y grows DOWN   (0..1)
- *
- * Canonical correction direction:
- *  - We return delta = bull - POIB in normalized units.
- *    dx > 0 => RIGHT, dx < 0 => LEFT
- *    dy > 0 => DOWN,  dy < 0 => UP        (because y grows down)
- *
- * IMPORTANT:
- *  - This backend does NOT compute inches/MOA/clicks (needs known scale).
- *  - It returns directions consistently so frontend cannot flip itself.
- */
+/* ============================================================
+   server.js (FULL REPLACEMENT) — SCZN3 Backend New
+   Purpose:
+   - Backend is the ONLY authority for correction directions.
+   - Computes correction vector POIB -> Bull (bull - poib).
+   - Returns explicit direction strings + signed deltas for debug.
+   ============================================================ */
 
 const express = require("express");
 const cors = require("cors");
 
-const SERVICE = "sczn3-backend-new1";
-const BUILD = "TAPNSCORE_STABLE_V1";
-
 const app = express();
 
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
-
-// JSON parser
+// ---- Middleware
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/", (req, res) => res.json({ ok: true, service: SERVICE, build: BUILD }));
-app.get("/health", (req, res) => res.json({ ok: true, service: SERVICE, build: BUILD }));
-app.get("/ping", (req, res) => res.json({ ok: true, route: "/ping", service: SERVICE, build: BUILD }));
-
-function isNum(n) {
-  return typeof n === "number" && Number.isFinite(n);
-}
-function clamp01(v) {
-  return Math.max(0, Math.min(1, v));
+// ---- Helpers
+function clampNum(n, fallback = 0) {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : fallback;
 }
 
-function computePoib(pts) {
-  const sum = pts.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
-  return { x: sum.x / pts.length, y: sum.y / pts.length };
+// Inches per MOA at a given distance (yards)
+// 1 MOA ≈ 1.047 inches at 100 yards
+function inchesPerMoa(distanceYds) {
+  const d = clampNum(distanceYds, 0);
+  return (1.047 * d) / 100;
 }
 
-// Direction labels using pixel-style normalized coordinates (y down)
-function dirX(dx) {
+function directionLR(dx) {
   if (dx > 0) return "RIGHT";
   if (dx < 0) return "LEFT";
   return "CENTER";
 }
-function dirY(dy) {
-  if (dy > 0) return "DOWN";
-  if (dy < 0) return "UP";
+
+function directionUD(dy) {
+  if (dy > 0) return "UP";
+  if (dy < 0) return "DOWN";
   return "CENTER";
 }
 
-function tapscoreHandler(req, res) {
+// ---- Health
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "sczn3-backend-new", ts: new Date().toISOString() });
+});
+
+/* ============================================================
+   POST /api/calc
+   Input (JSON):
+     {
+       "distanceYds": 100,
+       "clickMoa": 0.25,                 // optional, defaults 0.25 MOA/click
+       "inchesPerPixel": 0.01,           // REQUIRED to convert pixels -> inches
+       "bull": { "x": 512, "y": 400 },   // anchor tap (pixel coords in SAME space)
+       "impacts": [                      // 1..N impact taps (pixel coords)
+         { "x": 700, "y": 250 },
+         ...
+       ]
+     }
+
+   Output (JSON):
+     - poib (average impact point)
+     - correction vector = bull - poib  (POIB -> Bull)
+     - windage/elevation with inches, moa, clicks, direction
+============================================================ */
+app.post("/api/calc", (req, res) => {
   try {
-    const body = req.body || {};
+    const distanceYds = clampNum(req.body?.distanceYds, 0);
+    const clickMoa = clampNum(req.body?.clickMoa, 0.25);
+    const inchesPerPixel = clampNum(req.body?.inchesPerPixel, NaN);
 
-    const distanceYds = Number(body.distanceYds || 100);
+    const bull = req.body?.bull || null;
+    const impacts = Array.isArray(req.body?.impacts) ? req.body.impacts : [];
 
-    const bullTap = body.bullTap;
-    const tapsRaw = Array.isArray(body.taps) ? body.taps : [];
-
-    if (!bullTap || !isNum(bullTap.x) || !isNum(bullTap.y)) {
+    if (!bull || !Number.isFinite(bull.x) || !Number.isFinite(bull.y)) {
+      return res.status(400).json({ ok: false, error: "Missing/invalid bull {x,y}." });
+    }
+    if (!impacts.length) {
+      return res.status(400).json({ ok: false, error: "No impacts provided." });
+    }
+    if (!Number.isFinite(distanceYds) || distanceYds <= 0) {
+      return res.status(400).json({ ok: false, error: "distanceYds must be > 0." });
+    }
+    if (!Number.isFinite(clickMoa) || clickMoa <= 0) {
+      return res.status(400).json({ ok: false, error: "clickMoa must be > 0." });
+    }
+    if (!Number.isFinite(inchesPerPixel) || inchesPerPixel <= 0) {
       return res.status(400).json({
         ok: false,
-        error: { code: "NO_BULL", message: "Missing bullTap {x,y}." },
+        error:
+          "inchesPerPixel must be provided (>0). Backend will not guess scale. Supply it from your target profile."
       });
     }
 
-    const pts = tapsRaw
-      .filter((p) => p && isNum(p.x) && isNum(p.y))
-      .map((p) => ({ x: clamp01(Number(p.x)), y: clamp01(Number(p.y)) }));
+    // ---- Compute POIB (average of impacts)
+    let sumX = 0;
+    let sumY = 0;
+    let validCount = 0;
 
-    if (pts.length < 1) {
-      return res.status(400).json({
-        ok: false,
-        error: { code: "NO_TAPS", message: "Need at least 1 bullet-hole tap." },
-      });
+    for (const p of impacts) {
+      const x = clampNum(p?.x, NaN);
+      const y = clampNum(p?.y, NaN);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        sumX += x;
+        sumY += y;
+        validCount += 1;
+      }
     }
 
-    const bull = { x: clamp01(Number(bullTap.x)), y: clamp01(Number(bullTap.y)) };
-    const poib = computePoib(pts);
+    if (!validCount) {
+      return res.status(400).json({ ok: false, error: "All impacts were invalid." });
+    }
 
-    // Canonical delta in normalized coords (y down)
-    const delta = { x: bull.x - poib.x, y: bull.y - poib.y };
+    const poib = { x: sumX / validCount, y: sumY / validCount };
 
-    // Frontend-friendly direction labels
-    const directions = {
-      windage: dirX(delta.x),
-      elevation: dirY(delta.y),
+    // =========================================================
+    // CORRECTION VECTOR (SOURCE OF TRUTH):
+    // POIB -> Bull  (bull - poib)
+    // dx > 0 => RIGHT, dx < 0 => LEFT
+    // dy > 0 => UP,    dy < 0 => DOWN
+    //
+    // NOTE: This dy logic assumes your coordinate system is
+    // "Top = Up" in the data you send. If your UI taps are in
+    // screen pixels (where y grows downward), you MUST convert
+    // to "math y" before sending OR keep sending screen y but
+    // then ALSO invert consistently BEFORE this step.
+    //
+    // To enforce "backend only", do your inversion upstream and
+    // always send backend-normalized y.
+    // =========================================================
+    const dxPx = bull.x - poib.x; // correction px
+    const dyPx = bull.y - poib.y; // correction px
+
+    const dxInSigned = dxPx * inchesPerPixel;
+    const dyInSigned = dyPx * inchesPerPixel;
+
+    const windDir = directionLR(dxInSigned);
+    const elevDir = directionUD(dyInSigned);
+
+    const windInAbs = Math.abs(dxInSigned);
+    const elevInAbs = Math.abs(dyInSigned);
+
+    const ipm = inchesPerMoa(distanceYds);
+    const windMoa = windInAbs / ipm;
+    const elevMoa = elevInAbs / ipm;
+
+    const windClicks = windMoa / clickMoa;
+    const elevClicks = elevMoa / clickMoa;
+
+    const out = {
+      ok: true,
+      name: "SCZN3_BACKEND_DIRECTION_AUTHORITY",
+      distanceYds,
+      clickMoa,
+      inchesPerPixel,
+
+      bull: { x: bull.x, y: bull.y },
+      poib: { x: poib.x, y: poib.y },
+
+      // Signed correction (debug)
+      delta: {
+        dx_px: dxPx,
+        dy_px: dyPx,
+        dx_in_signed: dxInSigned,
+        dy_in_signed: dyInSigned
+      },
+
+      windage: {
+        inches: Number(windInAbs.toFixed(2)),
+        moa: Number(windMoa.toFixed(2)),
+        clicks: Number(windClicks.toFixed(2)),
+        direction: windDir
+      },
+
+      elevation: {
+        inches: Number(elevInAbs.toFixed(2)),
+        moa: Number(elevMoa.toFixed(2)),
+        clicks: Number(elevClicks.toFixed(2)),
+        direction: elevDir
+      },
+
+      // Convenience strings for frontend (print exactly)
+      ui: {
+        windage: `${windInAbs.toFixed(2)}" ${windDir} • ${windMoa.toFixed(2)} MOA • ${windClicks.toFixed(2)} clicks ${windDir}`,
+        elevation: `${elevInAbs.toFixed(2)}" ${elevDir} • ${elevMoa.toFixed(2)} MOA • ${elevClicks.toFixed(2)} clicks ${elevDir}`
+      }
     };
 
-    return res.json({
-      ok: true,
-      service: SERVICE,
-      build: BUILD,
-      distanceYds,
-      tapsCount: pts.length,
-      bullTap: bull,
-      poib,
-      delta,        // bull - POIB (normalized)
-      directions,   // RIGHT/LEFT and UP/DOWN in y-down coordinate system
-      windage: directions.windage,
-      elevation: directions.elevation,
-      score: "--",
-    });
-  } catch (e) {
+    return res.json(out);
+  } catch (err) {
     return res.status(500).json({
       ok: false,
-      error: { code: "SERVER_ERROR", message: String(e?.message || e) },
+      error: "Server error in /api/calc.",
+      detail: String(err?.message || err)
     });
   }
-}
+});
 
-app.post("/tapscore", tapscoreHandler);
-
-// Back-compat alias (if any old frontend is still calling this)
-app.post("/api/analyze", tapscoreHandler);
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`${SERVICE} on ${PORT} build=${BUILD}`));
+// ---- Start
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`sczn3-backend-new listening on :${PORT}`);
+});
