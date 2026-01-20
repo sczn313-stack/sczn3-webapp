@@ -1,14 +1,14 @@
 /* ============================================================
    sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
-   Build: TNS_DOTS_2026-01-20_F
+   Build: TNS_SINGLE_TAP_DOTS_2026-01-20_G
 
-   - Loads image reliably on iOS
-   - Taps ONLY on the image area count
-   - Places visible dots in dotsLayer (pixel-correct)
+   Fixes:
+   - Counts incrementing by 2 (eliminates duplicate touch/click firing)
+   - Dots not visible (aligns dotsLayer to image using offset geometry)
 ============================================================ */
 
 (() => {
-  const BUILD = "TNS_DOTS_2026-01-20_F";
+  const BUILD = "TNS_SINGLE_TAP_DOTS_2026-01-20_G";
   const $ = (id) => document.getElementById(id);
 
   // Elements (match your HTML)
@@ -24,6 +24,9 @@
   let selectedFile = null;
   let objectUrl = null;
   let taps = []; // { nx, ny } normalized 0..1 within image box
+
+  // Duplicate-event guard
+  let lastTapAt = 0;
 
   function setInstruction(msg) {
     if (elInstruction) elInstruction.textContent = msg;
@@ -52,26 +55,26 @@
     }
   }
 
-  // --- Ensure dotsLayer matches the rendered image box
-  function syncDotsLayerToImage() {
-    if (!elDots || !elImg) return;
+  // Align dotsLayer EXACTLY over the rendered image (iOS-safe)
+  function syncOverlayToImage() {
+    if (!elDots || !elImg || !elCanvas) return;
 
-    // dotsLayer is absolutely positioned inside targetCanvas with padding.
-    // We align it exactly to the image's rendered size & position.
-    const imgRect = elImg.getBoundingClientRect();
-    const canvasRect = elCanvas ? elCanvas.getBoundingClientRect() : null;
+    // Ensure overlay uses same offset parent as image (targetCanvas)
+    // We rely on CSS: .targetCanvas { position: relative; }
+    const left = elImg.offsetLeft;
+    const top = elImg.offsetTop;
+    const w = elImg.offsetWidth;
+    const h = elImg.offsetHeight;
 
-    if (!canvasRect) return;
-
-    const left = imgRect.left - canvasRect.left;
-    const top = imgRect.top - canvasRect.top;
-
+    elDots.style.position = "absolute";
     elDots.style.left = `${left}px`;
     elDots.style.top = `${top}px`;
-    elDots.style.width = `${imgRect.width}px`;
-    elDots.style.height = `${imgRect.height}px`;
-    elDots.style.right = "auto";
-    elDots.style.bottom = "auto";
+    elDots.style.width = `${w}px`;
+    elDots.style.height = `${h}px`;
+
+    // Force visibility above the image
+    elDots.style.zIndex = "999";
+    elDots.style.pointerEvents = "none";
   }
 
   function drawDot(nx, ny) {
@@ -87,7 +90,6 @@
     elDots.appendChild(dot);
   }
 
-  // --- File load
   function onFileChange(e) {
     const f = e?.target?.files && e.target.files[0];
 
@@ -115,9 +117,8 @@
     if (elImg) {
       elImg.onload = () => {
         showTarget();
-        // wait 1 frame so layout is final, then sync overlay
         requestAnimationFrame(() => {
-          syncDotsLayerToImage();
+          syncOverlayToImage();
           setInstruction(`${BUILD} • Loaded: ${f.name}. Tap ON the image to place dots.`);
         });
       };
@@ -139,28 +140,21 @@
     };
   }
 
-  // Taps only count if inside the image
-  function onTapImage(ev) {
+  function recordTapFromClientXY(clientX, clientY) {
     if (!selectedFile || !objectUrl || !elImg || !elImg.src) {
       setInstruction(`${BUILD} • Add a photo to begin.`);
       return;
     }
 
-    // Important on iOS: stop the tap from triggering other clickables
-    try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
-
-    // Keep overlay aligned (orientation/zoom can move it)
-    syncDotsLayerToImage();
-
-    const { x, y } = getClientXY(ev);
+    // Keep overlay aligned (orientation/zoom can change layout)
+    syncOverlayToImage();
 
     const imgRect = elImg.getBoundingClientRect();
-    const localX = x - imgRect.left;
-    const localY = y - imgRect.top;
+    const localX = clientX - imgRect.left;
+    const localY = clientY - imgRect.top;
 
     if (localX < 0 || localY < 0 || localX > imgRect.width || localY > imgRect.height) {
-      // Tap outside image → ignore
-      return;
+      return; // ignore taps outside the image
     }
 
     const nx = imgRect.width ? localX / imgRect.width : 0;
@@ -172,11 +166,45 @@
     setInstruction(`${BUILD} • Tap recorded: ${taps.length}`);
   }
 
-  function bindTap(el) {
+  // SINGLE tap handler (prevents double count)
+  function onPointerDown(ev) {
+    // Debounce duplicates (iOS can fire extra events very close together)
+    const now = Date.now();
+    if (now - lastTapAt < 250) return;
+    lastTapAt = now;
+
+    try {
+      ev.preventDefault();
+      ev.stopPropagation();
+    } catch (_) {}
+
+    const { x, y } = getClientXY(ev);
+    recordTapFromClientXY(x, y);
+  }
+
+  // Fallback for older browsers that don’t support Pointer Events well
+  function onTouchStartFallback(ev) {
+    const now = Date.now();
+    if (now - lastTapAt < 250) return;
+    lastTapAt = now;
+
+    try {
+      ev.preventDefault();
+      ev.stopPropagation();
+    } catch (_) {}
+
+    const { x, y } = getClientXY(ev);
+    recordTapFromClientXY(x, y);
+  }
+
+  function bindTapSurface(el) {
     if (!el) return;
-    el.addEventListener("touchstart", onTapImage, { passive: false });
-    el.addEventListener("pointerdown", onTapImage);
-    el.addEventListener("click", onTapImage);
+
+    // Prefer pointer events only (prevents the touch+click double fire)
+    el.addEventListener("pointerdown", onPointerDown);
+
+    // Fallback: touchstart ONLY (no click)
+    el.addEventListener("touchstart", onTouchStartFallback, { passive: false });
   }
 
   function onClear() {
@@ -203,14 +231,13 @@
     if (elFile) elFile.addEventListener("change", onFileChange);
     if (elClear) elClear.addEventListener("click", onClear);
 
-    // Bind taps to the wrapper AND the image to be bulletproof
-    bindTap(elCanvas);
-    bindTap(elImg);
+    // Bind taps to the wrapper and the image (either one will catch it)
+    bindTapSurface(elCanvas);
+    bindTapSurface(elImg);
 
-    // Resync overlay on resize/orientation
-    window.addEventListener("resize", () => {
-      requestAnimationFrame(syncDotsLayerToImage);
-    });
+    // Resync on resize/orientation changes
+    window.addEventListener("resize", () => requestAnimationFrame(syncOverlayToImage));
+    window.addEventListener("orientationchange", () => requestAnimationFrame(syncOverlayToImage));
   }
 
   if (document.readyState === "loading") {
