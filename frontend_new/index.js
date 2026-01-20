@@ -1,241 +1,226 @@
 /* ============================================================================
-  Tap-N-Score — index.js (FULL REPLACEMENT) — vCALLOCK-2
+   Tap-N-Score — iOS Safari “file selected but not loaded” FIX
+   FULL REPLACEMENT (self-healing: no required IDs)
 
-  Fixes calibration not sticking by:
-  - STOPPING all “inject UI / find by text” behavior (no DOM replacement)
-  - Binding ONLY to stable IDs from your index.html:
-      #photoInput #targetWrap #targetCanvas #targetImg #dotsLayer
-      #instructionLine #tapCount #clearTapsBtn #distanceYds
-      #calibrateBtn #setBullBtn #analyzeBtn #calCount #modeLine #statusLine
-  - Storing ALL tap points in NATURAL image pixels (stable across resize/orientation)
-  - Rendering dots using % so they stay aligned visually
+   What it does:
+   - Works even if your HTML does NOT have targetFile/photoStatus/targetPreview IDs.
+   - Finds the first <input type="file" accept="image/*"> on the page.
+   - Creates + injects a status line and <img> preview directly under the upload block.
+   - Handles iOS Safari weirdness:
+       * listens to both "change" and "input"
+       * clears input.value on pointerdown so same-file reselect triggers
+       * stores the File immediately (never rely on input.files later)
+       * uses objectURL, with FileReader fallback
+
+   Drop this in your main frontend JS file.
 ============================================================================ */
 
 (() => {
-  // ---------- helpers ----------
+  // ----------------------------
+  // Helpers
+  // ----------------------------
   const qs = (sel, root = document) => root.querySelector(sel);
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const fmt2 = (n) => Number(n).toFixed(2);
 
-  // ---------- PROOF BANNER ----------
-  function showBanner() {
-    const b = document.createElement("div");
-    b.textContent = "INDEX.JS LOADED — vCALLOCK-2";
-    b.style.position = "fixed";
-    b.style.left = "10px";
-    b.style.right = "10px";
-    b.style.bottom = "10px";
-    b.style.zIndex = "999999";
-    b.style.padding = "10px 12px";
-    b.style.borderRadius = "10px";
-    b.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    b.style.fontSize = "14px";
-    b.style.background = "rgba(0,140,0,0.85)";
-    b.style.color = "white";
-    b.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
-    document.addEventListener("DOMContentLoaded", () => document.body.appendChild(b));
+  function log(...args) {
+    // flip to false if you want silent
+    const DEBUG = true;
+    if (DEBUG) console.log("[TapNS:upload]", ...args);
   }
 
-  // ---------- DOM refs (by ID, no guessing) ----------
-  const el = {
-    photoInput: null,
-    distanceYds: null,
-    tapCount: null,
-    clearTapsBtn: null,
-
-    instructionLine: null,
-    targetWrap: null,
-    targetCanvas: null,
-    targetImg: null,
-    dotsLayer: null,
-
-    calibrateBtn: null,
-    setBullBtn: null,
-    analyzeBtn: null,
-    calCount: null,
-    modeLine: null,
-    statusLine: null,
-
-    resultsCard: null,
-    rDistance: null,
-    rTapsUsed: null,
-    rWindage: null,
-    rElevation: null,
-    rScore: null,
-    rNote: null,
-  };
-
-  function bindDom() {
-    el.photoInput = qs("#photoInput");
-    el.distanceYds = qs("#distanceYds");
-    el.tapCount = qs("#tapCount");
-    el.clearTapsBtn = qs("#clearTapsBtn");
-
-    el.instructionLine = qs("#instructionLine");
-    el.targetWrap = qs("#targetWrap");
-    el.targetCanvas = qs("#targetCanvas");
-    el.targetImg = qs("#targetImg");
-    el.dotsLayer = qs("#dotsLayer");
-
-    el.calibrateBtn = qs("#calibrateBtn");
-    el.setBullBtn = qs("#setBullBtn");
-    el.analyzeBtn = qs("#analyzeBtn");
-    el.calCount = qs("#calCount");
-    el.modeLine = qs("#modeLine");
-    el.statusLine = qs("#statusLine");
-
-    el.resultsCard = qs("#resultsCard");
-    el.rDistance = qs("#rDistance");
-    el.rTapsUsed = qs("#rTapsUsed");
-    el.rWindage = qs("#rWindage");
-    el.rElevation = qs("#rElevation");
-    el.rScore = qs("#rScore");
-    el.rNote = qs("#rNote");
+  // ----------------------------
+  // Locate elements (NO required IDs)
+  // ----------------------------
+  function findFileInput() {
+    // Prefer a file input that accepts images
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    const imgFirst =
+      inputs.find((i) => (i.getAttribute("accept") || "").includes("image")) ||
+      inputs[0] ||
+      null;
+    return imgFirst;
   }
 
-  // ---------- state (ALL in natural image pixels) ----------
-  const MODE = {
-    SHOTS: "shots",
-    CAL_1IN: "cal_1in",
-    SET_BULL: "set_bull",
-  };
+  function findUploadBlockNearInput(fileInput) {
+    if (!fileInput) return document.body;
 
-  let mode = MODE.SHOTS;
+    // Try to find a sane container: closest label/div/section/fieldset
+    const container =
+      fileInput.closest("section") ||
+      fileInput.closest("fieldset") ||
+      fileInput.closest("div") ||
+      fileInput.parentElement ||
+      document.body;
 
+    return container;
+  }
+
+  // ----------------------------
+  // Create UI (status + preview) if missing
+  // ----------------------------
+  function ensureStatusAndPreview(container) {
+    // If your page already has these IDs, we'll use them.
+    let statusEl = document.getElementById("photoStatus");
+    let previewEl = document.getElementById("targetPreview");
+
+    // Otherwise create them (self-healing)
+    if (!statusEl) {
+      statusEl = document.createElement("div");
+      statusEl.id = "photoStatus";
+      statusEl.style.marginTop = "12px";
+      statusEl.style.padding = "10px 12px";
+      statusEl.style.borderRadius = "12px";
+      statusEl.style.background = "rgba(255,255,255,0.06)";
+      statusEl.style.border = "1px solid rgba(255,255,255,0.10)";
+      statusEl.style.color = "rgba(255,255,255,0.85)";
+      statusEl.style.fontSize = "14px";
+      statusEl.textContent = "Add a photo to begin.";
+      container.appendChild(statusEl);
+    }
+
+    if (!previewEl) {
+      previewEl = document.createElement("img");
+      previewEl.id = "targetPreview";
+      previewEl.alt = "Target preview";
+      previewEl.style.display = "none";
+      previewEl.style.marginTop = "12px";
+      previewEl.style.width = "100%";
+      previewEl.style.maxWidth = "980px";
+      previewEl.style.borderRadius = "14px";
+      previewEl.style.background = "rgba(0,0,0,0.25)";
+      previewEl.style.border = "1px solid rgba(255,255,255,0.10)";
+
+      // THIS is the "full image doesn't show" fix:
+      // contain + max-height prevents cropping and keeps full photo visible.
+      previewEl.style.objectFit = "contain";
+      previewEl.style.maxHeight = "72vh";
+
+      container.appendChild(previewEl);
+    }
+
+    return { statusEl, previewEl };
+  }
+
+  function setStatus(statusEl, msg) {
+    if (statusEl) statusEl.textContent = msg;
+  }
+
+  function showPreview(previewEl, src) {
+    if (!previewEl) return;
+    previewEl.src = src;
+    previewEl.style.display = "block";
+  }
+
+  function hidePreview(previewEl) {
+    if (!previewEl) return;
+    previewEl.src = "";
+    previewEl.style.display = "none";
+  }
+
+  // ----------------------------
+  // State
+  // ----------------------------
   let selectedFile = null;
   let objectUrl = null;
 
-  let calPts = [];          // [{x,y}] in natural px
-  let pixelsPerInch = null; // natural px per inch
-
-  let bull = null;          // {x,y} natural px
-  let shots = [];           // [{x,y}] natural px
-
-  // ---------- UI setters ----------
-  function setInstruction(msg) {
-    if (el.instructionLine) el.instructionLine.textContent = msg;
-  }
-
-  function setStatus(msg) {
-    if (el.statusLine) el.statusLine.textContent = msg || "";
-  }
-
-  function setTapCount(n) {
-    if (el.tapCount) el.tapCount.textContent = String(n);
-  }
-
-  function setModeLine() {
-    if (!el.modeLine) return;
-
-    let modeText =
-      mode === MODE.CAL_1IN ? "MODE: CALIBRATE (tap 2 points 1.00\" apart)" :
-      mode === MODE.SET_BULL ? "MODE: SET BULL (tap center)" :
-      "MODE: SHOTS (tap holes)";
-
-    const calText = pixelsPerInch ? `Cal: OK` : `Cal: ${calPts.length}/2`;
-
-    el.modeLine.textContent = `${modeText} | ${calText}`;
-    if (el.calCount) el.calCount.textContent = pixelsPerInch ? "OK" : String(calPts.length);
-  }
-
-  function showTarget(show) {
-    if (!el.targetWrap) return;
-    el.targetWrap.style.display = show ? "block" : "none";
-  }
-
-  // ---------- dot rendering (percent so it survives resize) ----------
-  function clearDots() {
-    if (el.dotsLayer) el.dotsLayer.innerHTML = "";
-  }
-
-  function addDotPercent(xPct, yPct, kind) {
-    if (!el.dotsLayer) return;
-
-    const dot = document.createElement("div");
-    dot.style.position = "absolute";
-    dot.style.left = `${xPct}%`;
-    dot.style.top = `${yPct}%`;
-    dot.style.transform = "translate(-50%, -50%)";
-    dot.style.borderRadius = "999px";
-    dot.style.pointerEvents = "none";
-
-    if (kind === "bull") {
-      dot.style.width = "14px";
-      dot.style.height = "14px";
-      dot.style.background = "rgba(0,255,120,0.95)";
-      dot.style.border = "2px solid rgba(0,0,0,0.65)";
-    } else if (kind === "cal") {
-      dot.style.width = "12px";
-      dot.style.height = "12px";
-      dot.style.background = "rgba(80,160,255,0.95)";
-      dot.style.border = "2px solid rgba(0,0,0,0.65)";
-    } else {
-      dot.style.width = "12px";
-      dot.style.height = "12px";
-      dot.style.background = "rgba(255,255,255,0.95)";
-      dot.style.border = "2px solid rgba(0,0,0,0.65)";
-    }
-
-    el.dotsLayer.appendChild(dot);
-  }
-
-  function redrawDots() {
-    if (!el.targetImg) return;
-    const nw = el.targetImg.naturalWidth || 0;
-    const nh = el.targetImg.naturalHeight || 0;
-    if (nw <= 0 || nh <= 0) return;
-
-    clearDots();
-
-    for (const p of calPts) {
-      addDotPercent((p.x / nw) * 100, (p.y / nh) * 100, "cal");
-    }
-    if (bull) {
-      addDotPercent((bull.x / nw) * 100, (bull.y / nh) * 100, "bull");
-    }
-    for (const p of shots) {
-      addDotPercent((p.x / nw) * 100, (p.y / nh) * 100, "shot");
+  function cleanupObjectUrl() {
+    if (objectUrl) {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch (_) {}
+      objectUrl = null;
     }
   }
 
-  // ---------- convert tap position to natural px ----------
-  function clientToNatural(clientX, clientY) {
-    if (!el.targetImg) return null;
+  // ----------------------------
+  // iOS-safe load pipeline
+  // ----------------------------
+  function loadFileToPreview(file, statusEl, previewEl) {
+    selectedFile = file;
 
-    const rect = el.targetImg.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
+    // Try objectURL first (fast, iOS-safe in most cases)
+    cleanupObjectUrl();
+    try {
+      objectUrl = URL.createObjectURL(file);
+      showPreview(previewEl, objectUrl);
+      setStatus(statusEl, `Loaded: ${file.name} (${Math.round(file.size / 1024)} KB)`);
+      log("Preview via objectURL", file.name, file.type, file.size);
+      return;
+    } catch (err) {
+      log("objectURL failed, falling back to FileReader", err);
+    }
 
-    const nx = el.targetImg.naturalWidth || 0;
-    const ny = el.targetImg.naturalHeight || 0;
-    if (nx <= 0 || ny <= 0) return null;
-
-    const x = clamp((clientX - rect.left) / rect.width, 0, 1);
-    const y = clamp((clientY - rect.top) / rect.height, 0, 1);
-
-    return {
-      x: x * nx,
-      y: y * ny,
+    // Fallback: FileReader (works even when objectURL is weird)
+    const reader = new FileReader();
+    reader.onload = () => {
+      showPreview(previewEl, String(reader.result || ""));
+      setStatus(statusEl, `Loaded: ${file.name}`);
+      log("Preview via FileReader", file.name);
     };
+    reader.onerror = () => {
+      hidePreview(previewEl);
+      setStatus(statusEl, "Could not read file. Try selecting again.");
+      log("FileReader error");
+    };
+    reader.readAsDataURL(file);
   }
 
-  // ---------- analysis ----------
-  function centroid(points) {
-    let sx = 0, sy = 0;
-    for (const p of points) { sx += p.x; sy += p.y; }
-    return { x: sx / points.length, y: sy / points.length };
+  function handlePick(evt, statusEl, previewEl, fileInput) {
+    const file = evt?.target?.files && evt.target.files[0];
+
+    // iOS sometimes shows a filename but files[0] is null in that instant.
+    if (!file) {
+      hidePreview(previewEl);
+      setStatus(
+        statusEl,
+        "No photo loaded (iOS picker glitch). Tap Choose File and select again."
+      );
+      log("No file object from event. input.value:", fileInput?.value);
+      return;
+    }
+
+    // Store immediately
+    loadFileToPreview(file, statusEl, previewEl);
   }
 
-  function analyze() {
-    // Distance (yd)
-    const ydRaw = Number(el.distanceYds?.value || 100);
-    const yards = Number.isFinite(ydRaw) && ydRaw > 0 ? ydRaw : 100;
+  // ----------------------------
+  // Boot
+  // ----------------------------
+  function init() {
+    const fileInput = findFileInput();
+    if (!fileInput) {
+      console.warn("[TapNS:upload] No file input found on page.");
+      return;
+    }
 
-    if (!selectedFile) return { ok: false, msg: "No photo loaded." };
-    if (!pixelsPerInch) return { ok: false, msg: 'Missing calibration. Tap "Calibrate 1 inch" then tap TWO points 1.00" apart.' };
-    if (!bull) return { ok: false, msg: 'Missing bull. Tap "Set Bull" then tap the bull center.' };
-    if (shots.length < 3) return { ok: false, msg: "Need at least 3 shot taps." };
+    const container = findUploadBlockNearInput(fileInput);
+    const { statusEl, previewEl } = ensureStatusAndPreview(container);
 
-    // Keep tightest cluster up to 7
-    const initial = centroid(shots);
-    const ranked = shots
-      .map((p) => ({
+    // iOS: if user selects the same file twice, change event may not fire unless value is cleared.
+    const clearValue = () => {
+      try {
+        fileInput.value = "";
+      } catch (_) {}
+    };
+
+    // Clear value on interaction so same-file reselect triggers reliably
+    fileInput.addEventListener("click", clearValue);
+    fileInput.addEventListener("pointerdown", clearValue);
+    fileInput.addEventListener("touchstart", clearValue, { passive: true });
+
+    // Listen to BOTH change and input (iOS sometimes prefers one)
+    fileInput.addEventListener("change", (e) => handlePick(e, statusEl, previewEl, fileInput));
+    fileInput.addEventListener("input", (e) => handlePick(e, statusEl, previewEl, fileInput));
+
+    // Initial state
+    setStatus(statusEl, "Add a photo to begin.");
+    hidePreview(previewEl);
+
+    log("Uploader initialized. Found file input:", fileInput);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
