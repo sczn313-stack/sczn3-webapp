@@ -1,557 +1,300 @@
 /* ============================================================
-   sczn3-webapp/frontend_new/index.js  (FULL REPLACEMENT)
-   Build: TNS_POIB_VECTOR_CLICKS_SEC_2026-01-20_B
-
-   Flow:
-   1) Upload photo
-   2) FIRST TAP = Bull (blue)
-   3) Next taps = Impacts (red)
-   4) POIB dot (cyan) = average of impacts
-   5) Vector arrow shows POIB → Bull (correction path)
-   6) Click math:
-      - correction = bull - POIB
-      - True MOA: 1 MOA = 1.047" @100y scaled by distance
-      - clicks = MOA / 0.25
-      - 2 decimals everywhere
-   7) Optional: Download SEC PNG (if button exists)
-
-   Works with your current HTML:
-   - photoInput, targetImg, dotsLayer, vectorLayer
-   - tapCount, clearTapsBtn, instructionLine
-   - targetWrap, targetCanvas
-   - distanceYds, targetSize (optional)
-   - resultsCard + rDistance/rTapsUsed/rWindage/rElevation/rNote (optional)
-   - downloadSecBtn (optional)
-
+   frontend_new/index.js (FULL REPLACEMENT)
+   Fixes:
+   - Prevents stray/ghost taps (outside image / on UI / on dots)
+   - Prevents double-binding (no double counts)
+   - Tap 1 = Bull (blue), Tap 2+ = Impacts (orange)
+   - POIB = cyan (computed)
+   - NO frontend direction logic: prints backend direction strings
 ============================================================ */
 
 (() => {
-  const BUILD = "TNS_POIB_VECTOR_CLICKS_SEC_2026-01-20_B";
   const $ = (id) => document.getElementById(id);
 
-  // Elements
-  const elFile = $("photoInput");
-  const elImg = $("targetImg");
-  const elDots = $("dotsLayer");
-  const elVector = $("vectorLayer");
+  // --- Required element IDs (must exist in index.html)
+  const elImg = $("targetImg");           // <img>
+  const elWrap = $("targetWrap");         // wrapper around img + overlay
+  const elDots = $("dotsLayer");          // overlay layer (positioned over img)
+  const elTapCount = $("tapCount");       // tap counter text
+  const elClear = $("clearTapsBtn");      // clear button
+  const elDistance = $("distanceYds");    // distance input
+  const elTargetSel = $("targetSelect");  // optional; if not present, ok
 
-  const elTapCount = $("tapCount");
-  const elClear = $("clearTapsBtn");
-  const elInstruction = $("instructionLine");
-  const elWrap = $("targetWrap");
-  const elCanvas = $("targetCanvas");
+  // Results fields (optional; if not present, ok)
+  const elWindage = $("windageLine");
+  const elElevation = $("elevationLine");
 
-  const elDistance = $("distanceYds");
-  const elTargetSize = $("targetSize"); // optional
+  // --- Backend URL (set this to your backend service)
+  // If you already have a global or existing config, keep it.
+  const BACKEND_CALC_URL =
+    (window.SCNZ3_BACKEND_CALC_URL || window.BACKEND_CALC_URL || "").trim() ||
+    "/api/calc";
 
-  const elResults = $("resultsCard"); // optional
-  const elRDistance = $("rDistance");
-  const elRTapsUsed = $("rTapsUsed");
-  const elRWindage = $("rWindage");
-  const elRElevation = $("rElevation");
-  const elRNote = $("rNote");
+  // --- State
+  let bull = null;          // {x,y} in IMAGE PIXEL space (relative to displayed image)
+  let impacts = [];         // [{x,y}, ...]
+  let poib = null;          // computed from backend response
+  let lastResult = null;
 
-  const elDownloadSec = $("downloadSecBtn"); // optional
-
-  // State
-  let selectedFile = null;
-  let objectUrl = null;
-
-  let bull = null;      // {nx, ny} first tap
-  let impacts = [];     // [{nx, ny}, ...] remaining taps
-
-  // Duplicate-event guard
-  let lastTapAt = 0;
-
-  // Target physical sizes (inches)
-  const TARGET_SIZES = {
-    "8.5x11": { w: 8.50, h: 11.00 },
-    "23x23":  { w: 23.00, h: 23.00 },
-    "23x35":  { w: 23.00, h: 35.00 },
-  };
-
-  const CLICK_MOA = 0.25;
-
-  // ---------- helpers ----------
-  function fmt2(n) {
-    return Number.isFinite(n) ? n.toFixed(2) : "—";
-  }
-
-  function clamp01(v) {
-    return Math.max(0, Math.min(1, v));
-  }
-
-  function setInstruction(msg) {
-    if (elInstruction) elInstruction.textContent = msg;
-  }
-
-  function showTarget() {
-    if (elWrap) elWrap.style.display = "block";
-  }
-
-  function hideTarget() {
-    if (elWrap) elWrap.style.display = "none";
+  // --- Tap mode rules
+  // Tap #1 = bull, then impacts forever until Clear.
+  function tapsTotal() {
+    return (bull ? 1 : 0) + impacts.length;
   }
 
   function setTapCount() {
-    const total = (bull ? 1 : 0) + impacts.length;
-    if (elTapCount) elTapCount.textContent = String(total);
+    if (elTapCount) elTapCount.textContent = String(tapsTotal());
   }
 
-  function cleanupUrl() {
-    if (objectUrl) {
-      try { URL.revokeObjectURL(objectUrl); } catch (_) {}
-      objectUrl = null;
-    }
+  // --- Utility: get displayed image rect in page coordinates
+  function getImgRect() {
+    return elImg.getBoundingClientRect();
   }
 
-  function clearOverlays() {
-    if (elDots) elDots.innerHTML = "";
-    if (elVector) elVector.innerHTML = "";
+  // Convert a pointer event to coordinates relative to the displayed image (0..w, 0..h)
+  function getImagePointFromEvent(evt) {
+    const r = getImgRect();
+    const clientX = evt.clientX;
+    const clientY = evt.clientY;
+
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+
+    // Inside check
+    if (x < 0 || y < 0 || x > r.width || y > r.height) return null;
+
+    return { x, y, w: r.width, h: r.height };
   }
 
-  function hideResults() {
-    if (elResults) elResults.style.display = "none";
-    if (elRDistance) elRDistance.textContent = "—";
-    if (elRTapsUsed) elRTapsUsed.textContent = "—";
-    if (elRWindage) elRWindage.textContent = "—";
-    if (elRElevation) elRElevation.textContent = "—";
-    if (elRNote) elRNote.textContent = "—";
-  }
-
-  function showResults() {
-    if (elResults) elResults.style.display = "block";
-  }
-
-  function updateDownloadState() {
-    if (!elDownloadSec) return;
-    const ok = !!bull && impacts.length >= 1 && !!elImg?.src;
-    elDownloadSec.disabled = !ok;
-  }
-
-  function getDistanceYds() {
-    const v = Number(elDistance?.value || 100);
-    return Number.isFinite(v) && v > 0 ? v : 100;
-  }
-
-  function getTargetInches() {
-    const key = elTargetSize?.value || "8.5x11";
-    return TARGET_SIZES[key] || TARGET_SIZES["8.5x11"];
-  }
-
-  function getClientXY(ev) {
-    const t = ev.touches && ev.touches[0];
-    return {
-      x: t ? t.clientX : ev.clientX,
-      y: t ? t.clientY : ev.clientY
-    };
-  }
-
-  // ---------- dot + arrow drawing ----------
-  function dotEl(className, nx, ny) {
+  // Create a dot element
+  function makeDot({ x, y, kind }) {
     const d = document.createElement("div");
-    d.className = className;
-    d.style.left = `${(clamp01(nx) * 100).toFixed(6)}%`;
-    d.style.top  = `${(clamp01(ny) * 100).toFixed(6)}%`;
+    d.className = `dot dot-${kind}`;
+    d.style.left = `${x}px`;
+    d.style.top = `${y}px`;
+    d.dataset.kind = kind;
+
+    // IMPORTANT: prevent taps on dots from creating new taps
+    d.style.pointerEvents = "auto";
+    d.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
     return d;
   }
 
-  function computePoib() {
-    if (impacts.length < 1) return null;
-    let sx = 0, sy = 0;
-    for (const t of impacts) { sx += t.nx; sy += t.ny; }
-    return { nx: sx / impacts.length, ny: sy / impacts.length };
+  // Clear overlay dots/arrows
+  function clearOverlay() {
+    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
   }
 
-  // SVG arrow uses fixed viewBox so we don't depend on clientWidth/Height
-  function drawVectorArrow(fromNx, fromNy, toNx, toNy) {
-    if (!elVector) return;
+  // Draw bull + impacts + (optional) poib + arrow
+  function redrawOverlay() {
+    clearOverlay();
 
-    const x1 = clamp01(fromNx) * 1000;
-    const y1 = clamp01(fromNy) * 1000;
-    const x2 = clamp01(toNx) * 1000;
-    const y2 = clamp01(toNy) * 1000;
+    // Ensure overlay matches image size
+    const r = getImgRect();
+    elDots.style.width = `${r.width}px`;
+    elDots.style.height = `${r.height}px`;
 
-    elVector.setAttribute("viewBox", "0 0 1000 1000");
-    elVector.setAttribute("preserveAspectRatio", "none");
-    elVector.innerHTML = `
-      <defs>
-        <marker id="arrowHead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
-          <path d="M0,0 L10,6 L0,12 Z" fill="rgba(100,210,255,0.95)"></path>
-        </marker>
-      </defs>
-      <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-            stroke="rgba(100,210,255,0.95)"
-            stroke-width="10"
-            stroke-linecap="round"
-            marker-end="url(#arrowHead)"/>
-    `;
-  }
+    // --- Impacts (orange)
+    for (const p of impacts) {
+      elDots.appendChild(makeDot({ x: p.x, y: p.y, kind: "impact" }));
+    }
 
-  function redrawAll() {
-    if (!elDots) return;
+    // --- Bull (blue)
+    if (bull) {
+      elDots.appendChild(makeDot({ x: bull.x, y: bull.y, kind: "bull" }));
+    }
 
-    clearOverlays();
+    // --- POIB (cyan)
+    if (poib) {
+      elDots.appendChild(makeDot({ x: poib.x, y: poib.y, kind: "poib" }));
+    }
 
-    // Bull (first tap)
-    if (bull) elDots.appendChild(dotEl("dot dotBull", bull.nx, bull.ny));
-
-    // Impacts
-    for (const t of impacts) elDots.appendChild(dotEl("dot", t.nx, t.ny));
-
-    // POIB + arrow + results
-    const poib = computePoib();
+    // --- Arrow (POIB -> Bull)
     if (bull && poib) {
-      elDots.appendChild(dotEl("dot dotPoib", poib.nx, poib.ny));
-      drawVectorArrow(poib.nx, poib.ny, bull.nx, bull.ny);
-      computeAndRenderResults(poib);
-    } else {
-      hideResults();
-      if (elVector) elVector.innerHTML = "";
+      drawArrow(poib, bull);
     }
-
-    updateDownloadState();
   }
 
-  // ---------- click math + results ----------
-  function computeAndRenderResults(poib) {
-    const dist = getDistanceYds();
-    const { w: wIn, h: hIn } = getTargetInches();
+  // Arrow drawer (simple SVG overlay)
+  function drawArrow(from, to) {
+    const r = getImgRect();
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "arrowSvg");
+    svg.setAttribute("width", String(r.width));
+    svg.setAttribute("height", String(r.height));
+    svg.style.position = "absolute";
+    svg.style.left = "0";
+    svg.style.top = "0";
+    svg.style.pointerEvents = "none";
 
-    // Canonical: correction = bull - POIB
-    const dNx = bull.nx - poib.nx;
-    const dNy = bull.ny - poib.ny;
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", "arrowHead");
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "10");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "3");
+    marker.setAttribute("orient", "auto");
+    marker.setAttribute("markerUnits", "strokeWidth");
 
-    const dXIn = dNx * wIn;
-    const dYIn = dNy * hIn;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0,0 L8,3 L0,6 Z");
+    path.setAttribute("fill", "rgba(80,200,255,0.95)");
 
-    // True MOA inch-per-MOA at distance
-    const inchPerMoa = 1.047 * (dist / 100.0);
+    marker.appendChild(path);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
 
-    const windMoa = dXIn / inchPerMoa;
-    const elevMoa = dYIn / inchPerMoa;
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(from.x));
+    line.setAttribute("y1", String(from.y));
+    line.setAttribute("x2", String(to.x));
+    line.setAttribute("y2", String(to.y));
+    line.setAttribute("stroke", "rgba(80,200,255,0.85)");
+    line.setAttribute("stroke-width", "6");
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("marker-end", "url(#arrowHead)");
 
-    const windClicks = windMoa / CLICK_MOA;
-    const elevClicks = elevMoa / CLICK_MOA;
-
-    const windDir = dXIn >= 0 ? "RIGHT" : "LEFT";
-    const elevDir = dYIn >= 0 ? "UP" : "DOWN";
-
-    const windText = `${fmt2(Math.abs(dXIn))}" ${windDir} • ${fmt2(Math.abs(windMoa))} MOA • ${fmt2(Math.abs(windClicks))} clicks ${windDir}`;
-    const elevText = `${fmt2(Math.abs(dYIn))}" ${elevDir} • ${fmt2(Math.abs(elevMoa))} MOA • ${fmt2(Math.abs(elevClicks))} clicks ${elevDir}`;
-
-    if (elRDistance) elRDistance.textContent = `${fmt2(dist)} yds`;
-    if (elRTapsUsed) elRTapsUsed.textContent = `${impacts.length}`;
-    if (elRWindage) elRWindage.textContent = windText;
-    if (elRElevation) elRElevation.textContent = elevText;
-
-    if (elRNote) {
-      elRNote.textContent =
-        `Bull = first tap (blue). POIB = average of impacts (cyan). Arrow shows correction path POIB → Bull.`;
-    }
-
-    if (elResults) showResults();
+    svg.appendChild(line);
+    elDots.appendChild(svg);
   }
 
-  // ---------- SEC export (PNG) ----------
-  function drawSecToCanvas() {
-    if (!bull || impacts.length < 1 || !elImg?.src) return null;
+  // --- Backend call (direction authority)
+  async function computeResult() {
+    if (!bull || impacts.length < 1) return;
 
-    const poib = computePoib();
-    if (!poib) return null;
+    const distanceYds = Number(elDistance?.value || 100);
 
-    const dist = getDistanceYds();
-    const { w: wIn, h: hIn } = getTargetInches();
+    // IMPORTANT: inchesPerPixel must come from your target profile.
+    // For now, keep your existing system. If you already compute it elsewhere,
+    // set window.INCHES_PER_PIXEL before calling.
+    const inchesPerPixel =
+      Number(window.INCHES_PER_PIXEL || window.inchesPerPixel || NaN);
 
-    const dNx = bull.nx - poib.nx;
-    const dNy = bull.ny - poib.ny;
-    const dXIn = dNx * wIn;
-    const dYIn = dNy * hIn;
-
-    const inchPerMoa = 1.047 * (dist / 100.0);
-    const windMoa = dXIn / inchPerMoa;
-    const elevMoa = dYIn / inchPerMoa;
-    const windClicks = windMoa / CLICK_MOA;
-    const elevClicks = elevMoa / CLICK_MOA;
-
-    const windDir = dXIn >= 0 ? "RIGHT" : "LEFT";
-    const elevDir = dYIn >= 0 ? "UP" : "DOWN";
-
-    // Canvas size (simple, reliable)
-    const W = 1080;
-    const H = 1350;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = W;
-    canvas.height = H;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    // Background
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, W, H);
-
-    // Header
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 52px -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial";
-    ctx.fillText("TAP-N-SCORE™", 60, 90);
-
-    ctx.fillStyle = "rgba(255,255,255,0.80)";
-    ctx.font = "bold 30px -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial";
-    ctx.fillText(`Distance: ${dist.toFixed(2)} yds`, 60, 140);
-    ctx.fillText(`Impacts: ${impacts.length}`, 60, 180);
-
-    // Corrections
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.font = "bold 34px -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial";
-    ctx.fillText(`Windage: ${Math.abs(windClicks).toFixed(2)} clicks ${windDir}  (${Math.abs(windMoa).toFixed(2)} MOA)`, 60, 250);
-    ctx.fillText(`Elevation: ${Math.abs(elevClicks).toFixed(2)} clicks ${elevDir}  (${Math.abs(elevMoa).toFixed(2)} MOA)`, 60, 300);
-
-    // Image panel
-    const pad = 60;
-    const imgTop = 360;
-    const panelW = W - pad * 2;
-    const panelH = Math.round(panelW * 0.62);
-
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fillRect(pad, imgTop, panelW, panelH);
-
-    // Draw photo (contain)
-    const iw = elImg.naturalWidth || 1;
-    const ih = elImg.naturalHeight || 1;
-    const scale = Math.min(panelW / iw, panelH / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const dx = pad + (panelW - dw) / 2;
-    const dy = imgTop + (panelH - dh) / 2;
-
-    ctx.drawImage(elImg, dx, dy, dw, dh);
-
-    // Map normalized coords into drawn-image coords
-    function map(nx, ny) {
-      return { x: dx + clamp01(nx) * dw, y: dy + clamp01(ny) * dh };
-    }
-
-    // Draw helper dot
-    function drawDot(x, y, r, fill) {
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = "#ffffff";
-      ctx.stroke();
-    }
-
-    // Arrow POIB -> Bull
-    const p = map(poib.nx, poib.ny);
-    const b = map(bull.nx, bull.ny);
-
-    ctx.strokeStyle = "rgba(100,210,255,0.95)";
-    ctx.lineWidth = 6;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-
-    // Arrow head
-    const ang = Math.atan2(b.y - p.y, b.x - p.x);
-    const ah = 18;
-    ctx.fillStyle = "rgba(100,210,255,0.95)";
-    ctx.beginPath();
-    ctx.moveTo(b.x, b.y);
-    ctx.lineTo(b.x - ah * Math.cos(ang - 0.5), b.y - ah * Math.sin(ang - 0.5));
-    ctx.lineTo(b.x - ah * Math.cos(ang + 0.5), b.y - ah * Math.sin(ang + 0.5));
-    ctx.closePath();
-    ctx.fill();
-
-    // Impacts (red)
-    for (const t of impacts) {
-      const pt = map(t.nx, t.ny);
-      drawDot(pt.x, pt.y, 10, "#ff3b30");
-    }
-
-    // POIB (cyan) and Bull (blue)
-    drawDot(p.x, p.y, 12, "#64d2ff");
-    drawDot(b.x, b.y, 12, "#0a84ff");
-
-    // Footer
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = "bold 22px -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial";
-    ctx.fillText(`Build: ${BUILD}`, 60, H - 60);
-
-    return canvas;
-  }
-
-  function downloadSecPng() {
-    const c = drawSecToCanvas();
-    if (!c) return;
-
-    const a = document.createElement("a");
-    a.href = c.toDataURL("image/png");
-    a.download = `SEC_${new Date().toISOString().slice(0, 10)}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
-  // ---------- tap capture ----------
-  function recordNormalizedTap(clientX, clientY) {
-    if (!selectedFile || !objectUrl || !elImg || !elImg.src) {
-      setInstruction(`${BUILD} • Add a photo to begin.`);
+    // If you don’t have this yet, stop — don’t guess scale.
+    if (!Number.isFinite(inchesPerPixel) || inchesPerPixel <= 0) {
+      console.warn("Missing inchesPerPixel. Set window.INCHES_PER_PIXEL for this target profile.");
       return;
     }
 
-    const imgRect = elImg.getBoundingClientRect();
-    const localX = clientX - imgRect.left;
-    const localY = clientY - imgRect.top;
+    const payload = {
+      distanceYds,
+      clickMoa: Number(window.CLICK_MOA || 0.25),
+      inchesPerPixel,
+      bull,
+      impacts
+    };
 
-    if (localX < 0 || localY < 0 || localX > imgRect.width || localY > imgRect.height) return;
+    const res = await fetch(BACKEND_CALC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
 
-    const nx = imgRect.width ? (localX / imgRect.width) : 0;
-    const ny = imgRect.height ? (localY / imgRect.height) : 0;
+    const data = await res.json();
+    lastResult = data;
 
+    if (!data?.ok) {
+      console.warn("Backend calc failed:", data);
+      return;
+    }
+
+    // Backend returns poib in its own payload
+    poib = data.poib ? { x: data.poib.x, y: data.poib.y } : null;
+
+    // Print EXACT backend strings (no frontend direction logic)
+    if (elWindage && data.ui?.windage) elWindage.textContent = data.ui.windage;
+    if (elElevation && data.ui?.elevation) elElevation.textContent = data.ui.elevation;
+
+    redrawOverlay();
+  }
+
+  // --- Tap handler (single binding, strict filtering)
+  function onPointerDown(evt) {
+    // Only left click / primary touch
+    if (evt.button != null && evt.button !== 0) return;
+
+    // If user tapped a dot, ignore (dot handler stops propagation, but double-safety)
+    if (evt.target && evt.target.classList && evt.target.classList.contains("dot")) return;
+
+    const p = getImagePointFromEvent(evt);
+    if (!p) {
+      // Outside the image: IGNORE. This kills stray red markers.
+      return;
+    }
+
+    // Record tap
     if (!bull) {
-      bull = { nx, ny };
-      setInstruction(`${BUILD} • Bull set (blue). Now tap impacts (red).`);
+      bull = { x: p.x, y: p.y };
     } else {
-      impacts.push({ nx, ny });
-      setInstruction(`${BUILD} • Impact recorded: ${impacts.length}`);
+      impacts.push({ x: p.x, y: p.y });
     }
 
     setTapCount();
-    redrawAll();
-  }
 
-  function onPointerDown(ev) {
-    const now = Date.now();
-    if (now - lastTapAt < 250) return;
-    lastTapAt = now;
+    // Redraw immediately (bull + impacts). POIB/arrow after backend call.
+    poib = null;
+    redrawOverlay();
 
-    try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
-    const { x, y } = getClientXY(ev);
-    recordNormalizedTap(x, y);
-  }
-
-  function onTouchStartFallback(ev) {
-    const now = Date.now();
-    if (now - lastTapAt < 250) return;
-    lastTapAt = now;
-
-    try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
-    const { x, y } = getClientXY(ev);
-    recordNormalizedTap(x, y);
-  }
-
-  function bindTapSurface(el) {
-    if (!el) return;
-    el.addEventListener("pointerdown", onPointerDown);
-    el.addEventListener("touchstart", onTouchStartFallback, { passive: false });
-  }
-
-  // ---------- file handling ----------
-  function onFileChange(e) {
-    const f = e?.target?.files && e.target.files[0];
-
-    if (!f) {
-      selectedFile = null;
-      cleanupUrl();
-      if (elImg) elImg.removeAttribute("src");
-
-      bull = null;
-      impacts = [];
-      setTapCount();
-      clearOverlays();
-      hideResults();
-      hideTarget();
-      updateDownloadState();
-
-      setInstruction(`${BUILD} • No photo loaded. Tap Upload target photo again.`);
-      return;
+    // Compute from backend once we have at least 1 impact
+    if (bull && impacts.length >= 1) {
+      computeResult().catch((e) => console.warn("computeResult error:", e));
     }
+  }
 
-    selectedFile = f;
-    cleanupUrl();
-    objectUrl = URL.createObjectURL(f);
-
-    // Reset taps for new image
+  function clearAll() {
     bull = null;
     impacts = [];
+    poib = null;
+    lastResult = null;
     setTapCount();
-    clearOverlays();
-    hideResults();
-    updateDownloadState();
-
-    if (elImg) {
-      elImg.onload = () => {
-        showTarget();
-        setInstruction(`${BUILD} • Loaded: ${f.name}. FIRST tap = Bull (blue). Next taps = impacts (red).`);
-      };
-      elImg.onerror = () => {
-        setInstruction(`${BUILD} • Image failed to load. Pick again.`);
-      };
-      elImg.src = objectUrl;
-    } else {
-      showTarget();
-      setInstruction(`${BUILD} • Loaded: ${f.name}.`);
-    }
+    clearOverlay();
+    if (elWindage) elWindage.textContent = "";
+    if (elElevation) elElevation.textContent = "";
   }
 
-  function onClear() {
-    // Clear everything including file
-    bull = null;
-    impacts = [];
-    setTapCount();
-    clearOverlays();
-    hideResults();
-
-    if (elFile) elFile.value = "";
-    selectedFile = null;
-    cleanupUrl();
-    if (elImg) elImg.removeAttribute("src");
-    hideTarget();
-
-    updateDownloadState();
-    setInstruction(`${BUILD} • Add a photo to begin.`);
+  // --- Ensure overlay always matches image size after load/resize
+  function syncOverlaySize() {
+    const r = getImgRect();
+    elDots.style.width = `${r.width}px`;
+    elDots.style.height = `${r.height}px`;
+    redrawOverlay();
   }
 
-  function init() {
-    setInstruction(`${BUILD} • Ready. Add a photo to begin.`);
-    setTapCount();
-    clearOverlays();
-    hideResults();
-    hideTarget();
-    updateDownloadState();
+  // --- Init (prevent double-binding)
+  // Remove any existing handler if hot reloaded / re-initialized
+  elDots.removeEventListener("pointerdown", onPointerDown);
+  elDots.addEventListener("pointerdown", onPointerDown, { passive: false });
 
-    if (elFile) elFile.addEventListener("change", onFileChange);
-    if (elClear) elClear.addEventListener("click", onClear);
-    if (elDownloadSec) elDownloadSec.addEventListener("click", downloadSecPng);
+  if (elClear) elClear.addEventListener("click", clearAll);
 
-    // Tap bindings
-    bindTapSurface(elCanvas);
-    bindTapSurface(elImg);
-
-    // Recompute visuals if distance/target changes
-    const recompute = () => {
-      if (bull && impacts.length >= 1) redrawAll();
-      updateDownloadState();
-    };
-    if (elDistance) elDistance.addEventListener("input", recompute);
-    if (elTargetSize) elTargetSize.addEventListener("change", recompute);
-
-    // Resize/orientation: redraw arrow (dots are % so fine, but arrow uses SVG viewBox anyway)
-    const onResize = () => {
-      if (bull && impacts.length >= 1) redrawAll();
-    };
-    window.addEventListener("resize", () => requestAnimationFrame(onResize));
-    window.addEventListener("orientationchange", () => requestAnimationFrame(onResize));
+  if (elImg) {
+    elImg.addEventListener("load", syncOverlaySize);
   }
+  window.addEventListener("resize", syncOverlaySize);
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  // --- Minimal dot styling injection (kills red rings)
+  // If you already style dots in CSS, you can delete this block.
+  (function injectDotCSS() {
+    const css = `
+      #dotsLayer { position:absolute; left:0; top:0; pointer-events:auto; }
+      .dot { position:absolute; width:16px; height:16px; border-radius:50%;
+             transform: translate(-50%, -50%); box-sizing:border-box; }
+      .dot-impact { background: #f59a23; border: 4px solid #000; }
+      .dot-poib   { background: #5de6ff; border: 4px solid #000; box-shadow: 0 0 10px rgba(93,230,255,0.6); }
+      .dot-bull   { background: #0b5cff; border: 4px solid #fff; box-shadow: 0 0 0 2px #000 inset; }
+      .arrowSvg { overflow: visible; }
+    `;
+    const style = document.createElement("style");
+    style.textContent = css;
+    document.head.appendChild(style);
+  })();
+
+  // Initial
+  setTapCount();
+  syncOverlaySize();
 })();
