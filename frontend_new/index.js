@@ -1,80 +1,34 @@
 /* ============================================================
-   frontend_new/index.js (FULL REPLACEMENT) — TAP → BACKEND → POIB/ARROW/CLICKS
-   Guarantees:
-   - Frontend NEVER decides correction direction (backend is authority)
-   - inchesPerPixel derived from target physical inches / displayed pixels
-   - Bull / Impacts / POIB visually distinct (shape + ring, not just color)
-   - Arrow shows POIB → Bull path
-   - iOS-safe image loading + overlay sizing
-   ============================================================ */
+   frontend_new/index.js (FULL REPLACEMENT)
+   - iOS-friendly image load (FileReader)
+   - Tap capture: 1st tap = bull (blue), rest = impacts (orange)
+   - Computes inchesPerPixel from target width inches / image naturalWidth
+   - Calls backend /api/calc and prints backend direction strings
+============================================================ */
 
 (() => {
   const $ = (id) => document.getElementById(id);
 
-  // ---- Required elements (must exist)
+  // Required
   const elFile = $("photoInput");
   const elImg  = $("targetImg");
   const elDots = $("dotsLayer");
 
-  // ---- Optional UI
-  const elTapCount   = $("tapCount");
-  const elClear      = $("clearTapsBtn");
-  const elDistance   = $("distanceYds");
-  const elTargetSel  = $("targetSelect") || $("target"); // supports either id
-  const elResultsBox = $("resultsBox") || $("results");  // optional wrapper
-
-  // Result line elements (optional; if missing we’ll still show strings in banner)
-  const elWindLine = $("windageLine");
-  const elElevLine = $("elevationLine");
-
-  const elWrap = $("targetWrap") || elImg?.parentElement;
+  // Common (optional but expected in your UI)
+  const elTapCount = $("tapCount");
+  const elClear = $("clearTapsBtn");
+  const elDistance = $("distanceYds");         // input
+  const elTargetSel = $("targetSelect") || $("targetPreset") || $("targetSize"); // select (best-effort)
+  const elResultsWind = $("windageLine") || $("windageOut") || $("windage");
+  const elResultsElev = $("elevationLine") || $("elevationOut") || $("elevation");
+  const elWrap = $("targetWrap");
 
   if (!elFile || !elImg || !elDots) return;
 
-  // ============================================================
-  // API BASE
-  // - Can be set without redeploy by using:
-  //   ?api=https://YOUR-BACKEND.onrender.com
-  // - Or via localStorage key: SCZN3_API_BASE
-  // ============================================================
-  function getApiBase() {
-    const qp = new URLSearchParams(location.search);
-    const fromQuery = qp.get("api");
-    if (fromQuery) {
-      localStorage.setItem("SCZN3_API_BASE", fromQuery);
-      return fromQuery.replace(/\/+$/, "");
-    }
-    const fromLS = localStorage.getItem("SCZN3_API_BASE");
-    if (fromLS) return fromLS.replace(/\/+$/, "");
-    // Fallback: same origin (works if you reverse-proxy; otherwise set ?api=...)
-    return location.origin.replace(/\/+$/, "");
-  }
+  // ====== CONFIG: set your backend base URL here
+  const BACKEND_BASE = "https://sczn3-backend-new.onrender.com";
 
-  // ============================================================
-  // TARGET PROFILES (physical inches)
-  // Add more anytime — frontend will compute inchesPerPixel from displayed size.
-  // ============================================================
-  const TARGETS = {
-    "8.5x11": { wIn: 8.5, hIn: 11 },
-    "letter": { wIn: 8.5, hIn: 11 },
-    "23x23":  { wIn: 23,  hIn: 23 },
-    "12x18":  { wIn: 12,  hIn: 18 },
-    "19x25":  { wIn: 19,  hIn: 25 }
-  };
-
-  function currentTargetKey() {
-    const v = (elTargetSel && elTargetSel.value) ? String(elTargetSel.value) : "8.5x11";
-    return v;
-  }
-
-  function currentTargetProfile() {
-    const k = currentTargetKey();
-    return TARGETS[k] || TARGETS["8.5x11"];
-  }
-
-  // ============================================================
-  // Banner (debug/status)
-  // ============================================================
+  // ---- banner
   const banner = document.createElement("div");
   banner.style.position = "fixed";
   banner.style.left = "10px";
@@ -92,61 +46,55 @@
   document.body.appendChild(banner);
   const setBanner = (t) => (banner.textContent = t);
 
-  // ============================================================
-  // State
-  // bull: first tap
-  // impacts: remaining taps
-  // poib: backend-computed
-  // ============================================================
-  let bull = null;          // {x,y} in DISPLAY pixels (relative to image box)
-  let impacts = [];         // [{x,y},...]
-  let poib = null;          // {x,y} from backend (display pixels)
-  let lastCalc = null;      // backend response
+  // ---- state (stored in NATURAL IMAGE PIXELS)
+  let bull = null;          // {x,y}
+  let impacts = [];         // [{x,y}...]
 
-  // Prevent iOS double-fire on file input (change + input)
-  let lastFileSig = "";
-
-  function tapCount() {
-    return (bull ? 1 : 0) + impacts.length;
-  }
-
-  function setTapCountUI() {
-    if (elTapCount) elTapCount.textContent = String(tapCount());
-  }
-
-  // ============================================================
-  // Overlay: use SVG so we can draw circles + arrow cleanly.
-  // dotsLayer can be a div; we’ll inject a single SVG child.
-  // ============================================================
-  let svg = null;
-
-  function ensureSvg() {
-    if (svg && svg.parentElement === elDots) return svg;
-
-    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
-
-    svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", "100%");
-    svg.setAttribute("height", "100%");
-    svg.style.display = "block";
-    svg.style.position = "absolute";
-    svg.style.left = "0";
-    svg.style.top = "0";
-    svg.style.pointerEvents = "none"; // taps handled on wrapper; SVG is display-only
-
-    elDots.appendChild(svg);
-    return svg;
+  function setTapCount() {
+    const n = (bull ? 1 : 0) + impacts.length;
+    if (elTapCount) elTapCount.textContent = String(n);
   }
 
   function clearOverlay() {
-    ensureSvg();
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
   }
 
-  function syncOverlaySize() {
-    const r = elImg.getBoundingClientRect();
+  function clearAll() {
+    bull = null;
+    impacts = [];
+    clearOverlay();
+    setTapCount();
+    writeResults("", "");
+    setBanner("Cleared. Tap bull first, then impacts.");
+  }
 
-    // Make wrapper and layers visible/stacked correctly
+  if (elClear) elClear.addEventListener("click", clearAll);
+
+  function writeResults(w, e) {
+    if (elResultsWind) elResultsWind.textContent = w;
+    if (elResultsElev) elResultsElev.textContent = e;
+  }
+
+  // ---- target profile (width inches) from dropdown text
+  function getTargetWidthInches() {
+    const v =
+      (elTargetSel && (elTargetSel.value || elTargetSel.options?.[elTargetSel.selectedIndex]?.text)) ||
+      "";
+
+    const s = String(v).toLowerCase();
+
+    // Add more profiles as needed
+    if (s.includes("23") && s.includes("x") && s.includes("23")) return 23;
+    if (s.includes("8.5") || s.includes("8½") || s.includes("letter") || s.includes("8.5x11")) return 8.5;
+    if (s.includes("11x17")) return 11; // width in landscape-ish assumption; adjust if you use portrait logic
+    if (s.includes("12x18")) return 12;
+
+    // Safe default for your current dropdown showing "8.5×11 (Letter)"
+    return 8.5;
+  }
+
+  // ---- force visibility / layering
+  function forceShowImage() {
     elImg.style.display = "block";
     elImg.style.visibility = "visible";
     elImg.style.opacity = "1";
@@ -156,331 +104,175 @@
     elImg.style.position = "relative";
     elImg.style.zIndex = "1";
 
-    if (elWrap) {
-      elWrap.style.position = "relative";
-      elWrap.style.display = "block";
-      elWrap.style.visibility = "visible";
-      elWrap.style.opacity = "1";
-    }
-
     elDots.style.position = "absolute";
     elDots.style.left = "0";
     elDots.style.top = "0";
     elDots.style.zIndex = "5";
+    elDots.style.pointerEvents = "auto";
+
+    if (elWrap) {
+      elWrap.style.display = "block";
+      elWrap.style.visibility = "visible";
+      elWrap.style.opacity = "1";
+      elWrap.style.position = "relative";
+    }
+  }
+
+  function syncOverlaySize() {
+    const r = elImg.getBoundingClientRect();
     elDots.style.width = `${r.width}px`;
     elDots.style.height = `${r.height}px`;
-    elDots.style.pointerEvents = "none";
-
-    ensureSvg();
-    svg.setAttribute("viewBox", `0 0 ${r.width} ${r.height}`);
   }
 
-  // ============================================================
-  // Marker styles (distinct by shape + ring)
-  // ============================================================
-  function drawCircle({ x, y, r, fill, stroke, strokeW }) {
-    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    c.setAttribute("cx", String(x));
-    c.setAttribute("cy", String(y));
-    c.setAttribute("r", String(r));
-    c.setAttribute("fill", fill);
-    c.setAttribute("stroke", stroke);
-    c.setAttribute("stroke-width", String(strokeW));
-    svg.appendChild(c);
-  }
-
-  function drawBull(p) {
-    // Bull: dark center + thick white ring (very obvious)
-    drawCircle({ x: p.x, y: p.y, r: 9,  fill: "#111", stroke: "#fff", strokeW: 4 });
-    drawCircle({ x: p.x, y: p.y, r: 2.5, fill: "#fff", stroke: "#fff", strokeW: 0 });
-  }
-
-  function drawImpact(p) {
-    // Impact: orange + black ring
-    drawCircle({ x: p.x, y: p.y, r: 7.5, fill: "#ff9a2e", stroke: "#000", strokeW: 3 });
-  }
-
-  function drawPoib(p) {
-    // POIB: cyan + thick black ring
-    drawCircle({ x: p.x, y: p.y, r: 8.5, fill: "#4bd3ff", stroke: "#000", strokeW: 4 });
-    drawCircle({ x: p.x, y: p.y, r: 2.5, fill: "#000", stroke: "#000", strokeW: 0 });
-  }
-
-  function drawArrow(from, to) {
-    // Arrow line + head
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", String(from.x));
-    line.setAttribute("y1", String(from.y));
-    line.setAttribute("x2", String(to.x));
-    line.setAttribute("y2", String(to.y));
-    line.setAttribute("stroke", "#4bd3ff");
-    line.setAttribute("stroke-width", "6");
-    line.setAttribute("stroke-linecap", "round");
-    svg.appendChild(line);
-
-    // Arrowhead
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len;
-    const uy = dy / len;
-
-    const headLen = 22;
-    const baseX = to.x - ux * headLen;
-    const baseY = to.y - uy * headLen;
-
-    // perpendicular
-    const px = -uy;
-    const py = ux;
-
-    const wing = 12;
-    const p1 = { x: to.x, y: to.y };
-    const p2 = { x: baseX + px * wing, y: baseY + py * wing };
-    const p3 = { x: baseX - px * wing, y: baseY - py * wing };
-
-    const tri = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    tri.setAttribute("d", `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y} Z`);
-    tri.setAttribute("fill", "rgba(75,211,255,0.9)");
-    tri.setAttribute("stroke", "rgba(0,0,0,0.35)");
-    tri.setAttribute("stroke-width", "1");
-    svg.appendChild(tri);
-  }
-
-  function redrawOverlay() {
-    syncOverlaySize();
-    clearOverlay();
-
-    // Impacts first
-    for (const p of impacts) drawImpact(p);
-
-    // POIB if available
-    if (poib) drawPoib(poib);
-
-    // Arrow POIB -> Bull if both exist
-    if (poib && bull) drawArrow(poib, bull);
-
-    // Bull last (topmost)
-    if (bull) drawBull(bull);
-
-    setTapCountUI();
-  }
-
-  // ============================================================
-  // Coordinates: convert pointer event to DISPLAY pixel coords
-  // relative to the displayed image rect (not natural image pixels).
-  // Backend expects consistent space — we use display space everywhere.
-  // ============================================================
-  function eventToImageXY(evt) {
+  // ---- coordinate conversion
+  function clientToNatural(clientX, clientY) {
     const r = elImg.getBoundingClientRect();
-    const x = evt.clientX - r.left;
-    const y = evt.clientY - r.top;
-    // clamp within bounds
-    const cx = Math.max(0, Math.min(r.width, x));
-    const cy = Math.max(0, Math.min(r.height, y));
-    return { x: cx, y: cy };
+    const nx = (clientX - r.left) * (elImg.naturalWidth / r.width);
+    const ny = (clientY - r.top) * (elImg.naturalHeight / r.height);
+    return { x: nx, y: ny };
   }
 
-  // ============================================================
-  // inchesPerPixel computed from target physical width and displayed width
-  // This is NOT guessing — physical inches come from target profile.
-  // ============================================================
-  function computeInchesPerPixel() {
+  function naturalToDisplay(n) {
     const r = elImg.getBoundingClientRect();
-    const t = currentTargetProfile();
-    const wPx = r.width || 0;
-    if (!wPx) return NaN;
-    return t.wIn / wPx;
+    const dx = n.x * (r.width / elImg.naturalWidth);
+    const dy = n.y * (r.height / elImg.naturalHeight);
+    return { x: dx, y: dy };
   }
 
-  // ============================================================
-  // Backend call: /api/calc
-  // ============================================================
-  async function callBackendCalc() {
+  function drawDot(naturalPt, kind) {
+    const p = naturalToDisplay(naturalPt);
+
+    const dot = document.createElement("div");
+    dot.style.position = "absolute";
+    dot.style.width = "14px";
+    dot.style.height = "14px";
+    dot.style.borderRadius = "50%";
+    dot.style.left = `${p.x - 7}px`;
+    dot.style.top = `${p.y - 7}px`;
+
+    // bull = blue, impacts = orange
+    dot.style.background = kind === "bull" ? "rgba(0,160,255,0.95)" : "rgba(255,140,0,0.95)";
+    dot.style.border = "2px solid rgba(255,255,255,0.9)";
+    dot.style.boxShadow = "0 6px 18px rgba(0,0,0,0.35)";
+
+    elDots.appendChild(dot);
+  }
+
+  // ---- backend call
+  async function callBackend() {
     if (!bull || impacts.length < 1) return;
 
-    const distanceYds = elDistance ? Number(elDistance.value) : 100;
-    const inchesPerPixel = computeInchesPerPixel();
+    const distanceYds = Number(elDistance?.value || 100) || 100;
+    const clickMoa = 0.25; // keep your default
 
-    if (!Number.isFinite(inchesPerPixel) || inchesPerPixel <= 0) {
-      setBanner("Scale error: inchesPerPixel not computable (image not sized yet).");
-      return;
-    }
+    // inchesPerPixel derived from REAL target width / image naturalWidth
+    const targetWidthIn = getTargetWidthInches();
+    const inchesPerPixel = targetWidthIn / elImg.naturalWidth;
 
-    const API_BASE = getApiBase();
-    const url = `${API_BASE}/api/calc`;
-
-    const payload = {
+    const body = {
       distanceYds,
-      clickMoa: 0.25, // keep default; you can later wire a UI for 0.1 / 0.25 etc.
+      clickMoa,
       inchesPerPixel,
-      bull: { x: bull.x, y: bull.y },
-      impacts: impacts.map(p => ({ x: p.x, y: p.y }))
+      bull,
+      impacts
     };
 
-    setBanner(`Calculating… (${url})`);
-
     try {
-      const resp = await fetch(url, {
+      const resp = await fetch(`${BACKEND_BASE}/api/calc`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(body)
       });
 
       const data = await resp.json().catch(() => null);
 
       if (!resp.ok || !data || data.ok !== true) {
-        setBanner(`Backend error: ${data?.error || resp.statusText || "unknown"}`);
+        const msg = data?.error || `HTTP ${resp.status}`;
+        setBanner(`Backend error: ${msg}`);
         return;
       }
 
-      lastCalc = data;
-      poib = data.poib ? { x: data.poib.x, y: data.poib.y } : null;
-
-      // UI output (backend is authority)
-      const w = data.ui?.windage || "";
-      const e = data.ui?.elevation || "";
-
-      if (elWindLine) elWindLine.textContent = w;
-      if (elElevLine) elElevLine.textContent = e;
-
-      // If your UI doesn’t have dedicated fields, show in banner
-      if (!elWindLine && !elElevLine) {
-        setBanner(`${w} | ${e}`);
-      } else {
-        setBanner("Backend OK. Directions are backend-authoritative.");
-      }
-
-      redrawOverlay();
-    } catch (err) {
-      setBanner(`Network error calling backend: ${String(err?.message || err)}`);
+      // Print backend authority strings exactly
+      writeResults(data.ui?.windage || "", data.ui?.elevation || "");
+      setBanner("Calc OK.");
+    } catch (e) {
+      setBanner(`Backend error: ${String(e?.message || e)}`);
     }
   }
 
-  // ============================================================
-  // Tap handling: first tap sets Bull, remaining taps are Impacts
-  // We attach to wrapper if possible; otherwise attach to image.
-  // ============================================================
-  function onTap(evt) {
-    // only if an image is loaded
+  // ---- tap handler
+  function onTap(ev) {
     if (!elImg.src) return;
 
-    // don’t allow scrolling/zooming to eat taps
-    evt.preventDefault?.();
-    evt.stopPropagation?.();
+    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
 
-    const p = eventToImageXY(evt);
+    const n = clientToNatural(clientX, clientY);
+
+    // Clamp to image bounds
+    if (n.x < 0 || n.y < 0 || n.x > elImg.naturalWidth || n.y > elImg.naturalHeight) return;
 
     if (!bull) {
-      bull = p;
-      poib = null;
-      lastCalc = null;
-      redrawOverlay();
-      setBanner("Bull set. Now tap impacts.");
-      return;
+      bull = n;
+      drawDot(n, "bull");
+      setBanner("Bull set. Tap impacts.");
+    } else {
+      impacts.push(n);
+      drawDot(n, "impact");
+      setBanner(`Impact recorded: ${impacts.length}`);
     }
 
-    impacts.push(p);
-    redrawOverlay();
-
-    // After every impact tap, recalc
-    callBackendCalc();
+    setTapCount();
+    callBackend();
   }
 
-  // Pointer events (works on iOS Safari)
-  const tapSurface = elWrap || elImg;
+  // Ensure tap layer works
+  elDots.addEventListener("click", onTap, { passive: true });
+  elDots.addEventListener("touchstart", onTap, { passive: true });
 
-  // Make sure surface actually accepts pointer events
-  tapSurface.style.touchAction = "none";
-
-  // Use pointerdown only to avoid double fires
-  tapSurface.addEventListener("pointerdown", (evt) => {
-    // Ignore if tap is outside the image bounds (ex: wrapper padding)
-    const r = elImg.getBoundingClientRect();
-    const inside =
-      evt.clientX >= r.left && evt.clientX <= r.right &&
-      evt.clientY >= r.top  && evt.clientY <= r.bottom;
-    if (!inside) return;
-
-    onTap(evt);
-  }, { passive: false });
-
-  // ============================================================
-  // Clear
-  // ============================================================
-  function clearAll() {
-    bull = null;
-    impacts = [];
-    poib = null;
-    lastCalc = null;
-    setTapCountUI();
-    clearOverlay();
-
-    if (elWindLine) elWindLine.textContent = "";
-    if (elElevLine) elElevLine.textContent = "";
-
-    setBanner("Cleared. Tap bull first.");
-  }
-
-  if (elClear) elClear.addEventListener("click", clearAll);
-
-  // ============================================================
-  // Image loading (FileReader, iOS-safe) + forced visibility
-  // ============================================================
+  // ---- file load
   function loadFileToImg(file) {
     if (!file) return;
 
-    // Dedup file input double-fire
-    const sig = `${file.name}|${file.size}|${file.lastModified}`;
-    if (sig === lastFileSig) return;
-    lastFileSig = sig;
-
     clearAll();
-    setBanner(`Loading image… ${file.name || "(photo)"} (${Math.round(file.size / 1024)} KB)`);
+    setBanner(`Got file: ${file.name || "(no name)"} • ${Math.round(file.size / 1024)} KB`);
 
     const reader = new FileReader();
     reader.onerror = () => setBanner("FileReader error.");
     reader.onload = () => {
       elImg.onload = () => {
+        forceShowImage();
         syncOverlaySize();
         setBanner("Image loaded. Tap bull first.");
       };
       elImg.onerror = () => setBanner("Image failed to load.");
       elImg.src = String(reader.result || "");
     };
-
     reader.readAsDataURL(file);
   }
 
   function handlePick(evtName) {
     const f = elFile.files && elFile.files[0];
     if (!f) {
-      setBanner(`${evtName}: no file.`);
+      setBanner(`${evtName}: No file found on input.`);
       return;
     }
     loadFileToImg(f);
   }
 
   elFile.addEventListener("change", () => handlePick("change"));
-  elFile.addEventListener("input",  () => handlePick("input"));
+  elFile.addEventListener("input", () => handlePick("input"));
 
-  // Resize keeps overlay aligned
   window.addEventListener("resize", () => {
-    if (!elImg.src) return;
-    redrawOverlay();
+    syncOverlaySize();
+    // re-render dots at new display size
+    const savedBull = bull;
+    const savedImpacts = impacts.slice();
+    clearOverlay();
+    if (savedBull) drawDot(savedBull, "bull");
+    for (const p of savedImpacts) drawDot(p, "impact");
   });
 
-  // If target dropdown changes, re-run calc (scale changes with selected target profile)
-  if (elTargetSel) {
-    elTargetSel.addEventListener("change", () => {
-      if (!elImg.src) return;
-      // recompute scale & recalc if we have data
-      redrawOverlay();
-      callBackendCalc();
-      setBanner(`Target profile: ${currentTargetKey()}`);
-    });
-  }
-
-  // Init
-  setTapCountUI();
+  setTapCount();
   setBanner("Ready. Upload a photo.");
 })();
