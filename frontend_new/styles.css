@@ -1,265 +1,175 @@
-/* ============================================================================
+/* =========================================================
    Tap-n-Score — styles.css (FULL REPLACEMENT)
-   Goal:
-   - Dark UI, clean cards
-   - Upload hero file input overlay ONLY inside hero (never covers page)
-   - Target tap area always above hero
-============================================================================ */
+   Fixes:
+   - file input overlay leaking and stealing taps
+   - dotsLayer + dot visibility
+   - stable dark layout
+========================================================= */
 
 :root{
   --bg:#000;
-  --panel: rgba(255,255,255,.06);
-  --panel2: rgba(255,255,255,.04);
-  --border: rgba(255,255,255,.10);
-  --text: rgba(255,255,255,.92);
-  --muted: rgba(255,255,255,.70);
-  --muted2: rgba(255,255,255,.55);
-  --tapRed:#ff3b30;
-  --tapBlue:#2f7fff;
-  --ok:#2fd36b;
+  --panel:#0e0e0e;
+  --panel2:#121212;
+  --text:#f2f2f2;
+  --muted:#bdbdbd;
+  --line:#242424;
+  --accent:#2a7cff;
+  --accent2:#ff3b30;
+  --radius:16px;
 }
 
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
 body{
   margin:0;
-  background: var(--bg);
-  color: var(--text);
+  background:var(--bg);
+  color:var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
-/* Page shell */
 .page{
-  width: min(980px, calc(100% - 24px));
-  margin: 0 auto;
-  padding: 18px 0 36px;
+  width: min(980px, 94vw);
+  margin: 24px auto 40px;
 }
 
-/* Brand */
-.brandRow{ margin: 10px 0 12px; }
+/* brand */
+.brandRow{ display:flex; justify-content:flex-start; }
 .brand{
-  font-weight: 800;
-  letter-spacing: .5px;
-  font-size: 28px;
-  line-height: 1;
+  font-weight:800;
+  letter-spacing:1px;
+  font-size: 26px;
 }
-.brandTap{ color: var(--tapRed); }
-.brandN{ color: rgba(255,255,255,.85); }
-.brandScore{ color: var(--tapBlue); }
-.brandTm{ color: rgba(255,255,255,.75); margin-left: 2px; }
+.brandTap{ color: var(--accent2); }
+.brandN{ color: #fff; }
+.brandScore{ color: var(--accent); }
+.brandTm{ color:#fff; margin-left:2px; font-weight:700; font-size: 18px; vertical-align: super; }
 
-/* Generic text helpers */
-.subtle{ color: var(--muted); }
-.strong{ font-weight: 700; }
-.mt14{ margin-top: 14px; }
-.mt12{ margin-top: 12px; }
-.mb8{ margin-bottom: 8px; }
+/* spacing helpers */
+.mt14{ margin-top:14px; }
+.mt12{ margin-top:12px; }
+.mb8{ margin-bottom:8px; }
 
-/* Upload hero */
-.uploadHero{
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 14px;
-}
+/* text helpers */
+.subtle{ color: var(--muted); font-size: 14px; }
+.strong{ font-weight: 700; color: var(--text); }
 
-/* IMPORTANT: label anchors overlay */
-.uploadHeroLabel{
-  position: relative;
-  display: block;
+/* buttons / inputs */
+.input, input{
   width: 100%;
-  border-radius: 14px;
-  overflow: hidden;        /* CRITICAL: keeps the input overlay inside */
-  z-index: 1;
-}
-
-.uploadHeroInner{
-  pointer-events: none;    /* text doesn’t steal clicks; input overlay handles it */
-}
-
-.uploadHeroTitle{
-  font-size: 18px;
-  font-weight: 800;
-  color: rgba(255,255,255,.92);
-}
-.uploadHeroSub{
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--muted);
-}
-
-/* The invisible input overlay MUST stay inside hero only */
-.fileInputOverlay{
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  z-index: 2;
-}
-
-/* Controls row */
-.controlsRow{
-  display:flex;
-  gap: 12px;
-  align-items: stretch;
-  justify-content: space-between;
-}
-
-.distanceBox, .tapsBlock{
-  flex: 1 1 auto;
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px;
-}
-
-.distanceBox input{
-  width: 110px;
-  padding: 10px 10px;
-  margin: 8px 0 6px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(0,0,0,.35);
+  background: #0b0b0b;
   color: var(--text);
-  font-size: 16px;
-  outline: none;
-}
-
-.tapsLine{ margin-bottom: 10px; }
-#tapCount{ font-weight: 800; margin-left: 6px; }
-
-/* Buttons */
-.btn{
+  border: 1px solid var(--line);
   border-radius: 12px;
-  border: 1px solid var(--border);
+  padding: 10px 12px;
+  outline: none;
+  font-size: 16px;
+}
+input:focus{ border-color:#3a3a3a; }
+
+.btn{
+  border: 1px solid var(--line);
+  background: #111;
+  color: var(--text);
+  border-radius: 12px;
   padding: 10px 12px;
   font-weight: 700;
-  background: rgba(255,255,255,.08);
-  color: var(--text);
 }
-.btn:active{ transform: translateY(1px); }
-.btnSecondary{
-  background: rgba(255,255,255,.06);
-}
-.btnTight{
-  padding: 8px 10px;
-}
+.btnSecondary{ background:#111; }
+.btnTight{ padding: 10px 14px; }
 
-/* Cards */
+/* cards */
 .card{
-  position: relative;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px;
-  z-index: 5; /* MUST be above hero overlay */
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
 }
 
-/* Target area */
-.targetWrap{
-  position: relative;
-  display: block;
-  width: 100%;
-  z-index: 6;
+/* controls row */
+.controlsRow{
+  display:flex;
+  gap: 14px;
+  align-items: stretch;
+}
+.distanceBox{
+  flex: 1;
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tapsBlock{
+  width: 160px;
+  display:flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.tapsLine{ display:flex; gap:8px; align-items:baseline; }
+#tapCount{ font-weight:800; color:#fff; }
+
+/* upload hero (ONLY clickable upload region) */
+.uploadHero{
+  display:block;
+  background: linear-gradient(180deg, #0f0f0f, #090909);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.uploadHeroInner{
+  display:flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.uploadHeroTitle{ font-weight: 800; }
+.uploadHeroSub{ color: var(--muted); }
+
+/* HARD CLAMP: input overlay must NEVER cover page */
+.uploadHeroLabel{
+  position: relative !important;
+  overflow: hidden !important;
+  max-height: 140px !important;
+  z-index: 1 !important;
+}
+.fileInputOverlay{
+  position:absolute !important;
+  inset:0 !important;
+  width:100% !important;
+  height:100% !important;
+  opacity:0 !important;
+  z-index:2 !important;
+  cursor:pointer;
 }
 
+/* micro slot */
+.microSlot{
+  min-height: 0px;
+}
+
+/* target area */
+.targetWrap{ display:block; }
 .targetCanvas{
   position: relative;
-  width: 100%;
   border-radius: 14px;
-  overflow: hidden;
-  background: rgba(0,0,0,.35);
-  border: 1px solid rgba(255,255,255,.08);
-  z-index: 7;
+  border: 1px solid var(--line);
+  background: #050505;
+  padding: 10px;
 }
 
-/* The image (tap surface) */
+/* the image ensures predictable box size */
 .targetImg{
-  display: block;
+  display:block;
   width: 100%;
   height: auto;
-  max-height: 72vh;
-  object-fit: contain;
-  touch-action: manipulation; /* helps iOS tap responsiveness */
-  -webkit-user-select: none;
-  user-select: none;
-  position: relative;
-  z-index: 8;
-}
-
-/* Dots overlay */
-.dotsLayer{
-  position: absolute;
-  inset: 0;
-  z-index: 9;
-  pointer-events: none; /* overlay never blocks taps */
-}
-
-/* Tap dot */
-.dot{
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  background: rgba(255,255,255,.92);
-  border: 2px solid rgba(0,0,0,.65);
-  box-shadow: 0 1px 6px rgba(0,0,0,.45);
-}
-
-/* Inputs */
-.input{
-  width: 100%;
-  padding: 12px 12px;
   border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(0,0,0,.35);
-  color: var(--text);
-  outline: none;
+  /* helps iOS tapping feel */
+  touch-action: manipulation;
+  -webkit-user-select:none;
+  user-select:none;
 }
 
-/* Footer */
-.footer{
-  margin-top: 18px;
-  text-align: center;
-  color: var(--muted2);
-}
-
-/* Micro slot */
-.microSlot{
-  min-height: 0;
-}
-
-/* =========================================================
-   HARD SAFETY CLAMP (prevents any overlay leakage)
-   If some older CSS ever sets input to fixed/viewport, this wins.
-========================================================= */
-.uploadHeroLabel{ max-height: 140px; } /* keep hero reasonably tall */
-
-.uploadHeroLabel .fileInputOverlay{
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  opacity: 0 !important;
-  z-index: 2 !important;
-}
-
-/* Make sure file input is never fixed/fullscreen */
-.fileInputOverlay{
-  position: absolute !important;
-  top: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-}
-
-/* Make sure target always wins stacking */
-#targetWrap, #targetCanvas, #targetImg, #dotsLayer{
-  position: relative !important;
-  z-index: 999 !important;
-}
+/* dots overlay aligned to the rendered image box */
+.dotsLayer{
+  position:absolute;
+  /* inset must match the image area inside targetCanvas */
+  left: 10px;
+  right: 10px;
+  top:  
