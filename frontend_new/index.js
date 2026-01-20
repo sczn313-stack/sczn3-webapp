@@ -4,7 +4,13 @@
 
    Fixes:
    - Counts incrementing by 2 (eliminates duplicate touch/click firing)
-   - Dots not visible (aligns dotsLayer to image using offset geometry)
+   - Dots not visible (renders dots on overlay using % positioning)
+   - iOS-safe tap capture (pointerdown + touchstart fallback + debounce)
+
+   REQUIRED CSS (minimum):
+   - #targetCanvas { position: relative; }
+   - #dotsLayer { position:absolute; inset:0; z-index:999; pointer-events:none; }
+   - .dot { position:absolute; width/height/background; transform:translate(-50%,-50%); }
 ============================================================ */
 
 (() => {
@@ -25,7 +31,7 @@
   let objectUrl = null;
   let taps = []; // { nx, ny } normalized 0..1 within image box
 
-  // Duplicate-event guard
+  // Duplicate-event guard (iOS can fire touch + pointer)
   let lastTapAt = 0;
 
   function setInstruction(msg) {
@@ -55,38 +61,31 @@
     }
   }
 
-  // Align dotsLayer EXACTLY over the rendered image (iOS-safe)
-  function syncOverlayToImage() {
-    if (!elDots || !elImg || !elCanvas) return;
-
-    // Ensure overlay uses same offset parent as image (targetCanvas)
-    // We rely on CSS: .targetCanvas { position: relative; }
-    const left = elImg.offsetLeft;
-    const top = elImg.offsetTop;
-    const w = elImg.offsetWidth;
-    const h = elImg.offsetHeight;
-
-    elDots.style.position = "absolute";
-    elDots.style.left = `${left}px`;
-    elDots.style.top = `${top}px`;
-    elDots.style.width = `${w}px`;
-    elDots.style.height = `${h}px`;
-
-    // Force visibility above the image
+  // Keep overlay covering the image area (CSS does most of the work).
+  // This function just ensures the overlay is above and present.
+  function syncOverlayBasics() {
+    if (!elDots) return;
     elDots.style.zIndex = "999";
     elDots.style.pointerEvents = "none";
   }
 
+  // ============================================================
+  // FULL REPLACEMENT: drawDot()
+  // - Uses % positioning so dots stay aligned on resize/rotate
+  // - Centers dot on tap point (CSS should translate -50%,-50%)
+  // ============================================================
   function drawDot(nx, ny) {
     if (!elDots) return;
 
-    const w = elDots.clientWidth;
-    const h = elDots.clientHeight;
+    // Clamp to 0..1 just in case
+    const cx = Math.max(0, Math.min(1, nx));
+    const cy = Math.max(0, Math.min(1, ny));
 
     const dot = document.createElement("div");
     dot.className = "dot";
-    dot.style.left = `${nx * w}px`;
-    dot.style.top = `${ny * h}px`;
+    dot.style.left = `${(cx * 100).toFixed(6)}%`;
+    dot.style.top  = `${(cy * 100).toFixed(6)}%`;
+
     elDots.appendChild(dot);
   }
 
@@ -118,7 +117,7 @@
       elImg.onload = () => {
         showTarget();
         requestAnimationFrame(() => {
-          syncOverlayToImage();
+          syncOverlayBasics();
           setInstruction(`${BUILD} • Loaded: ${f.name}. Tap ON the image to place dots.`);
         });
       };
@@ -128,6 +127,7 @@
       elImg.src = objectUrl;
     } else {
       showTarget();
+      syncOverlayBasics();
       setInstruction(`${BUILD} • Loaded: ${f.name}.`);
     }
   }
@@ -146,16 +146,15 @@
       return;
     }
 
-    // Keep overlay aligned (orientation/zoom can change layout)
-    syncOverlayToImage();
+    syncOverlayBasics();
 
+    // Normalize to the IMAGE box (not the wrapper)
     const imgRect = elImg.getBoundingClientRect();
     const localX = clientX - imgRect.left;
     const localY = clientY - imgRect.top;
 
-    if (localX < 0 || localY < 0 || localX > imgRect.width || localY > imgRect.height) {
-      return; // ignore taps outside the image
-    }
+    // Ignore taps outside the image
+    if (localX < 0 || localY < 0 || localX > imgRect.width || localY > imgRect.height) return;
 
     const nx = imgRect.width ? localX / imgRect.width : 0;
     const ny = imgRect.height ? localY / imgRect.height : 0;
@@ -168,7 +167,6 @@
 
   // SINGLE tap handler (prevents double count)
   function onPointerDown(ev) {
-    // Debounce duplicates (iOS can fire extra events very close together)
     const now = Date.now();
     if (now - lastTapAt < 250) return;
     lastTapAt = now;
@@ -182,7 +180,7 @@
     recordTapFromClientXY(x, y);
   }
 
-  // Fallback for older browsers that don’t support Pointer Events well
+  // Fallback for older browsers (touchstart only, no click)
   function onTouchStartFallback(ev) {
     const now = Date.now();
     if (now - lastTapAt < 250) return;
@@ -200,7 +198,7 @@
   function bindTapSurface(el) {
     if (!el) return;
 
-    // Prefer pointer events only (prevents the touch+click double fire)
+    // Prefer pointer events (avoids touch+click double fire)
     el.addEventListener("pointerdown", onPointerDown);
 
     // Fallback: touchstart ONLY (no click)
@@ -227,17 +225,18 @@
     setTapCount();
     clearDots();
     hideTarget();
+    syncOverlayBasics();
 
     if (elFile) elFile.addEventListener("change", onFileChange);
     if (elClear) elClear.addEventListener("click", onClear);
 
-    // Bind taps to the wrapper and the image (either one will catch it)
+    // Bind taps to wrapper and image (either one will catch it)
     bindTapSurface(elCanvas);
     bindTapSurface(elImg);
 
-    // Resync on resize/orientation changes
-    window.addEventListener("resize", () => requestAnimationFrame(syncOverlayToImage));
-    window.addEventListener("orientationchange", () => requestAnimationFrame(syncOverlayToImage));
+    // Resync on resize/orientation changes (dots are % so no redraw needed)
+    window.addEventListener("resize", () => requestAnimationFrame(syncOverlayBasics));
+    window.addEventListener("orientationchange", () => requestAnimationFrame(syncOverlayBasics));
   }
 
   if (document.readyState === "loading") {
