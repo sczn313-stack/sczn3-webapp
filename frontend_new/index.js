@@ -1,28 +1,28 @@
 /* ============================================================
-   frontend_new/index.js (FULL REPLACEMENT) — iOS FILE PICKER FIX
-   Primary fix:
-   - Listen to BOTH "change" and "input" on #photoInput
-   - Load image via FileReader (most reliable on iOS Safari)
-   - Fallback to ObjectURL if needed
-   - Show on-screen status so we can see where it fails
+   frontend_new/index.js (FULL REPLACEMENT) — iOS LOAD + FORCE SHOW IMAGE
+   Fixes:
+   - FileReader load confirmed (your banner shows it)
+   - Forces #targetImg to be visible + sized
+   - Ensures dotsLayer sits ON TOP of the image
 ============================================================ */
 
 (() => {
   const $ = (id) => document.getElementById(id);
 
   const elFile = $("photoInput");
-  const elImg = $("targetImg");
+  const elImg  = $("targetImg");
   const elDots = $("dotsLayer");
   const elTapCount = $("tapCount");
   const elClear = $("clearTapsBtn");
-  const elDistance = $("distanceYds");
 
-  if (!elFile || !elImg || !elDots) {
-    console.warn("Missing required IDs: photoInput, targetImg, dotsLayer");
-    return;
-  }
+  // Optional wrappers/messages (if they exist in your HTML)
+  const elWrap = $("targetWrap");          // common in your builds
+  const elHint = $("instructionLine");     // sometimes used
+  const elAddPhotoLine = $("addPhotoLine"); // if you have a “Add a photo” element
 
-  // ---------- tiny status banner (so we can see progress on iPad)
+  if (!elFile || !elImg || !elDots) return;
+
+  // ---- status banner
   const banner = document.createElement("div");
   banner.style.position = "fixed";
   banner.style.left = "10px";
@@ -38,38 +38,21 @@
   banner.style.border = "1px solid rgba(255,255,255,0.12)";
   banner.textContent = "Ready.";
   document.body.appendChild(banner);
-
   const setBanner = (t) => (banner.textContent = t);
 
-  // Make sure input is usable on iOS
-  // (doesn't hurt; helps some pickers)
-  elFile.setAttribute("accept", "image/*");
-
-  // ---------- overlay sizing
-  function getImgRect() {
-    return elImg.getBoundingClientRect();
-  }
-  function syncOverlaySize() {
-    const r = getImgRect();
-    elDots.style.position = "absolute";
-    elDots.style.left = "0";
-    elDots.style.top = "0";
-    elDots.style.width = `${r.width}px`;
-    elDots.style.height = `${r.height}px`;
-  }
-  function clearOverlay() {
-    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
-  }
-
-  // ---------- taps state (kept minimal here)
+  // ---- state
   let bull = null;
   let impacts = [];
-  let objectUrl = null;
 
   function setTapCount() {
     const n = (bull ? 1 : 0) + impacts.length;
     if (elTapCount) elTapCount.textContent = String(n);
   }
+
+  function clearOverlay() {
+    while (elDots.firstChild) elDots.removeChild(elDots.firstChild);
+  }
+
   function clearAll() {
     bull = null;
     impacts = [];
@@ -79,93 +62,94 @@
 
   if (elClear) elClear.addEventListener("click", clearAll);
 
-  // ---------- iOS-safe image load
+  // ---- FORCE VISIBILITY & LAYER ORDER (this is the fix)
+  function forceShowImage() {
+    // If image was hidden by CSS, override it
+    elImg.style.display = "block";
+    elImg.style.visibility = "visible";
+    elImg.style.opacity = "1";
+
+    // Make sure it actually takes space
+    elImg.style.width = "100%";
+    elImg.style.height = "auto";
+    elImg.style.maxWidth = "100%";
+
+    // Ensure stacking context: image below, dots above
+    elImg.style.position = "relative";
+    elImg.style.zIndex = "1";
+
+    elDots.style.position = "absolute";
+    elDots.style.left = "0";
+    elDots.style.top = "0";
+    elDots.style.zIndex = "5";
+    elDots.style.pointerEvents = "auto";
+
+    // If you have a wrapper, ensure it’s visible
+    if (elWrap) {
+      elWrap.style.display = "block";
+      elWrap.style.visibility = "visible";
+      elWrap.style.opacity = "1";
+      elWrap.style.position = "relative";
+    }
+
+    // Hide “Add a photo…” type message if present
+    if (elHint) elHint.textContent = "";
+    if (elAddPhotoLine) elAddPhotoLine.style.display = "none";
+  }
+
+  function syncOverlaySize() {
+    const r = elImg.getBoundingClientRect();
+    // dotsLayer should match the displayed image box
+    elDots.style.width = `${r.width}px`;
+    elDots.style.height = `${r.height}px`;
+  }
+
+  // ---- load file via FileReader (proven working)
   function loadFileToImg(file) {
     if (!file) return;
 
     setBanner(`Got file: ${file.name || "(no name)"} • ${Math.round(file.size / 1024)} KB`);
-
-    // Reset taps when new image selected
     clearAll();
 
-    // Some iOS cases fail on ObjectURL; FileReader is most reliable
     const reader = new FileReader();
-
-    reader.onerror = () => {
-      setBanner("FileReader error. Trying ObjectURL fallback…");
-
-      try {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        objectUrl = URL.createObjectURL(file);
-        elImg.onload = () => {
-          setBanner("Image loaded (ObjectURL).");
-          syncOverlaySize();
-        };
-        elImg.onerror = () => setBanner("Image failed to load (ObjectURL).");
-        elImg.src = objectUrl;
-        elImg.style.display = "block";
-      } catch (e) {
-        setBanner("ObjectURL fallback failed.");
-        console.warn(e);
-      }
-    };
-
+    reader.onerror = () => setBanner("FileReader error.");
     reader.onload = () => {
-      const dataUrl = reader.result;
-      setBanner("FileReader OK. Setting image src…");
+      setBanner("FileReader OK. Setting src…");
 
       elImg.onload = () => {
-        setBanner("Image loaded (FileReader).");
+        forceShowImage();
         syncOverlaySize();
-        // Important: do NOT clear src or revoke anything here
+        setBanner("Image loaded (FileReader).");
       };
 
-      elImg.onerror = () => {
-        setBanner("Image failed to load (FileReader).");
-      };
+      elImg.onerror = () => setBanner("Image failed to load.");
 
-      elImg.src = String(dataUrl || "");
-      elImg.style.display = "block";
+      elImg.src = String(reader.result || "");
     };
 
-    // Read as DataURL (most compatible)
     reader.readAsDataURL(file);
   }
 
-  function pickFirstFileFromInput() {
+  function handlePick(evtName) {
+    setBanner(`${evtName} fired.`);
     const f = elFile.files && elFile.files[0];
     if (!f) {
-      setBanner("No file found on input (files[0] missing).");
-      return null;
+      setBanner("No file found on input.");
+      return;
     }
-    return f;
-  }
-
-  // Critical: listen to BOTH events
-  function onFilePicked(evtName) {
-    setBanner(`${evtName} fired. Checking elFile.files…`);
-    const f = pickFirstFileFromInput();
-    if (!f) return;
     loadFileToImg(f);
   }
 
-  elFile.addEventListener("change", () => onFilePicked("change"));
-  elFile.addEventListener("input", () => onFilePicked("input"));
+  // Listen to both events (iOS)
+  elFile.addEventListener("change", () => handlePick("change"));
+  elFile.addEventListener("input",  () => handlePick("input"));
 
-  // In case your UI triggers click on a label/button that swaps nodes,
-  // re-bind once after a tick (cheap insurance, no harm)
-  setTimeout(() => {
-    elFile.addEventListener("change", () => onFilePicked("change(rebind)"));
-    elFile.addEventListener("input", () => onFilePicked("input(rebind)"));
-  }, 0);
-
-  // ---------- keep overlay aligned
+  // Keep overlay aligned
   window.addEventListener("resize", () => {
     syncOverlaySize();
   });
 
   // Init
   setTapCount();
-  syncOverlaySize();
-  setBanner("Ready. Tap upload and pick a photo.");
+  setBanner("Ready. Upload a photo.");
 })();
