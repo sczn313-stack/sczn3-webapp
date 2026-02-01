@@ -1,175 +1,132 @@
 /* ============================================================
-   backend_new/server.js  (FULL REPLACEMENT)
-   SCZN3 / Tap-n-Score — SEC Backend (Clean Bridge)
-
-   What this fixes:
-   - GET /api/health  ✅
-   - GET /api/poster  ✅
-   - GET /api/calc    ✅ (returns guidance instead of "Cannot GET")
-   - POST /api/calc   ✅ (real calculator endpoint)
-
-   IMPORTANT:
-   - This endpoint expects ALL positions in INCHES (not pixels).
-   - Screen-space convention:
-       x increases RIGHT
-       y increases DOWN   (like canvas / DOM)
-     Correction vector is bull - poib:
-       deltaX < 0 => move LEFT  => dial LEFT
-       deltaX > 0 => move RIGHT => dial RIGHT
-       deltaY < 0 => move UP    => dial UP
-       deltaY > 0 => move DOWN  => dial DOWN
+   server.js (FULL REPLACEMENT) — SEC-DIRECTION-LOCK-1
+   Purpose:
+   - Backend is the ONLY authority for direction + clicks
+   - Locks screen-truth mapping:
+       y increases DOWN on screen
+       POIB below bull => clicks UP
+       POIB above bull => clicks DOWN
+       POIB left of bull => clicks RIGHT
+       POIB right of bull => clicks LEFT
 ============================================================ */
 
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
-
-// ---- Middleware
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-// ---- Helpers
-function clampNum(n, fallback = 0) {
+// ---------- helpers ----------
+function clamp01(n) {
   const x = Number(n);
-  return Number.isFinite(x) ? x : fallback;
-}
-function round2(n) {
-  return Math.round(n * 100) / 100;
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
 }
 
-// Inches per MOA at a given distance (yards)
-// 1 MOA ≈ 1.047 inches at 100 yards
-function inchesPerMoa(distanceYds) {
-  const d = clampNum(distanceYds, 100);
-  return 1.047 * (d / 100);
+function normPoint(p) {
+  if (!p || typeof p !== "object") return null;
+  return { x: clamp01(p.x), y: clamp01(p.y) };
 }
 
-function directionFromDeltaX(deltaX) {
-  if (deltaX === 0) return "NONE";
-  return deltaX > 0 ? "RIGHT" : "LEFT";
+function safeArray(a) {
+  return Array.isArray(a) ? a : [];
 }
 
-function directionFromDeltaY(deltaY) {
-  // screen-space: y increases DOWN
-  if (deltaY === 0) return "NONE";
-  return deltaY > 0 ? "DOWN" : "UP";
+function meanPoint(list) {
+  let sx = 0, sy = 0;
+  for (const p of list) { sx += p.x; sy += p.y; }
+  return { x: sx / list.length, y: sy / list.length };
 }
 
-function buildCalcResult(payload) {
-  // Required-ish
-  const distanceYds = clampNum(payload?.distanceYds, 100);
+/**
+ * computeFromAnchorHits()
+ * - anchor is the bull (normalized 0..1)
+ * - hits are confirmed hits (normalized 0..1)
+ * Returns: score, shots, clicks {up,down,left,right}
+ *
+ * IMPORTANT:
+ * This is still a placeholder scale until your inches/mils mapping is wired,
+ * but direction truth is now locked correctly.
+ */
+function computeFromAnchorHits(bull, hits) {
+  const shots = hits.length;
 
-  // MOA per click (default 0.25)
-  const moaPerClick = clampNum(payload?.moaPerClick, 0.25) || 0.25;
+  // POIB (normalized)
+  const poib = meanPoint(hits);
 
-  // Expect inches
-  const bullX = clampNum(payload?.bull?.x, 0);
-  const bullY = clampNum(payload?.bull?.y, 0);
-  const poibX = clampNum(payload?.poib?.x, 0);
-  const poibY = clampNum(payload?.poib?.y, 0);
+  // offsets (normalized)
+  // Positive dx means POIB is right of bull
+  // Positive dy means POIB is below bull (because y grows downward on screen)
+  const dx = poib.x - bull.x;
+  const dy = poib.y - bull.y;
 
-  // Correction vector = bull - poib
-  const deltaX = bullX - poibX;
-  const deltaY = bullY - poibY;
+  // Placeholder "magnitude" scaling for now
+  const SCALE = 40;
+  const magX = Math.abs(dx) * SCALE;
+  const magY = Math.abs(dy) * SCALE;
 
-  const ipm = inchesPerMoa(distanceYds);
-  const windMoa = ipm === 0 ? 0 : (deltaX / ipm);
-  const elevMoa = ipm === 0 ? 0 : (deltaY / ipm);
+  // DIRECTION LOCK (this is the whole point):
+  // POIB below bull (dy > 0) => shots low => dial UP
+  // POIB above bull (dy < 0) => shots high => dial DOWN
+  const clicks = {
+    up:    dy > 0 ? magY : 0,
+    down:  dy < 0 ? magY : 0,
 
-  const windClicks = moaPerClick === 0 ? 0 : (windMoa / moaPerClick);
-  const elevClicks = moaPerClick === 0 ? 0 : (elevMoa / moaPerClick);
+    // POIB right of bull (dx > 0) => shots right => dial LEFT
+    // POIB left of bull (dx < 0) => shots left => dial RIGHT
+    left:  dx > 0 ? magX : 0,
+    right: dx < 0 ? magX : 0,
+  };
+
+  // Placeholder score (replace later)
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const score = Math.max(0, Math.min(100, Math.round(100 - dist * 220)));
 
   return {
-    ok: true,
-    distanceYds,
-    moaPerClick,
-    inchesPerMoa: round2(ipm),
-
-    // Raw inputs
-    bull: { x: bullX, y: bullY },
-    poib: { x: poibX, y: poibY },
-
-    // Signed correction vector (inches)
-    delta: { x: round2(deltaX), y: round2(deltaY) },
-
-    // Directions derived ONLY from signed deltas
-    directions: {
-      windage: directionFromDeltaX(deltaX),
-      elevation: directionFromDeltaY(deltaY),
-    },
-
-    // MOA + Clicks (keep sign, frontend can show abs if it wants)
-    moa: {
-      windage: round2(windMoa),
-      elevation: round2(elevMoa),
-    },
+    score,
+    shots,
     clicks: {
-      windage: round2(windClicks),
-      elevation: round2(elevClicks),
-    },
+      up: Number(clicks.up.toFixed(2)),
+      down: Number(clicks.down.toFixed(2)),
+      left: Number(clicks.left.toFixed(2)),
+      right: Number(clicks.right.toFixed(2)),
+    }
   };
 }
 
-// ---- Routes
-app.get("/", (req, res) => {
-  res.type("text/plain").send("SCZN3 backend is running. Try /api/health");
-});
-
-app.get("/api/poster", (req, res) => {
-  res.type("text/plain").send("SEC backend poster OK");
-});
-
+// ---------- routes ----------
 app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "sczn3-backend-new",
-    time: new Date().toISOString(),
-  });
+  res.json({ ok: true, service: "tap-n-score-backend", time: new Date().toISOString() });
 });
 
-// Helpful GET so Safari testing doesn't look “broken”
-app.get("/api/calc", (req, res) => {
-  res.status(405).json({
-    ok: false,
-    error: "Method Not Allowed",
-    hint: "Use POST /api/calc with JSON body. (Browsers do GET when you paste a URL.)",
-    exampleBody: {
-      distanceYds: 100,
-      moaPerClick: 0.25,
-      bull: { x: 0, y: 0 },
-      poib: { x: 1.25, y: -0.5 },
-    },
-  });
+app.get("/api/analyze", (req, res) => {
+  res.status(200).send("Use POST /api/analyze with JSON body { anchor:{x,y}, hits:[{x,y}...] }");
 });
 
-// Real calculator
-app.post("/api/calc", (req, res) => {
+app.post("/api/analyze", (req, res) => {
   try {
-    const payload = req.body || {};
-    const result = buildCalcResult(payload);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({
-      ok: false,
-      error: "Server error",
-      detail: String(err?.message || err),
+    const bull = normPoint(req.body?.anchor);
+    const hits = safeArray(req.body?.hits).map(normPoint).filter(Boolean);
+
+    if (!bull) return res.status(400).json({ error: "Missing/invalid anchor" });
+    if (hits.length < 1) return res.status(400).json({ error: "Need at least 1 hit" });
+
+    const sessionId = `SEC-${Math.random().toString(16).slice(2, 10).toUpperCase()}`;
+
+    const computed = computeFromAnchorHits(bull, hits);
+
+    res.json({
+      sessionId,
+      score: computed.score,
+      shots: computed.shots,
+      clicks: computed.clicks
     });
+  } catch (e) {
+    res.status(500).json({ error: "Server error", detail: String(e?.message || e) });
   }
 });
 
-// Catch-all to keep responses friendly
-app.use((req, res) => {
-  res.status(404).json({
-    ok: false,
-    error: "Not found",
-    path: req.path,
-    hint: "Try GET /api/health, GET /api/poster, POST /api/calc",
-  });
-});
-
-// ---- Start
-const port = Number(process.env.PORT || 10000);
-app.listen(port, () => {
-  console.log(`SEC backend listening on port ${port}`);
-});
+// ---------- start ----------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Backend listening on", PORT));
