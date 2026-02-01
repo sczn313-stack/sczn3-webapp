@@ -1,21 +1,26 @@
 /* ============================================================
-   backend_new/server.js — SCZN3 / Tap-n-Score SEC Backend
-   Purpose:
-   - Prove the deployed server is the one we think it is
-   - Provide stable health + poster endpoints
-   - Provide POST /api/calc for SEC math handoff
-   ============================================================ */
+   backend_new/server.js — SCZN3 / Tap-n-Score SEC Backend (Clean Bridge)
+   Routes:
+   - GET  /api/health  -> JSON health check
+   - GET  /api/poster  -> simple text check
+   - POST /api/calc    -> authoritative correction math + directions
+   Conventions:
+   - Screen/target space: x increases RIGHT, y increases DOWN
+   - delta = bull - poib
+     deltaX < 0 => move LEFT,  deltaX > 0 => move RIGHT
+     deltaY < 0 => move UP,    deltaY > 0 => move DOWN
+============================================================ */
 
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
 
-// --- Middleware
+// ---- Middleware
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-// --- Helpers
+// ---- Helpers
 function clampNum(n, fallback = 0) {
   const x = Number(n);
   return Number.isFinite(x) ? x : fallback;
@@ -24,75 +29,106 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-// --- Root
-app.get("/", (req, res) => {
-  res.type("text/plain").send("SCZN3 SEC backend is up. Try /api/health");
-});
+// Inches per MOA at a given distance (yards)
+// 1 MOA ≈ 1.047 inches @ 100 yards
+function inchesPerMOA(distanceYds) {
+  const d = clampNum(distanceYds, 100);
+  return (d / 100) * 1.047;
+}
 
-// --- MUST-HAVE: Health
+// ---- Routes
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
-    service: "sczn3-sec-backend",
-    build: process.env.RENDER_GIT_COMMIT || "unknown",
-    time: new Date().toISOString()
+    service: "sczn3-backend-new",
+    time: new Date().toISOString(),
   });
 });
 
-// --- MUST-HAVE: Poster (your earlier test endpoint)
 app.get("/api/poster", (req, res) => {
   res.type("text/plain").send("SEC backend poster OK");
 });
 
-/*
-  POST /api/calc
-  Expected body (example):
-  {
-    "bull": {"x": 100, "y": 100},
-    "poib": {"x": 120, "y": 130},
-    "yards": 100,
-    "clickValue": 0.25
-  }
-
-  Screen-space convention (DOM/canvas):
-    x increases to the RIGHT
-    y increases DOWN
-  Vector for corrections (what to dial):
-    delta = bull - poib
-*/
+/**
+ * POST /api/calc
+ * Expects JSON like:
+ * {
+ *   "bull": {"x": 0, "y": 0},
+ *   "poib": {"x": 1.25, "y": -0.75},
+ *   "distanceYds": 100,
+ *   "clickValueMoa": 0.25
+ * }
+ *
+ * NOTE: bull/poib units must match each other (inches recommended).
+ */
 app.post("/api/calc", (req, res) => {
   try {
     const bull = req.body?.bull || {};
     const poib = req.body?.poib || {};
 
-    const bullX = clampNum(bull.x);
-    const bullY = clampNum(bull.y);
-    const poibX = clampNum(poib.x);
-    const poibY = clampNum(poib.y);
+    const bullX = clampNum(bull.x, 0);
+    const bullY = clampNum(bull.y, 0);
+    const poibX = clampNum(poib.x, 0);
+    const poibY = clampNum(poib.y, 0);
 
+    const distanceYds = clampNum(req.body?.distanceYds, 100);
+    const clickValueMoa = clampNum(req.body?.clickValueMoa, 0.25); // 1/4 MOA default
+
+    // Authoritative correction vector (POIB -> Bull)
     const deltaX = bullX - poibX;
     const deltaY = bullY - poibY;
 
-    // Direction strings derived ONLY from signed deltas
-    const windage = deltaX > 0 ? "RIGHT" : deltaX < 0 ? "LEFT" : "NONE";
-    const elevation = deltaY > 0 ? "DOWN" : deltaY < 0 ? "UP" : "NONE";
+    // Directions (screen/target space: y down is positive)
+    const windage =
+      deltaX === 0 ? "NONE" : deltaX > 0 ? "RIGHT" : "LEFT";
+    const elevation =
+      deltaY === 0 ? "NONE" : deltaY > 0 ? "DOWN" : "UP";
 
-    // This endpoint is “math bridge” only. If you later send inches & MOA,
-    // we’ll compute clicks here. For now we return deltas + directions.
+    // Convert to MOA clicks
+    const moaInches = inchesPerMOA(distanceYds);
+    const inchesPerClick = moaInches * clickValueMoa;
+
+    const clicksX = inchesPerClick === 0 ? 0 : deltaX / inchesPerClick;
+    const clicksY = inchesPerClick === 0 ? 0 : deltaY / inchesPerClick;
+
     res.json({
       ok: true,
-      bull: { x: bullX, y: bullY },
-      poib: { x: poibX, y: poibY },
-      deltas: { x: round2(deltaX), y: round2(deltaY) },
-      directions: { windage, elevation }
+      inputs: {
+        bull: { x: bullX, y: bullY },
+        poib: { x: poibX, y: poibY },
+        distanceYds,
+        clickValueMoa,
+      },
+      deltas: {
+        x: round2(deltaX),
+        y: round2(deltaY),
+      },
+      directions: {
+        windage,
+        elevation,
+      },
+      clicks: {
+        windage: round2(clicksX),
+        elevation: round2(clicksY),
+      },
     });
   } catch (err) {
     res.status(500).json({
       ok: false,
-      error: "server_error",
-      detail: String(err?.message || err)
+      error: "Server error",
+      detail: String(err?.message || err),
     });
   }
+});
+
+// Helpful fallback so you never get “Cannot GET …” without context
+app.use((req, res) => {
+  res.status(404).json({
+    ok: false,
+    error: "Not found",
+    path: req.path,
+    hint: "Try GET /api/health, GET /api/poster, POST /api/calc",
+  });
 });
 
 // ---- Start
