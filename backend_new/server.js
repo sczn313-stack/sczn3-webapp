@@ -1,11 +1,9 @@
 /* ============================================================
-   server.js (FULL REPLACEMENT) — SCZN3 Backend New
+   backend_new/server.js — SCZN3 / Tap-n-Score SEC Backend
    Purpose:
-   - Backend is the ONLY authority for correction directions.
-   - Computes correction vector POIB -> Bull (bull - poib).
-   - Returns explicit direction strings + signed deltas for debug.
-   - FIX: Elevation direction now matches SCREEN-SPACE Y (down = +).
-          This removes the UP/DOWN flip you saw in UL/UR tests.
+   - Prove the deployed server is the one we think it is
+   - Provide stable health + poster endpoints
+   - Provide POST /api/calc for SEC math handoff
    ============================================================ */
 
 const express = require("express");
@@ -13,195 +11,92 @@ const cors = require("cors");
 
 const app = express();
 
-// ---- Middleware
+// --- Middleware
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-// ---- Helpers
+// --- Helpers
 function clampNum(n, fallback = 0) {
   const x = Number(n);
   return Number.isFinite(x) ? x : fallback;
 }
-
-// Inches per MOA at a given distance (yards)
-// 1 MOA ≈ 1.047 inches at 100 yards
-function inchesPerMoa(distanceYds) {
-  const d = clampNum(distanceYds, 0);
-  return (1.047 * d) / 100;
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }
 
-function directionLR(dx) {
-  if (dx > 0) return "RIGHT";
-  if (dx < 0) return "LEFT";
-  return "CENTER";
-}
-
-/**
- * Screen-space Y:
- * - y increases DOWN the screen.
- * We compute dy = bullY - poibY (POIB -> Bull).
- * If dy > 0, bull is LOWER than POIB => correction is DOWN.
- * If dy < 0, bull is HIGHER than POIB => correction is UP.
- */
-function directionUD(dy) {
-  if (dy > 0) return "DOWN";
-  if (dy < 0) return "UP";
-  return "CENTER";
-}
-
-// ---- Health
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "sczn3-backend-new", ts: new Date().toISOString() });
+// --- Root
+app.get("/", (req, res) => {
+  res.type("text/plain").send("SCZN3 SEC backend is up. Try /api/health");
 });
 
-/* ============================================================
-   POST /api/calc
-   Input (JSON):
-     {
-       "distanceYds": 100,
-       "clickMoa": 0.25,                 // optional, defaults 0.25 MOA/click
-       "inchesPerPixel": 0.01,           // REQUIRED to convert pixels -> inches
-       "bull": { "x": 512, "y": 400 },   // anchor tap (pixel coords in SAME space)
-       "impacts": [                      // 1..N impact taps (pixel coords)
-         { "x": 700, "y": 250 },
-         ...
-       ]
-     }
+// --- MUST-HAVE: Health
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "sczn3-sec-backend",
+    build: process.env.RENDER_GIT_COMMIT || "unknown",
+    time: new Date().toISOString()
+  });
+});
 
-   Output (JSON):
-     - poib (average impact point)
-     - correction vector = bull - poib  (POIB -> Bull)
-     - windage/elevation with inches, moa, clicks, direction
-============================================================ */
+// --- MUST-HAVE: Poster (your earlier test endpoint)
+app.get("/api/poster", (req, res) => {
+  res.type("text/plain").send("SEC backend poster OK");
+});
+
+/*
+  POST /api/calc
+  Expected body (example):
+  {
+    "bull": {"x": 100, "y": 100},
+    "poib": {"x": 120, "y": 130},
+    "yards": 100,
+    "clickValue": 0.25
+  }
+
+  Screen-space convention (DOM/canvas):
+    x increases to the RIGHT
+    y increases DOWN
+  Vector for corrections (what to dial):
+    delta = bull - poib
+*/
 app.post("/api/calc", (req, res) => {
   try {
-    const distanceYds = clampNum(req.body?.distanceYds, 0);
-    const clickMoa = clampNum(req.body?.clickMoa, 0.25);
-    const inchesPerPixel = clampNum(req.body?.inchesPerPixel, NaN);
+    const bull = req.body?.bull || {};
+    const poib = req.body?.poib || {};
 
-    const bull = req.body?.bull || null;
-    const impacts = Array.isArray(req.body?.impacts) ? req.body.impacts : [];
+    const bullX = clampNum(bull.x);
+    const bullY = clampNum(bull.y);
+    const poibX = clampNum(poib.x);
+    const poibY = clampNum(poib.y);
 
-    if (!bull || !Number.isFinite(bull.x) || !Number.isFinite(bull.y)) {
-      return res.status(400).json({ ok: false, error: "Missing/invalid bull {x,y}." });
-    }
-    if (!impacts.length) {
-      return res.status(400).json({ ok: false, error: "No impacts provided." });
-    }
-    if (!Number.isFinite(distanceYds) || distanceYds <= 0) {
-      return res.status(400).json({ ok: false, error: "distanceYds must be > 0." });
-    }
-    if (!Number.isFinite(clickMoa) || clickMoa <= 0) {
-      return res.status(400).json({ ok: false, error: "clickMoa must be > 0." });
-    }
-    if (!Number.isFinite(inchesPerPixel) || inchesPerPixel <= 0) {
-      return res.status(400).json({
-        ok: false,
-        error:
-          "inchesPerPixel must be provided (>0). Backend will not guess scale. Supply it from your target profile."
-      });
-    }
+    const deltaX = bullX - poibX;
+    const deltaY = bullY - poibY;
 
-    // ---- Compute POIB (average of impacts)
-    let sumX = 0;
-    let sumY = 0;
-    let validCount = 0;
+    // Direction strings derived ONLY from signed deltas
+    const windage = deltaX > 0 ? "RIGHT" : deltaX < 0 ? "LEFT" : "NONE";
+    const elevation = deltaY > 0 ? "DOWN" : deltaY < 0 ? "UP" : "NONE";
 
-    for (const p of impacts) {
-      const x = clampNum(p?.x, NaN);
-      const y = clampNum(p?.y, NaN);
-      if (Number.isFinite(x) && Number.isFinite(y)) {
-        sumX += x;
-        sumY += y;
-        validCount += 1;
-      }
-    }
-
-    if (!validCount) {
-      return res.status(400).json({ ok: false, error: "All impacts were invalid." });
-    }
-
-    const poib = { x: sumX / validCount, y: sumY / validCount };
-
-    // =========================================================
-    // CORRECTION VECTOR (SOURCE OF TRUTH):
-    // POIB -> Bull  (bull - poib)
-    //
-    // dx > 0 => RIGHT, dx < 0 => LEFT
-    // dy handled by directionUD() using SCREEN-SPACE Y rules.
-    //
-    // Frontend must NEVER decide direction. It prints these.
-    // =========================================================
-    const dxPx = bull.x - poib.x; // correction px
-    const dyPx = bull.y - poib.y; // correction px
-
-    const dxInSigned = dxPx * inchesPerPixel;
-    const dyInSigned = dyPx * inchesPerPixel;
-
-    const windDir = directionLR(dxInSigned);
-    const elevDir = directionUD(dyInSigned);
-
-    const windInAbs = Math.abs(dxInSigned);
-    const elevInAbs = Math.abs(dyInSigned);
-
-    const ipm = inchesPerMoa(distanceYds);
-    const windMoa = windInAbs / ipm;
-    const elevMoa = elevInAbs / ipm;
-
-    const windClicks = windMoa / clickMoa;
-    const elevClicks = elevMoa / clickMoa;
-
-    const out = {
+    // This endpoint is “math bridge” only. If you later send inches & MOA,
+    // we’ll compute clicks here. For now we return deltas + directions.
+    res.json({
       ok: true,
-      name: "SCZN3_BACKEND_DIRECTION_AUTHORITY",
-      distanceYds,
-      clickMoa,
-      inchesPerPixel,
-
-      bull: { x: bull.x, y: bull.y },
-      poib: { x: poib.x, y: poib.y },
-
-      // Signed correction (debug)
-      delta: {
-        dx_px: dxPx,
-        dy_px: dyPx,
-        dx_in_signed: dxInSigned,
-        dy_in_signed: dyInSigned
-      },
-
-      windage: {
-        inches: Number(windInAbs.toFixed(2)),
-        moa: Number(windMoa.toFixed(2)),
-        clicks: Number(windClicks.toFixed(2)),
-        direction: windDir
-      },
-
-      elevation: {
-        inches: Number(elevInAbs.toFixed(2)),
-        moa: Number(elevMoa.toFixed(2)),
-        clicks: Number(elevClicks.toFixed(2)),
-        direction: elevDir
-      },
-
-      // Convenience strings for frontend (print exactly)
-      ui: {
-        windage: `${windInAbs.toFixed(2)}" ${windDir} • ${windMoa.toFixed(2)} MOA • ${windClicks.toFixed(2)} clicks ${windDir}`,
-        elevation: `${elevInAbs.toFixed(2)}" ${elevDir} • ${elevMoa.toFixed(2)} MOA • ${elevClicks.toFixed(2)} clicks ${elevDir}`
-      }
-    };
-
-    return res.json(out);
+      bull: { x: bullX, y: bullY },
+      poib: { x: poibX, y: poibY },
+      deltas: { x: round2(deltaX), y: round2(deltaY) },
+      directions: { windage, elevation }
+    });
   } catch (err) {
-    return res.status(500).json({
+    res.status(500).json({
       ok: false,
-      error: "Server error in /api/calc.",
+      error: "server_error",
       detail: String(err?.message || err)
     });
   }
 });
 
 // ---- Start
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`sczn3-backend-new listening on :${PORT}`);
+const port = Number(process.env.PORT || 3000);
+app.listen(port, () => {
+  console.log(`SEC backend listening on port ${port}`);
 });
