@@ -1,0 +1,46 @@
+name: POIB JSON contract check
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  poib:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Verify only JSON request contract is used
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("frontend/index.html").read_text()
+          assert 'Content-Type": "application/json"' in s
+          assert 'JSON.stringify(payload)' in s
+          assert "body: fd" not in s
+          for field in ("distanceYards", "clickValueMoa", "deadbandInches", "bullX", "bullY", "holes"):
+              assert field in s
+          print("JSON request fields and serialization PASS")
+          PY
+      - name: Verify live SEC endpoint accepts physical-inch JSON
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          payload={"targetSize":"8.5x11","distanceYards":100,"clickValueMoa":0.25,"deadbandInches":0.1,"bullX":4.25,"bullY":5.5,"holes":[{"x":3.9,"y":4.8},{"x":3.95,"y":4.75},{"x":4.05,"y":4.85},{"x":3.88,"y":4.78}]}
+          req=urllib.request.Request("https://sczn3-sec-backend-pipe-3.onrender.com/api/sec",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
+          with urllib.request.urlopen(req,timeout=90) as res:
+              obj=json.load(res)
+          assert obj.get("ok") is True, obj
+          assert obj.get("debug",{}).get("distanceYards")==100, obj
+          assert obj.get("debug",{}).get("bull")=={"x":4.25,"y":5.5},obj
+          print("Live API contract PASS:",obj["service"],obj.get("scopeClicks"))
+          PY
