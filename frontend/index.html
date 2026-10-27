@@ -133,23 +133,35 @@
     if (!endpoint) return alert("Endpoint required.");
     if (!holesEl.value.trim()) return alert("Paste Holes JSON (or press Demo Holes).");
 
-    const fd = new FormData();
-    const file = document.getElementById("file").files?.[0];
-    if (file) fd.append("image", file);
-
-    fd.append("targetSizeSpec", targetSizeSpec);
-    fd.append("distanceYards", String(distanceYards));
-    fd.append("clickValueMoa", String(clickValueMoa));
-    fd.append("deadbandIn", String(deadbandIn));
-    fd.append("bullX", String(bullX));
-    fd.append("bullY", String(bullY));
-    fd.append("holesJson", holesEl.value.trim());
+    // /api/sec accepts JSON; physical coordinates remain in inches.
+    if (document.getElementById("file").files?.length) {
+      return alert("This demo sends hole coordinates only. Remove the selected image.");
+    }
+    let holes;
+    try {
+      holes = JSON.parse(holesEl.value.trim());
+      if (!Array.isArray(holes) || !holes.length || !holes.every(h =>
+        Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)))) {
+        return alert("Holes must be a nonempty array of numeric x/y coordinates.");
+      }
+    } catch {
+      return alert("Holes JSON must be valid JSON.");
+    }
+    const payload = {
+      targetSize: targetSizeSpec,
+      distanceYards: Number(distanceYards),
+      clickValueMoa: Number(clickValueMoa),
+      deadbandInches: Number(deadbandIn),
+      bullX: Number(bullX),
+      bullY: Number(bullY),
+      holes: holes.map(h => ({ x: Number(h.x), y: Number(h.y) }))
+    };
 
     resultBox.style.display = "none";
     clicksLine.textContent = "Sending...";
 
     try {
-      const res = await fetch(endpoint, { method: "POST", body: fd });
+      const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const text = await res.text();
 
       let data;
